@@ -35,5 +35,10 @@
 - [x] 技术方案：静态网站（Astro）
 - [x] 框架搭建完成
 - [x] Vercel 部署成功
-- **访问地址**: https://workspace-jobs.vercel.app
+- [x] 界面优化完成（金色渐变、卡片布局、动画效果）
+- **主站地址**: https://workspace-jobs.vercel.app
 - [ ] 内容源接入（待 Frank 提供）
+
+---
+
+**决定**: 放弃 frank-invest-blog（GitHub Pages），只维护 workspace-jobs.vercel.app
