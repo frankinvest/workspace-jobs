@@ -1,0 +1,41 @@
+---
+import { getCollection, render } from 'astro:content';
+import ArticleLayout from '../../layouts/ArticleLayout.astro';
+
+export async function getStaticPaths() {
+  const docs = await getCollection('docs');
+  return docs.map((entry) => ({
+    params: { id: entry.id },
+    props: { entry },
+  }));
+}
+
+const { entry } = Astro.props;
+const { Content } = await render(entry);
+
+// 从文件名提取日期和标题
+const filename = entry.id;
+const dateMatch = filename.match(/(\d{8})/);
+const date = dateMatch ? dateMatch[1] : '';
+
+// 根据文件类型设置标签
+let tag = '财经早餐';
+if (filename.includes('奏折')) {
+  tag = '尚书省奏折';
+} else if (filename.includes('问题总结')) {
+  tag = '工作流文档';
+}
+
+// 提取标题
+let title = entry.data.title;
+if (!title) {
+  // 从文件名提取
+  const titleMatch = filename.match(/-\d{8}-(.+)\.md$/);
+  title = titleMatch ? titleMatch[1] : filename.replace('.md', '');
+  title = title.replace(/-/g, ' ');
+}
+---
+
+<ArticleLayout title={title} date={date} tag={tag}>
+  <Content />
+</ArticleLayout>

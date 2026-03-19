@@ -1,297 +1,460 @@
 ---
-const today = new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
+import { getCollection } from 'astro:content';
+
+const allDocs = await getCollection('docs');
+
+// 按日期排序（从新到旧）
+const sortedDocs = allDocs.sort((a, b) => {
+  const dateA = a.id.match(/(\d{8})/)?.[1] || '';
+  const dateB = b.id.match(/(\d{8})/)?.[1] || '';
+  return dateB.localeCompare(dateA);
+});
+
+// 格式化日期
+const formatDate = (dateStr: string) => {
+  if (!dateStr) return '';
+  const year = dateStr.slice(0, 4);
+  const month = dateStr.slice(4, 6);
+  const day = dateStr.slice(6, 8);
+  return `${year}年${parseInt(month)}月${parseInt(day)}日`;
+};
+
+// 获取今天日期
+const today = new Date().toLocaleDateString('zh-CN', { 
+  year: 'numeric', 
+  month: 'long', 
+  day: 'numeric', 
+  weekday: 'long' 
+});
 const hour = new Date().getHours();
 const greeting = hour < 12 ? '☀️ 早安' : hour < 14 ? '🌤️ 午安' : hour < 18 ? '🌇 下午好' : '🌙 晚上好';
+
+// 分类文章
+const articles = sortedDocs.map(doc => {
+  const dateMatch = doc.id.match(/(\d{8})/);
+  const date = dateMatch ? dateMatch[1] : '';
+  
+  let tag = '📋 其他';
+  let tagColor = 'rgba(156, 163, 175, 0.1)';
+  let tagTextColor = '#9ca3af';
+  
+  if (doc.id.includes('财经早餐分析')) {
+    tag = '📊 财经早餐';
+    tagColor = 'rgba(212, 168, 83, 0.15)';
+    tagTextColor = '#d4a853';
+  } else if (doc.id.includes('奏折')) {
+    tag = '📜 尚书省奏折';
+    tagColor = 'rgba(239, 68, 68, 0.15)';
+    tagTextColor = '#ef4444';
+  } else if (doc.id.includes('问题总结')) {
+    tag = '⚙️ 工作流文档';
+    tagColor = 'rgba(34, 197, 94, 0.15)';
+    tagTextColor = '#22c55e';
+  }
+  
+  // 提取标题
+  let title = doc.data.title || '';
+  if (!title) {
+    const titleMatch = doc.id.match(/-\d{8}-(.+)\.md$/);
+    title = titleMatch ? titleMatch[1] : doc.id.replace('.md', '');
+    title = title.replace(/-/g, ' ');
+  }
+  
+  return {
+    id: doc.id,
+    title,
+    date,
+    formattedDate: formatDate(date),
+    tag,
+    tagColor,
+    tagTextColor,
+  };
+});
+
+// 按标签分组
+const groupedArticles = {
+  '财经早餐分析': articles.filter(a => a.tag.includes('财经早餐')),
+  '尚书省奏折': articles.filter(a => a.tag.includes('奏折')),
+  '工作流文档': articles.filter(a => a.tag.includes('工作流')),
+};
 ---
 
 <html lang="zh-CN">
-	<head>
-		<meta charset="utf-8" />
-		<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📈</text></svg>">
-		<meta name="viewport" content="width=device-width, initial-scale=1" />
-		<meta name="description" content="财经早餐 - 每日财经资讯、宏观新闻、股票分析" />
-		<title>财经早餐</title>
-		<link rel="preconnect" href="https://fonts.googleapis.com">
-		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-		<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;600;700&family=Noto+Serif+SC:wght@400;600;700&display=swap" rel="stylesheet">
-		<style>
-			* { margin: 0; padding: 0; box-sizing: border-box; }
-			
-			:root {
-				--bg-primary: #0a0a0a;
-				--bg-card: #141414;
-				--bg-hover: #1a1a1a;
-				--text-primary: #fafafa;
-				--text-secondary: #a1a1a1;
-				--text-muted: #6b6b6b;
-				--accent: #d4a853;
-				--accent-dim: #8a7235;
-				--border: #262626;
-				--gradient-accent: linear-gradient(135deg, #d4a853 0%, #e8c87a 50%, #d4a853 100%);
-			}
-			
-			body {
-				font-family: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, sans-serif;
-				background: var(--bg-primary);
-				color: var(--text-primary);
-				line-height: 1.7;
-				min-height: 100vh;
-			}
-			
-			/* 背景装饰 */
-			body::before {
-				content: '';
-				position: fixed;
-				top: 0;
-				left: 0;
-				right: 0;
-				bottom: 0;
-				background: 
-					radial-gradient(ellipse 80% 50% at 50% -20%, rgba(212, 168, 83, 0.08), transparent),
-					radial-gradient(ellipse 60% 40% at 100% 0%, rgba(212, 168, 83, 0.05), transparent);
-				pointer-events: none;
-				z-index: 0;
-			}
-			
-			.container {
-				max-width: 680px;
-				margin: 0 auto;
-				padding: 80px 24px;
-				position: relative;
-				z-index: 1;
-			}
-			
-			/* Header */
-			header {
-				text-align: center;
-				margin-bottom: 64px;
-				padding-bottom: 48px;
-				position: relative;
-			}
-			
-			header::after {
-				content: '';
-				position: absolute;
-				bottom: 0;
-				left: 50%;
-				transform: translateX(-50%);
-				width: 80px;
-				height: 1px;
-				background: var(--gradient-accent);
-			}
-			
-			.greeting {
-				font-size: 13px;
-				color: var(--accent);
-				letter-spacing: 3px;
-				margin-bottom: 20px;
-				font-weight: 500;
-			}
-			
-			.logo {
-				font-size: 64px;
-				margin-bottom: 20px;
-				animation: fadeInUp 0.6s ease-out;
-			}
-			
-			h1 {
-				font-family: 'Noto Serif SC', serif;
-				font-size: 42px;
-				font-weight: 700;
-				letter-spacing: 12px;
-				margin-bottom: 16px;
-				background: var(--gradient-accent);
-				-webkit-background-clip: text;
-				-webkit-text-fill-color: transparent;
-				background-clip: text;
-				animation: fadeInUp 0.6s ease-out 0.1s both;
-			}
-			
-			.subtitle {
-				color: var(--text-muted);
-				font-size: 14px;
-				letter-spacing: 4px;
-				font-weight: 300;
-			}
-			
-			.update-time {
-				margin-top: 24px;
-				color: var(--text-muted);
-				font-size: 12px;
-			}
-			
-			/* Cards */
-			section {
-				margin-bottom: 32px;
-				animation: fadeInUp 0.6s ease-out 0.2s both;
-			}
-			
-			section:nth-child(2) { animation-delay: 0.3s; }
-			section:nth-child(3) { animation-delay: 0.4s; }
-			section:nth-child(4) { animation-delay: 0.5s; }
-			
-			section h2 {
-				font-size: 12px;
-				font-weight: 600;
-				color: var(--text-muted);
-				letter-spacing: 3px;
-				text-transform: uppercase;
-				margin-bottom: 20px;
-				display: flex;
-				align-items: center;
-				gap: 12px;
-			}
-			
-			section h2::after {
-				content: '';
-				flex: 1;
-				height: 1px;
-				background: var(--border);
-			}
-			
-			.card {
-				background: var(--bg-card);
-				border: 1px solid var(--border);
-				border-radius: 12px;
-				padding: 24px;
-				transition: all 0.3s ease;
-			}
-			
-			.card:hover {
-				background: var(--bg-hover);
-				border-color: var(--accent-dim);
-				transform: translateY(-2px);
-			}
-			
-			.article {
-				padding: 16px 0;
-			}
-			
-			.article + .article {
-				border-top: 1px solid var(--border);
-			}
-			
-			.article-title {
-				font-size: 16px;
-				font-weight: 400;
-				margin-bottom: 8px;
-			}
-			
-			.article-title a {
-				color: var(--text-primary);
-				text-decoration: none;
-				transition: color 0.2s;
-			}
-			
-			.article-title a:hover {
-				color: var(--accent);
-			}
-			
-			.article-meta {
-				font-size: 12px;
-				color: var(--text-muted);
-			}
-			
-			.tag {
-				display: inline-block;
-				padding: 2px 8px;
-				background: rgba(212, 168, 83, 0.1);
-				color: var(--accent);
-				font-size: 11px;
-				border-radius: 4px;
-				margin-right: 8px;
-			}
-			
-			/* Footer */
-			footer {
-				text-align: center;
-				padding: 64px 0 32px;
-				color: var(--text-muted);
-				font-size: 12px;
-			}
-			
-			footer a {
-				color: var(--accent);
-				text-decoration: none;
-			}
-			
-			/* Animations */
-			@keyframes fadeInUp {
-				from {
-					opacity: 0;
-					transform: translateY(20px);
-				}
-				to {
-					opacity: 1;
-					transform: translateY(0);
-				}
-			}
-			
-			/* 移动端 */
-			@media (max-width: 640px) {
-				.container {
-					padding: 48px 20px;
-				}
-				.logo {
-					font-size: 48px;
-				}
-				h1 {
-					font-size: 28px;
-					letter-spacing: 6px;
-				}
-				.subtitle {
-					font-size: 12px;
-					letter-spacing: 2px;
-				}
-				.card {
-					padding: 20px;
-				}
-			}
-		</style>
-	</head>
-	<body>
-		<div class="container">
-			<header>
-				<div class="greeting">{greeting}</div>
-				<div class="logo">📈</div>
-				<h1>财经早餐</h1>
-				<div class="subtitle">宏观趋势 · 行业研究 · 投资思考</div>
-				<div class="update-time">{today} · 每日更新</div>
-			</header>
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📈</text></svg>">
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="财经早餐 - 每日财经资讯、宏观新闻、股票分析" />
+    <title>财经早餐</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;600;700&family=Noto+Serif+SC:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      
+      :root {
+        --bg-primary: #0a0a0a;
+        --bg-card: #141414;
+        --bg-hover: #1a1a1a;
+        --text-primary: #fafafa;
+        --text-secondary: #a1a1a1;
+        --text-muted: #6b6b6b;
+        --accent: #d4a853;
+        --accent-dim: #8a7235;
+        --border: #262626;
+        --gradient-accent: linear-gradient(135deg, #d4a853 0%, #e8c87a 50%, #d4a853 100%);
+      }
+      
+      body {
+        font-family: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, sans-serif;
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        line-height: 1.7;
+        min-height: 100vh;
+      }
+      
+      body::before {
+        content: '';
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: 
+          radial-gradient(ellipse 80% 50% at 50% -20%, rgba(212, 168, 83, 0.08), transparent),
+          radial-gradient(ellipse 60% 40% at 100% 0%, rgba(212, 168, 83, 0.05), transparent);
+        pointer-events: none;
+        z-index: 0;
+      }
+      
+      .container {
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 80px 24px;
+        position: relative;
+        z-index: 1;
+      }
+      
+      /* Header */
+      header {
+        text-align: center;
+        margin-bottom: 64px;
+        padding-bottom: 48px;
+        position: relative;
+      }
+      
+      header::after {
+        content: '';
+        position: absolute;
+        bottom: 0;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 80px;
+        height: 1px;
+        background: var(--gradient-accent);
+      }
+      
+      .greeting {
+        font-size: 13px;
+        color: var(--accent);
+        letter-spacing: 3px;
+        margin-bottom: 20px;
+        font-weight: 500;
+      }
+      
+      .logo {
+        font-size: 64px;
+        margin-bottom: 20px;
+        animation: fadeInUp 0.6s ease-out;
+      }
+      
+      h1 {
+        font-family: 'Noto Serif SC', serif;
+        font-size: 42px;
+        font-weight: 700;
+        letter-spacing: 12px;
+        margin-bottom: 16px;
+        background: var(--gradient-accent);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        animation: fadeInUp 0.6s ease-out 0.1s both;
+      }
+      
+      .subtitle {
+        color: var(--text-muted);
+        font-size: 14px;
+        letter-spacing: 4px;
+        font-weight: 300;
+      }
+      
+      .update-time {
+        margin-top: 24px;
+        color: var(--text-muted);
+        font-size: 12px;
+      }
+      
+      /* Stats */
+      .stats {
+        display: flex;
+        justify-content: center;
+        gap: 32px;
+        margin-top: 32px;
+        animation: fadeInUp 0.6s ease-out 0.15s both;
+      }
+      
+      .stat {
+        text-align: center;
+      }
+      
+      .stat-value {
+        font-size: 28px;
+        font-weight: 700;
+        color: var(--accent);
+        font-family: 'Noto Serif SC', serif;
+      }
+      
+      .stat-label {
+        font-size: 12px;
+        color: var(--text-muted);
+        margin-top: 4px;
+      }
+      
+      /* Sections */
+      section {
+        margin-bottom: 48px;
+        animation: fadeInUp 0.6s ease-out 0.2s both;
+      }
+      
+      section:nth-child(2) { animation-delay: 0.3s; }
+      section:nth-child(3) { animation-delay: 0.4s; }
+      section:nth-child(4) { animation-delay: 0.5s; }
+      
+      section h2 {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--text-muted);
+        letter-spacing: 3px;
+        text-transform: uppercase;
+        margin-bottom: 20px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      
+      section h2::after {
+        content: '';
+        flex: 1;
+        height: 1px;
+        background: var(--border);
+      }
+      
+      .section-icon {
+        font-size: 14px;
+        margin-right: 4px;
+      }
+      
+      /* Card */
+      .card {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        overflow: hidden;
+      }
+      
+      .article-item {
+        display: block;
+        padding: 20px 24px;
+        text-decoration: none;
+        color: inherit;
+        transition: all 0.2s ease;
+        border-bottom: 1px solid var(--border);
+      }
+      
+      .article-item:last-child {
+        border-bottom: none;
+      }
+      
+      .article-item:hover {
+        background: var(--bg-hover);
+      }
+      
+      .article-item:hover .article-title {
+        color: var(--accent);
+      }
+      
+      .article-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 8px;
+      }
+      
+      .tag {
+        display: inline-block;
+        padding: 4px 10px;
+        font-size: 11px;
+        border-radius: 4px;
+        font-weight: 500;
+      }
+      
+      .article-date {
+        font-size: 13px;
+        color: var(--text-muted);
+      }
+      
+      .article-title {
+        font-size: 15px;
+        font-weight: 500;
+        color: var(--text-primary);
+        transition: color 0.2s;
+        line-height: 1.5;
+      }
+      
+      .empty-state {
+        text-align: center;
+        padding: 48px 24px;
+        color: var(--text-muted);
+      }
+      
+      /* Footer */
+      footer {
+        text-align: center;
+        padding: 64px 0 32px;
+        color: var(--text-muted);
+        font-size: 12px;
+      }
+      
+      footer a {
+        color: var(--accent);
+        text-decoration: none;
+      }
+      
+      /* Animations */
+      @keyframes fadeInUp {
+        from {
+          opacity: 0;
+          transform: translateY(20px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+      
+      /* 移动端 */
+      @media (max-width: 640px) {
+        .container {
+          padding: 48px 16px;
+        }
+        .logo {
+          font-size: 48px;
+        }
+        h1 {
+          font-size: 28px;
+          letter-spacing: 6px;
+        }
+        .subtitle {
+          font-size: 12px;
+          letter-spacing: 2px;
+        }
+        .stats {
+          gap: 24px;
+        }
+        .stat-value {
+          font-size: 24px;
+        }
+        .article-item {
+          padding: 16px 20px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <header>
+        <div class="greeting">{greeting}</div>
+        <div class="logo">📈</div>
+        <h1>财经早餐</h1>
+        <div class="subtitle">宏观趋势 · 行业研究 · 投资思考</div>
+        <div class="update-time">{today} · 每日更新</div>
+        
+        <div class="stats">
+          <div class="stat">
+            <div class="stat-value">{groupedArticles['财经早餐分析'].length || 0}</div>
+            <div class="stat-label">财经早餐</div>
+          </div>
+          <div class="stat">
+            <div class="stat-value">{groupedArticles['尚书省奏折'].length || 0}</div>
+            <div class="stat-label">尚书省奏折</div>
+          </div>
+          <div class="stat">
+            <div class="stat-value">{groupedArticles['工作流文档'].length || 0}</div>
+            <div class="stat-label">工作流文档</div>
+          </div>
+        </div>
+      </header>
 
-			<section class="macro">
-				<h2>🌍 宏观新闻</h2>
-				<div class="card">
-					<div class="article">
-						<div class="article-title"><a href="#">宏观新闻内容待添加</a></div>
-						<div class="article-meta"><span class="tag">待接入</span>内容源：待配置</div>
-					</div>
-				</div>
-			</section>
+      {groupedArticles['财经早餐分析'].length > 0 && (
+        <section>
+          <h2><span class="section-icon">📊</span>财经早餐</h2>
+          <div class="card">
+            {groupedArticles['财经早餐分析'].map((article) => (
+              <a href={`/docs/${article.id}`} class="article-item">
+                <div class="article-header">
+                  <span class="tag" style={`background: ${article.tagColor}; color: ${article.tagTextColor}`}>
+                    {article.tag}
+                  </span>
+                  <span class="article-date">{article.formattedDate}</span>
+                </div>
+                <div class="article-title">{article.title}</div>
+              </a>
+            ))}
+          </div>
+        </section>
+      )}
 
-			<section class="stock">
-				<h2>📊 股票分析</h2>
-				<div class="card">
-					<div class="article">
-						<div class="article-title"><a href="#">股票分析内容待添加</a></div>
-						<div class="article-meta"><span class="tag">待接入</span>内容源：待配置</div>
-					</div>
-				</div>
-			</section>
+      {groupedArticles['尚书省奏折'].length > 0 && (
+        <section>
+          <h2><span class="section-icon">📜</span>尚书省奏折</h2>
+          <div class="card">
+            {groupedArticles['尚书省奏折'].map((article) => (
+              <a href={`/docs/${article.id}`} class="article-item">
+                <div class="article-header">
+                  <span class="tag" style={`background: ${article.tagColor}; color: ${article.tagTextColor}`}>
+                    {article.tag}
+                  </span>
+                  <span class="article-date">{article.formattedDate}</span>
+                </div>
+                <div class="article-title">{article.title}</div>
+              </a>
+            ))}
+          </div>
+        </section>
+      )}
 
-			<section class="news">
-				<h2>💰 财经资讯</h2>
-				<div class="card">
-					<div class="article">
-						<div class="article-title"><a href="#">财经资讯内容待添加</a></div>
-						<div class="article-meta"><span class="tag">待接入</span>内容源：待配置</div>
-					</div>
-				</div>
-			</section>
+      {groupedArticles['工作流文档'].length > 0 && (
+        <section>
+          <h2><span class="section-icon">⚙️</span>工作流文档</h2>
+          <div class="card">
+            {groupedArticles['工作流文档'].map((article) => (
+              <a href={`/docs/${article.id}`} class="article-item">
+                <div class="article-header">
+                  <span class="tag" style={`background: ${article.tagColor}; color: ${article.tagTextColor}`}>
+                    {article.tag}
+                  </span>
+                  <span class="article-date">{article.formattedDate}</span>
+                </div>
+                <div class="article-title">{article.title}</div>
+              </a>
+            ))}
+          </div>
+        </section>
+      )}
 
-			<footer>
-				<p>财经早餐 · 由 <a href="#">Astro</a> + <a href="#">Vercel</a> 驱动</p>
-			</footer>
-		</div>
-	</body>
+      <footer>
+        <p>财经早餐 · 由 <a href="https://astro.build" target="_blank">Astro</a> + <a href="https://vercel.com" target="_blank">Vercel</a> 驱动</p>
+      </footer>
+    </div>
+  </body>
 </html>
