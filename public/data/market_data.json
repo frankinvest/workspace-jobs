@@ -1,5 +1,5 @@
 {
-  "update_time": "2026-03-26 00:07:19",
+  "update_time": "2026-03-26 01:26:46",
   "indices": [
     {
       "name": "上证指数",
@@ -44,6 +44,43 @@
       "low": 1299.63,
       "volume": 11005705,
       "turnover": 1.66
+    }
+  ],
+  "us_indices": [
+    {
+      "name": "纳斯达克",
+      "code": "IXIC",
+      "price": 21980.84,
+      "change": 218.95,
+      "change_pct": 1.01
+    },
+    {
+      "name": "道琼斯",
+      "code": "DJI",
+      "price": 46489.39,
+      "change": 365.33,
+      "change_pct": 0.79
+    },
+    {
+      "name": "标普500",
+      "code": "SPX",
+      "price": 6605.61,
+      "change": 49.24,
+      "change_pct": 0.75
+    },
+    {
+      "name": "日经225",
+      "code": "N225",
+      "price": 53749.62,
+      "change": 1497.34,
+      "change_pct": 2.87
+    },
+    {
+      "name": "恒生指数",
+      "code": "HSI",
+      "price": 25335.95,
+      "change": 272.24,
+      "change_pct": 1.09
     }
   ],
   "stocks": [

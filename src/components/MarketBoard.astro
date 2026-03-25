@@ -1,37 +1,36 @@
 ---
+interface Index {
+  name: string;
+  code: string;
+  price: number;
+  change: number;
+  change_pct: number;
+}
+
 interface Props {
-  indices: Array<{
-    name: string;
-    code: string;
-    price: number;
-    change: number;
-    change_pct: number;
-  }>;
+  indices: Index[];
+  usIndices?: Index[];
 }
 
-const { indices } = Astro.props;
-
-function formatNumber(num: number): string {
-  if (num >= 10000) {
-    return (num / 10000).toFixed(2) + '万';
-  }
-  return num.toString();
-}
-
-function getTrendIcon(change: number): string {
-  if (change > 0) return '↑';
-  if (change < 0) return '↓';
-  return '→';
-}
+const { indices, usIndices = [] } = Astro.props;
 
 function getTrendClass(change: number): string {
   if (change > 0) return 'trend-up';  // 红色（涨）
   if (change < 0) return 'trend-down'; // 绿色（跌）
   return 'trend-flat';
 }
+
+function formatPrice(price: number, name: string): string {
+  // 日经指数通常在 30000+ 以上，其他指数在 1000-50000 之间
+  if (price >= 10000) {
+    return price.toLocaleString('en-US', { maximumFractionDigits: 0 });
+  }
+  return price.toLocaleString('en-US', { maximumFractionDigits: 2 });
+}
 ---
 
 <div class="market-board">
+  <!-- A股指数 -->
   <div class="market-header">
     <span class="market-title">市场行情</span>
     <span class="market-update">实时更新</span>
@@ -41,15 +40,39 @@ function getTrendClass(change: number): string {
     {indices.map((index) => (
       <div class={`index-card ${getTrendClass(index.change)}`}>
         <div class="index-name">{index.name}</div>
-        <div class="index-price">{index.price.toLocaleString()}</div>
+        <div class="index-price">{formatPrice(index.price, index.name)}</div>
         <div class="index-change">
-          <span class="trend-icon">{getTrendIcon(index.change)}</span>
+          <span class="trend-icon">{index.change > 0 ? '↑' : index.change < 0 ? '↓' : '→'}</span>
           <span class="change-value">{Math.abs(index.change).toFixed(2)}</span>
           <span class="change-pct">({index.change_pct > 0 ? '+' : ''}{index.change_pct.toFixed(2)}%)</span>
         </div>
       </div>
     ))}
   </div>
+
+  {/* 外盘指数 */}
+  {usIndices.length > 0 && (
+    <>
+      <div class="market-header" style="margin-top: 20px;">
+        <span class="market-title">外盘指数</span>
+        <span class="market-update">美股 · 港股 · 日经</span>
+      </div>
+      
+      <div class="index-grid">
+        {usIndices.map((index) => (
+          <div class={`index-card ${getTrendClass(index.change)}`}>
+            <div class="index-name">{index.name}</div>
+            <div class="index-price">{formatPrice(index.price, index.name)}</div>
+            <div class="index-change">
+              <span class="trend-icon">{index.change > 0 ? '↑' : index.change < 0 ? '↓' : '→'}</span>
+              <span class="change-value">{Math.abs(index.change).toFixed(2)}</span>
+              <span class="change-pct">({index.change_pct > 0 ? '+' : ''}{index.change_pct.toFixed(2)}%)</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </>
+  )}
 </div>
 
 <style>

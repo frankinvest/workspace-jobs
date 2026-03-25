@@ -2,6 +2,7 @@
 """
 财经早餐 - 市场数据获取脚本
 使用腾讯行情 API（绕过 eastmoney VPN 拦截）
+外盘指数使用 Yahoo Finance API
 """
 
 import json
@@ -15,6 +16,7 @@ OUTPUT_DIR = os.path.join(os.path.dirname(__file__), '..', 'public', 'data')
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 TENCENT_API = "https://qt.gtimg.cn/q={}"
+YAHOO_API = "https://query1.finance.yahoo.com/v8/finance/chart/{}"
 
 def get_tencent_quote(codes: list) -> pd.DataFrame:
     """获取股票实时行情（腾讯行情API）"""
@@ -62,17 +64,56 @@ def get_tencent_quote(codes: list) -> pd.DataFrame:
                 'change_pct': pct,
                 'high': float(parts[33]) if parts[33] else 0,
                 'low': float(parts[34]) if parts[34] else 0,
-                'turnover': float(parts[38]) if parts[38] else 0,  # 换手率
-                'pe': float(parts[39]) if parts[39] else 0,  # 市盈率
-                'pb': float(parts[46]) if parts[46] else 0,  # 市净率
+                'turnover': float(parts[38]) if parts[38] else 0,
+                'pe': float(parts[39]) if parts[39] else 0,
+                'pb': float(parts[46]) if parts[46] else 0,
             })
         except Exception:
             continue
     
     return pd.DataFrame(rows)
 
+def get_us_index(symbol: str) -> dict:
+    """获取外盘指数（通过 Yahoo Finance）"""
+    symbol_map = {
+        'nasdaq': '^IXIC',
+        'dow': '^DJI',
+        'sp500': '^GSPC',
+        'nikkei': '^N225',
+        'hangsheng': '^HSI',
+        'ftse': '^FTSE',
+        'dax': '^GDAXI',
+    }
+    
+    yahoo_symbol = symbol_map.get(symbol, symbol)
+    url = YAHOO_API.format(yahoo_symbol)
+    
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
+    }
+    
+    try:
+        r = requests.get(url, headers=headers, timeout=10)
+        data = r.json()
+        result = data.get('chart', {}).get('result', [])
+        if result:
+            meta = result[0].get('meta', {})
+            price = meta.get('regularMarketPrice', 0)
+            prev_close = meta.get('previousClose', price)
+            chg = price - prev_close
+            pct = (chg / prev_close * 100) if prev_close != 0 else 0
+            return {
+                'price': round(price, 2),
+                'change': round(chg, 2),
+                'change_pct': round(pct, 2),
+            }
+    except Exception as e:
+        print(f"获取 {symbol} 失败: {e}")
+    
+    return {'price': 0, 'change': 0, 'change_pct': 0}
+
 def get_index_data():
-    """获取主要指数数据"""
+    """获取A股指数数据"""
     indices = [
         'sh000001',  # 上证指数
         'sz399001',  # 深证成指
@@ -80,7 +121,7 @@ def get_index_data():
         'sh000688',  # 科创50
     ]
     
-    print(f"获取指数数据: {indices}")
+    print(f"获取A股指数数据: {indices}")
     df = get_tencent_quote(indices)
     
     result = []
@@ -95,6 +136,31 @@ def get_index_data():
             "low": round(row['low'], 2),
             "volume": row['volume'],
             "turnover": row['turnover'],
+        }
+        result.append(item)
+        print(f"  {item['name']}: {item['price']} ({item['change_pct']:+.2f}%)")
+    
+    return result
+
+def get_us_indices_data() -> list:
+    """获取外盘指数数据"""
+    indices = [
+        {'symbol': 'nasdaq', 'name': '纳斯达克', 'code': 'IXIC'},
+        {'symbol': 'dow', 'name': '道琼斯', 'code': 'DJI'},
+        {'symbol': 'sp500', 'name': '标普500', 'code': 'SPX'},
+        {'symbol': 'nikkei', 'name': '日经225', 'code': 'N225'},
+        {'symbol': 'hangsheng', 'name': '恒生指数', 'code': 'HSI'},
+    ]
+    
+    result = []
+    for idx in indices:
+        data = get_us_index(idx['symbol'])
+        item = {
+            'name': idx['name'],
+            'code': idx['code'],
+            'price': data['price'],
+            'change': data['change'],
+            'change_pct': data['change_pct'],
         }
         result.append(item)
         print(f"  {item['name']}: {item['price']} ({item['change_pct']:+.2f}%)")
@@ -140,14 +206,12 @@ def get_market_summary():
         import akshare as ak
         today = datetime.now().strftime("%Y%m%d")
         
-        # 涨停池
         try:
             df_limit_up = ak.stock_zt_pool_em(date=today)
             limit_up_count = len(df_limit_up) if not df_limit_up.empty else 0
         except:
             limit_up_count = 0
         
-        # 跌停池
         try:
             df_limit_down = ak.stock_zt_pool_em(date=today, zt_pool_date="dt")
             limit_down_count = len(df_limit_down) if not df_limit_down.empty else 0
@@ -171,13 +235,18 @@ def main():
     data = {
         "update_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "indices": [],
+        "us_indices": [],
         "stocks": [],
         "summary": {},
     }
     
-    # 获取指数数据
-    print("\n--- 指数数据 ---")
+    # 获取 A 股指数数据
+    print("\n--- A股指数 ---")
     data["indices"] = get_index_data()
+    
+    # 获取外盘指数数据
+    print("\n--- 外盘指数 ---")
+    data["us_indices"] = get_us_indices_data()
     
     # 获取个股数据
     print("\n--- 个股数据 ---")
