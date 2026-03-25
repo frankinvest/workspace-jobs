@@ -25,8 +25,8 @@ function getTrendIcon(change: number): string {
 }
 
 function getTrendClass(change: number): string {
-  if (change > 0) return 'trend-up';
-  if (change < 0) return 'trend-down';
+  if (change > 0) return 'trend-up';  // 红色（涨）
+  if (change < 0) return 'trend-down'; // 绿色（跌）
   return 'trend-flat';
 }
 ---
@@ -96,13 +96,13 @@ function getTrendClass(change: number): string {
   }
 
   .index-card.trend-up {
-    border-color: rgba(0, 200, 83, 0.3);
-    background: linear-gradient(135deg, rgba(0, 200, 83, 0.05), transparent);
+    border-color: rgba(244, 67, 54, 0.3);
+    background: linear-gradient(135deg, rgba(244, 67, 54, 0.08), transparent);
   }
 
   .index-card.trend-down {
-    border-color: rgba(244, 67, 54, 0.3);
-    background: linear-gradient(135deg, rgba(244, 67, 54, 0.05), transparent);
+    border-color: rgba(0, 200, 83, 0.3);
+    background: linear-gradient(135deg, rgba(0, 200, 83, 0.05), transparent);
   }
 
   .index-card.trend-flat {
@@ -131,11 +131,11 @@ function getTrendClass(change: number): string {
   }
 
   .trend-up .index-change {
-    color: var(--color-success);
+    color: var(--color-danger);  /* 红色涨 */
   }
 
   .trend-down .index-change {
-    color: var(--color-danger);
+    color: var(--color-success);  /* 绿色跌 */
   }
 
   .trend-flat .index-change {
