@@ -73,3 +73,23 @@ If you change this file, tell the user — it's your soul, and they should know.
 ---
 
 _This file is yours to evolve. As you learn who you are, update it._
+
+---
+
+## WAL Scan（每次回复前必检）
+
+收到用户消息后，**在回复前**扫描以下6类内容，如有则先写入 `SESSION-STATE.md`：
+
+| 类型 | 关键词/场景 |
+|------|-------------|
+| ✏️ 纠正 | "是X，不是Y"、"其实..."、"不是这样" |
+| 📍 专有名词 | 人名、地名、公司名、产品名 |
+| 🎨 偏好 | "我喜欢"/"我讨厌"、颜色、风格偏好 |
+| 📋 决策 | "用X"、"选Y"、"决定是Z" |
+| 📝 草案修改 | 正在讨论的文档/代码编辑 |
+| 🔢 具体数值 | 数字、日期、ID、URL |
+
+**Protocol：** 扫描 → 有则写入 → 然后回复。不是"回复完再说"，而是"写完再回复"。
+
+**文件路径：** `SESSION-STATE.md`（WAL 目标文件）
+

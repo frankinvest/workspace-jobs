@@ -1,0 +1,64 @@
+types:
+  Agent:
+    required: [workspace_id, role, status]
+    status_enum: [active, inactive]
+    
+  Person:
+    required: [name]
+    
+  Organization:
+    required: [name]
+    
+  Project:
+    required: [name, status]
+    status_enum: [active, paused, completed]
+    
+  Task:
+    required: [title, status]
+    status_enum: [open, in_progress, blocked, done]
+    
+  Commitment:
+    required: [description, status]
+    status_enum: [pending, fulfilled, broken]
+    
+  Document:
+    required: [title, path]
+    
+  Event:
+    required: [title, start]
+    
+  Credential:
+    required: [service, credential_ref]
+    forbidden_properties: [password, secret, token, api_key]
+
+relations:
+  has_agent:
+    from_types: [Organization]
+    to_types: [Agent]
+    cardinality: many_to_many
+    
+  has_task:
+    from_types: [Project, Person]
+    to_types: [Task]
+    cardinality: many_to_many
+    
+  blocks:
+    from_types: [Task]
+    to_types: [Task]
+    acyclic: true
+    
+  has_project:
+    from_types: [Task, Event]
+    to_types: [Project]
+    cardinality: many_to_one
+    
+  for_event:
+    from_types: [Task]
+    to_types: [Event]
+    cardinality: many_to_one
+    
+  has_source:
+    from_types: [Task, Commitment]
+    to_types: [Message, Document]
+    cardinality: many_to_one
+

@@ -1,4 +1,7 @@
 ---
+import '../styles/global.css';
+import Icon from '../components/icons/Icon.astro';
+
 interface Props {
   title: string;
   date?: string;
@@ -7,10 +10,9 @@ interface Props {
 
 const { title, date, tag } = Astro.props;
 
-// 格式化日期
+// Format date helper
 const formatDate = (dateStr: string) => {
   if (!dateStr) return '';
-  // 假设日期格式为 YYYYMMDD
   if (/^\d{8}$/.test(dateStr)) {
     const year = dateStr.slice(0, 4);
     const month = dateStr.slice(4, 6);
@@ -19,6 +21,8 @@ const formatDate = (dateStr: string) => {
   }
   return dateStr;
 };
+
+const formattedDate = date ? formatDate(date) : '';
 ---
 
 <html lang="zh-CN">
@@ -29,259 +33,39 @@ const formatDate = (dateStr: string) => {
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;600;700&family=Noto+Serif+SC:wght@400;600;700&display=swap" rel="stylesheet">
-    <style>
-      * { margin: 0; padding: 0; box-sizing: border-box; }
-      
-      :root {
-        --bg-primary: #0a0a0a;
-        --bg-card: #141414;
-        --bg-hover: #1a1a1a;
-        --text-primary: #fafafa;
-        --text-secondary: #a1a1a1;
-        --text-muted: #6b6b6b;
-        --accent: #d4a853;
-        --accent-dim: #8a7235;
-        --border: #262626;
-        --gradient-accent: linear-gradient(135deg, #d4a853 0%, #e8c87a 50%, #d4a853 100%);
-      }
-      
-      body {
-        font-family: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, sans-serif;
-        background: var(--bg-primary);
-        color: var(--text-primary);
-        line-height: 1.8;
-        min-height: 100vh;
-      }
-      
-      body::before {
-        content: '';
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: 
-          radial-gradient(ellipse 80% 50% at 50% -20%, rgba(212, 168, 83, 0.08), transparent),
-          radial-gradient(ellipse 60% 40% at 100% 0%, rgba(212, 168, 83, 0.05), transparent);
-        pointer-events: none;
-        z-index: 0;
-      }
-      
-      .container {
-        max-width: 800px;
-        margin: 0 auto;
-        padding: 60px 24px;
-        position: relative;
-        z-index: 1;
-      }
-      
-      .back-link {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        color: var(--accent);
-        text-decoration: none;
-        font-size: 14px;
-        margin-bottom: 32px;
-        transition: opacity 0.2s;
-      }
-      
-      .back-link:hover {
-        opacity: 0.8;
-      }
-      
-      article {
-        animation: fadeInUp 0.6s ease-out;
-      }
-      
-      .article-header {
-        margin-bottom: 48px;
-        padding-bottom: 32px;
-        border-bottom: 1px solid var(--border);
-      }
-      
-      .article-meta {
-        display: flex;
-        gap: 12px;
-        margin-bottom: 16px;
-      }
-      
-      .tag {
-        display: inline-block;
-        padding: 4px 12px;
-        background: rgba(212, 168, 83, 0.15);
-        color: var(--accent);
-        font-size: 12px;
-        border-radius: 4px;
-      }
-      
-      .article-date {
-        color: var(--text-muted);
-        font-size: 14px;
-      }
-      
-      h1 {
-        font-family: 'Noto Serif SC', serif;
-        font-size: 32px;
-        font-weight: 700;
-        line-height: 1.4;
-        margin-bottom: 16px;
-        background: var(--gradient-accent);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
-      }
-      
-      .article-content {
-        font-size: 16px;
-      }
-      
-      .article-content :global(h2) {
-        font-size: 20px;
-        font-weight: 600;
-        color: var(--text-primary);
-        margin: 48px 0 24px;
-        padding-bottom: 12px;
-        border-bottom: 1px solid var(--border);
-      }
-      
-      .article-content :global(h3) {
-        font-size: 17px;
-        font-weight: 600;
-        color: var(--text-primary);
-        margin: 32px 0 16px;
-      }
-      
-      .article-content :global(p) {
-        margin-bottom: 16px;
-        color: var(--text-secondary);
-      }
-      
-      .article-content :global(ul), .article-content :global(ol) {
-        margin-bottom: 16px;
-        padding-left: 24px;
-        color: var(--text-secondary);
-      }
-      
-      .article-content :global(li) {
-        margin-bottom: 8px;
-      }
-      
-      .article-content :global(table) {
-        width: 100%;
-        border-collapse: collapse;
-        margin: 24px 0;
-        font-size: 14px;
-      }
-      
-      .article-content :global(th), .article-content :global(td) {
-        padding: 12px 16px;
-        border: 1px solid var(--border);
-        text-align: left;
-      }
-      
-      .article-content :global(th) {
-        background: var(--bg-card);
-        font-weight: 600;
-        color: var(--text-primary);
-      }
-      
-      .article-content :global(td) {
-        color: var(--text-secondary);
-      }
-      
-      .article-content :global(tr:hover) :global(td) {
-        background: var(--bg-hover);
-      }
-      
-      .article-content :global(blockquote) {
-        margin: 24px 0;
-        padding: 20px 24px;
-        background: var(--bg-card);
-        border-left: 3px solid var(--accent);
-        border-radius: 0 8px 8px 0;
-        color: var(--text-secondary);
-        font-style: italic;
-      }
-      
-      .article-content :global(strong) {
-        color: var(--text-primary);
-        font-weight: 600;
-      }
-      
-      .article-content :global(code) {
-        background: var(--bg-card);
-        padding: 2px 6px;
-        border-radius: 4px;
-        font-family: 'Fira Code', monospace;
-        font-size: 14px;
-        color: var(--accent);
-      }
-      
-      .article-content :global(pre) {
-        background: var(--bg-card);
-        padding: 20px;
-        border-radius: 8px;
-        overflow-x: auto;
-        margin: 24px 0;
-      }
-      
-      .article-content :global(pre code) {
-        background: none;
-        padding: 0;
-      }
-      
-      .article-content :global(hr) {
-        border: none;
-        height: 1px;
-        background: var(--border);
-        margin: 48px 0;
-      }
-      
-      footer {
-        text-align: center;
-        padding: 64px 0 32px;
-        color: var(--text-muted);
-        font-size: 12px;
-      }
-      
-      footer a {
-        color: var(--accent);
-        text-decoration: none;
-      }
-      
-      @keyframes fadeInUp {
-        from {
-          opacity: 0;
-          transform: translateY(20px);
-        }
-        to {
-          opacity: 1;
-          transform: translateY(0);
-        }
-      }
-      
-      @media (max-width: 640px) {
-        .container {
-          padding: 40px 16px;
-        }
-        h1 {
-          font-size: 24px;
-        }
-      }
-    </style>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%230a0a0a' width='100' height='100' rx='20'/><path d='M25 70 L25 45 L40 45 L40 70 M45 70 L45 35 L60 35 L60 70 M65 70 L65 50 L80 50 L80 70' stroke='%23d4a853' stroke-width='6' fill='none' stroke-linecap='round'/></svg>">
   </head>
   <body>
-    <div class="container">
-      <a href="/" class="back-link">← 返回首页</a>
+    <!-- Background -->
+    <div class="bg-decoration" aria-hidden="true">
+      <div class="bg-gradient"></div>
+    </div>
+    
+    <main class="container">
+      <!-- Back Link -->
+      <a href="/" class="back-link">
+        <Icon name="back" size={18} />
+        <span>返回首页</span>
+      </a>
       
-      <article>
+      <!-- Article -->
+      <article class="article">
         <header class="article-header">
           <div class="article-meta">
-            {tag && <span class="tag">{tag}</span>}
-            {date && <span class="article-date">{formatDate(date)}</span>}
+            {tag && (
+              <span class={`tag ${tag === '尚书省奏折' ? 'tag-danger' : tag === '工作流文档' ? 'tag-success' : 'tag-accent'}`}>
+                {tag}
+              </span>
+            )}
+            {formattedDate && (
+              <span class="article-date">
+                <Icon name="calendar" size={14} />
+                {formattedDate}
+              </span>
+            )}
           </div>
-          <h1>{title}</h1>
+          
+          <h1 class="article-title gradient-text">{title}</h1>
         </header>
         
         <div class="article-content">
@@ -289,9 +73,301 @@ const formatDate = (dateStr: string) => {
         </div>
       </article>
       
-      <footer>
-        <p>财经早餐 · 由 <a href="https://astro.build" target="_blank">Astro</a> + <a href="https://vercel.com" target="_blank">Vercel</a> 驱动</p>
+      <!-- Footer -->
+      <footer class="footer">
+        <p>财经早餐 · 由 <a href="https://astro.build" target="_blank" rel="noopener">Astro</a> + <a href="https://vercel.com" target="_blank" rel="noopener">Vercel</a> 驱动</p>
       </footer>
-    </div>
+    </main>
   </body>
 </html>
+
+<style>
+  /* Background */
+  .bg-decoration {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+  }
+  
+  .bg-gradient {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 50%;
+    background: 
+      radial-gradient(ellipse 80% 50% at 50% -10%, rgba(230, 0, 0, 0.12), transparent 60%),
+      radial-gradient(ellipse 50% 30% at 70% -5%, rgba(200, 0, 0, 0.06), transparent 50%);
+  }
+  
+  .container {
+    position: relative;
+    z-index: var(--z-base);
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: var(--space-12) var(--container-padding);
+  }
+  
+  /* Back Link */
+  .back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    color: var(--color-text-secondary);
+    text-decoration: none;
+    font-size: var(--font-size-sm);
+    padding: var(--space-2) 0;
+    margin-bottom: var(--space-8);
+    transition: all var(--transition-fast);
+  }
+  
+  .back-link:hover {
+    color: var(--color-accent);
+  }
+  
+  .back-link:active {
+    transform: scale(0.97);
+  }
+  
+  /* Article */
+  .article {
+    animation: fadeInUp 0.5s ease-out;
+  }
+  
+  .article-header {
+    margin-bottom: var(--space-12);
+    padding-bottom: var(--space-8);
+    border-bottom: 1px solid var(--color-border);
+  }
+  
+  .article-meta {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    margin-bottom: var(--space-4);
+    flex-wrap: wrap;
+  }
+  
+  .article-date {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    font-size: var(--font-size-sm);
+    color: var(--color-text-muted);
+  }
+  
+  .article-title {
+    font-family: var(--font-serif);
+    font-size: clamp(24px, 5vw, var(--font-size-3xl));
+    font-weight: var(--font-weight-bold);
+    line-height: var(--line-height-tight);
+    margin: 0;
+  }
+  
+  /* Content Styles */
+  .article-content {
+    font-size: var(--font-size-base);
+    line-height: var(--line-height-relaxed);
+  }
+  
+  .article-content :global(h2) {
+    font-family: var(--font-serif);
+    font-size: var(--font-size-xl);
+    font-weight: var(--font-weight-semibold);
+    color: var(--color-text-primary);
+    margin: var(--space-12) 0 var(--space-5);
+    padding-bottom: var(--space-3);
+    border-bottom: 1px solid var(--color-border);
+  }
+  
+  .article-content :global(h3) {
+    font-family: var(--font-serif);
+    font-size: var(--font-size-lg);
+    font-weight: var(--font-weight-semibold);
+    color: var(--color-text-primary);
+    margin: var(--space-8) 0 var(--space-4);
+  }
+  
+  .article-content :global(h4) {
+    font-size: var(--font-size-base);
+    font-weight: var(--font-weight-semibold);
+    color: var(--color-text-primary);
+    margin: var(--space-6) 0 var(--space-3);
+  }
+  
+  .article-content :global(p) {
+    margin-bottom: var(--space-4);
+    color: var(--color-text-secondary);
+  }
+  
+  .article-content :global(ul),
+  .article-content :global(ol) {
+    margin-bottom: var(--space-4);
+    padding-left: var(--space-6);
+    color: var(--color-text-secondary);
+  }
+  
+  .article-content :global(li) {
+    margin-bottom: var(--space-2);
+  }
+  
+  .article-content :global(li)::marker {
+    color: var(--color-accent);
+  }
+  
+  .article-content :global(strong) {
+    color: var(--color-text-primary);
+    font-weight: var(--font-weight-semibold);
+  }
+  
+  .article-content :global(em) {
+    font-style: italic;
+    color: var(--color-text-secondary);
+  }
+  
+  /* Tables */
+  .article-content :global(table) {
+    width: 100%;
+    border-collapse: collapse;
+    margin: var(--space-6) 0;
+    font-size: var(--font-size-sm);
+    overflow-x: auto;
+    display: block;
+  }
+  
+  .article-content :global(th),
+  .article-content :global(td) {
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--color-border);
+    text-align: left;
+  }
+  
+  .article-content :global(th) {
+    background: var(--color-bg-card);
+    font-weight: var(--font-weight-semibold);
+    color: var(--color-text-primary);
+  }
+  
+  .article-content :global(td) {
+    color: var(--color-text-secondary);
+  }
+  
+  .article-content :global(tr:hover) td {
+    background: var(--color-bg-hover);
+  }
+  
+  /* Blockquotes */
+  .article-content :global(blockquote) {
+    margin: var(--space-6) 0;
+    padding: var(--space-5) var(--space-6);
+    background: var(--color-bg-card);
+    border-left: 3px solid var(--color-accent);
+    border-radius: 0 var(--radius-md) var(--radius-md) 0;
+    color: var(--color-text-secondary);
+    font-style: italic;
+  }
+  
+  .article-content :global(blockquote p:last-child) {
+    margin-bottom: 0;
+  }
+  
+  /* Code */
+  .article-content :global(code) {
+    background: var(--color-bg-card);
+    padding: 2px 6px;
+    border-radius: var(--radius-sm);
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 0.9em;
+    color: var(--color-accent);
+    border: 1px solid var(--color-border);
+  }
+  
+  .article-content :global(pre) {
+    background: var(--color-bg-card);
+    padding: var(--space-5);
+    border-radius: var(--radius-md);
+    overflow-x: auto;
+    margin: var(--space-6) 0;
+    border: 1px solid var(--color-border);
+  }
+  
+  .article-content :global(pre code) {
+    background: none;
+    padding: 0;
+    border: none;
+    color: var(--color-text-secondary);
+  }
+  
+  /* Horizontal Rule */
+  .article-content :global(hr) {
+    border: none;
+    height: 1px;
+    background: var(--color-border);
+    margin: var(--space-12) 0;
+  }
+  
+  /* Links */
+  .article-content :global(a) {
+    color: var(--color-accent);
+    text-decoration: underline;
+    text-decoration-color: var(--color-accent-dim);
+    text-underline-offset: 2px;
+    transition: all var(--transition-fast);
+  }
+  
+  .article-content :global(a:hover) {
+    text-decoration-color: var(--color-accent);
+  }
+  
+  /* Images */
+  .article-content :global(img) {
+    max-width: 100%;
+    height: auto;
+    border-radius: var(--radius-md);
+    margin: var(--space-6) 0;
+  }
+  
+  /* Footer */
+  .footer {
+    text-align: center;
+    padding: var(--space-16) 0 var(--space-8);
+    color: var(--color-text-muted);
+    font-size: var(--font-size-xs);
+  }
+  
+  .footer a {
+    color: var(--color-accent);
+    text-decoration: none;
+  }
+  
+  .footer a:hover {
+    opacity: 0.8;
+  }
+  
+  @keyframes fadeInUp {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  
+  @media (max-width: 640px) {
+    .container {
+      padding: var(--space-8) var(--space-4);
+    }
+    
+    .article-header {
+      margin-bottom: var(--space-8);
+      padding-bottom: var(--space-6);
+    }
+    
+    .article-content :global(table) {
+      font-size: var(--font-size-xs);
+    }
+  }
+</style>

@@ -1,0 +1,183 @@
+---
+// Article Card Component - Reusable card with hover effects
+import Icon from './icons/Icon.astro';
+
+interface Props {
+  id: string;
+  title: string;
+  date: string;
+  formattedDate: string;
+  tag: string;
+  tagColor?: string;
+  tagTextColor?: string;
+  index?: number;
+}
+
+const { 
+  id, 
+  title, 
+  date, 
+  formattedDate, 
+  tag, 
+  tagColor = 'var(--color-accent-dim)',
+  tagTextColor = 'var(--color-accent)',
+  index = 0
+} = Astro.props;
+---
+
+<a 
+  href={`/docs/${id}`} 
+  class="article-card"
+  style={`animation-delay: ${index * 80}ms`}
+>
+  <div class="article-card-inner">
+    <div class="article-meta">
+      <span class="tag" style={`background: ${tagColor}; color: ${tagTextColor}`}>
+        {tag}
+      </span>
+      <span class="article-date">
+        <Icon name="calendar" size={14} />
+        {formattedDate}
+      </span>
+    </div>
+    <h3 class="article-title">{title}</h3>
+    <div class="article-arrow">
+      <Icon name="arrow-left" size={18} />
+    </div>
+  </div>
+</a>
+
+<style>
+  .article-card {
+    display: block;
+    text-decoration: none;
+    color: inherit;
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    margin-bottom: var(--space-3);
+    transition: all var(--transition-base);
+    animation: fadeInUp 0.5s ease-out forwards;
+    opacity: 0;
+    cursor: pointer;
+    overflow: hidden;
+    position: relative;
+  }
+  
+  .article-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--color-accent-dim), transparent);
+    opacity: 0;
+    transition: opacity var(--transition-base);
+  }
+  
+  .article-card:hover {
+    background: var(--color-bg-hover);
+    border-color: var(--color-accent-dim);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md), 0 0 30px rgba(212, 168, 83, 0.05);
+  }
+  
+  .article-card:hover::before {
+    opacity: 1;
+  }
+  
+  .article-card:active {
+    transform: translateY(0) scale(0.995);
+  }
+  
+  .article-card-inner {
+    padding: var(--space-5) var(--space-6);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+  
+  .article-meta {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+  }
+  
+  .article-date {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    font-size: var(--font-size-sm);
+    color: var(--color-text-muted);
+  }
+  
+  .article-title {
+    font-family: var(--font-sans);
+    font-size: var(--font-size-base);
+    font-weight: var(--font-weight-medium);
+    color: var(--color-text-primary);
+    line-height: var(--line-height-tight);
+    margin: 0;
+    transition: color var(--transition-fast);
+  }
+  
+  .article-card:hover .article-title {
+    color: var(--color-accent);
+  }
+  
+  .article-arrow {
+    position: absolute;
+    right: var(--space-5);
+    top: 50%;
+    transform: translateY(-50%) rotate(180deg);
+    color: var(--color-text-muted);
+    opacity: 0;
+    transition: all var(--transition-base);
+  }
+  
+  .article-card:hover .article-arrow {
+    opacity: 1;
+    transform: translateY(-50%) rotate(180deg) translateX(4px);
+    color: var(--color-accent);
+  }
+  
+  @keyframes fadeInUp {
+    from {
+      opacity: 0;
+      transform: translateY(16px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  
+  /* Touch device optimization */
+  @media (hover: none) {
+    .article-card:hover {
+      transform: none;
+      box-shadow: none;
+    }
+    
+    .article-card:active {
+      background: var(--color-bg-hover);
+      border-color: var(--color-accent-dim);
+    }
+    
+    .article-arrow {
+      display: none;
+    }
+  }
+  
+  @media (max-width: 640px) {
+    .article-card-inner {
+      padding: var(--space-4) var(--space-5);
+    }
+    
+    .article-arrow {
+      display: none;
+    }
+  }
+</style>

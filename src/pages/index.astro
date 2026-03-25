@@ -1,16 +1,27 @@
 ---
 import { getCollection } from 'astro:content';
+import '../styles/global.css';
+import Icon from '../components/icons/Icon.astro';
+import ArticleCard from '../components/ArticleCard.astro';
+import SectionHeader from '../components/SectionHeader.astro';
+import MarketBoard from '../components/MarketBoard.astro';
+import StockList from '../components/StockList.astro';
 
+// 导入市场数据
+import marketData from '../../public/data/market_data.json';
+
+const { indices, stocks, summary, update_time } = marketData;
+
+// Get all docs and sort by date
 const allDocs = await getCollection('docs');
 
-// 按日期排序（从新到旧）
 const sortedDocs = allDocs.sort((a, b) => {
   const dateA = a.id.match(/(\d{8})/)?.[1] || '';
   const dateB = b.id.match(/(\d{8})/)?.[1] || '';
   return dateB.localeCompare(dateA);
 });
 
-// 格式化日期
+// Format date helper
 const formatDate = (dateStr: string) => {
   if (!dateStr) return '';
   const year = dateStr.slice(0, 4);
@@ -19,40 +30,48 @@ const formatDate = (dateStr: string) => {
   return `${year}年${parseInt(month)}月${parseInt(day)}日`;
 };
 
-// 获取今天日期
+// Get greeting based on time
+const hour = new Date().getHours();
+const greetingMap = {
+  morning: { text: '早安', icon: 'sun' },
+  noon: { text: '午安', icon: 'sun' },
+  afternoon: { text: '下午好', icon: 'sun' },
+  evening: { text: '晚上好', icon: 'moon' },
+};
+const greeting = hour < 12 ? greetingMap.morning : hour < 14 ? greetingMap.noon : hour < 18 ? greetingMap.afternoon : greetingMap.evening;
+
+// Today formatted
 const today = new Date().toLocaleDateString('zh-CN', { 
   year: 'numeric', 
   month: 'long', 
   day: 'numeric', 
   weekday: 'long' 
 });
-const hour = new Date().getHours();
-const greeting = hour < 12 ? '☀️ 早安' : hour < 14 ? '🌤️ 午安' : hour < 18 ? '🌇 下午好' : '🌙 晚上好';
 
-// 分类文章
-const articles = sortedDocs.map(doc => {
+// Process articles
+const articles = sortedDocs.map((doc, idx) => {
   const dateMatch = doc.id.match(/(\d{8})/);
   const date = dateMatch ? dateMatch[1] : '';
   
-  let tag = '📋 其他';
-  let tagColor = 'rgba(156, 163, 175, 0.1)';
-  let tagTextColor = '#9ca3af';
+  let tag = '其他';
+  let tagColor = 'var(--color-bg-elevated)';
+  let tagTextColor = 'var(--color-text-muted)';
   
-  if (doc.id.includes('财经早餐分析')) {
-    tag = '📊 财经早餐';
-    tagColor = 'rgba(212, 168, 83, 0.15)';
-    tagTextColor = '#d4a853';
+  if (doc.id.includes('财经早餐分析') || doc.id.includes('年报') || doc.id.includes('原文')) {
+    tag = '财经早餐';
+    tagColor = 'var(--color-accent-dim)';
+    tagTextColor = 'var(--color-accent)';
   } else if (doc.id.includes('奏折')) {
-    tag = '📜 尚书省奏折';
-    tagColor = 'rgba(239, 68, 68, 0.15)';
-    tagTextColor = '#ef4444';
+    tag = '尚书省奏折';
+    tagColor = 'var(--color-danger-dim)';
+    tagTextColor = 'var(--color-danger)';
   } else if (doc.id.includes('问题总结')) {
-    tag = '⚙️ 工作流文档';
-    tagColor = 'rgba(34, 197, 94, 0.15)';
-    tagTextColor = '#22c55e';
+    tag = '工作流文档';
+    tagColor = 'var(--color-success-dim)';
+    tagTextColor = 'var(--color-success)';
   }
   
-  // 提取标题
+  // Extract title from filename
   let title = doc.data.title || '';
   if (!title) {
     const titleMatch = doc.id.match(/-\d{8}-(.+)\.md$/);
@@ -68,393 +87,334 @@ const articles = sortedDocs.map(doc => {
     tag,
     tagColor,
     tagTextColor,
+    index: idx,
   };
 });
 
-// 按标签分组
+// Group articles by tag (only show 财经早餐)
 const groupedArticles = {
-  '财经早餐分析': articles.filter(a => a.tag.includes('财经早餐')),
-  '尚书省奏折': articles.filter(a => a.tag.includes('奏折')),
-  '工作流文档': articles.filter(a => a.tag.includes('工作流')),
+  '财经早餐': articles.filter(a => a.tag === '财经早餐'),
 };
+
+// Stats
+const stats = [
+  { label: '财经早餐', value: groupedArticles['财经早餐'].length },
+  { label: '涨停', value: summary?.limit_up_count || 0, suffix: '只' },
+  { label: '跌停', value: summary?.limit_down_count || 0, suffix: '只' },
+];
 ---
 
 <html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📈</text></svg>">
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="description" content="财经早餐 - 每日财经资讯、宏观新闻、股票分析" />
     <title>财经早餐</title>
+    
+    <!-- Preconnect for fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;600;700&family=Noto+Serif+SC:wght@400;600;700&display=swap" rel="stylesheet">
-    <style>
-      * { margin: 0; padding: 0; box-sizing: border-box; }
-      
-      :root {
-        --bg-primary: #0a0a0a;
-        --bg-card: #141414;
-        --bg-hover: #1a1a1a;
-        --text-primary: #fafafa;
-        --text-secondary: #a1a1a1;
-        --text-muted: #6b6b6b;
-        --accent: #d4a853;
-        --accent-dim: #8a7235;
-        --border: #262626;
-        --gradient-accent: linear-gradient(135deg, #d4a853 0%, #e8c87a 50%, #d4a853 100%);
-      }
-      
-      body {
-        font-family: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, sans-serif;
-        background: var(--bg-primary);
-        color: var(--text-primary);
-        line-height: 1.7;
-        min-height: 100vh;
-      }
-      
-      body::before {
-        content: '';
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: 
-          radial-gradient(ellipse 80% 50% at 50% -20%, rgba(212, 168, 83, 0.08), transparent),
-          radial-gradient(ellipse 60% 40% at 100% 0%, rgba(212, 168, 83, 0.05), transparent);
-        pointer-events: none;
-        z-index: 0;
-      }
-      
-      .container {
-        max-width: 800px;
-        margin: 0 auto;
-        padding: 80px 24px;
-        position: relative;
-        z-index: 1;
-      }
-      
-      /* Header */
-      header {
-        text-align: center;
-        margin-bottom: 64px;
-        padding-bottom: 48px;
-        position: relative;
-      }
-      
-      header::after {
-        content: '';
-        position: absolute;
-        bottom: 0;
-        left: 50%;
-        transform: translateX(-50%);
-        width: 80px;
-        height: 1px;
-        background: var(--gradient-accent);
-      }
-      
-      .greeting {
-        font-size: 13px;
-        color: var(--accent);
-        letter-spacing: 3px;
-        margin-bottom: 20px;
-        font-weight: 500;
-      }
-      
-      .logo {
-        font-size: 64px;
-        margin-bottom: 20px;
-        animation: fadeInUp 0.6s ease-out;
-      }
-      
-      h1 {
-        font-family: 'Noto Serif SC', serif;
-        font-size: 42px;
-        font-weight: 700;
-        letter-spacing: 12px;
-        margin-bottom: 16px;
-        background: var(--gradient-accent);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
-        animation: fadeInUp 0.6s ease-out 0.1s both;
-      }
-      
-      .subtitle {
-        color: var(--text-muted);
-        font-size: 14px;
-        letter-spacing: 4px;
-        font-weight: 300;
-      }
-      
-      .update-time {
-        margin-top: 24px;
-        color: var(--text-muted);
-        font-size: 12px;
-      }
-      
-      /* Stats */
-      .stats {
-        display: flex;
-        justify-content: center;
-        gap: 32px;
-        margin-top: 32px;
-        animation: fadeInUp 0.6s ease-out 0.15s both;
-      }
-      
-      .stat {
-        text-align: center;
-      }
-      
-      .stat-value {
-        font-size: 28px;
-        font-weight: 700;
-        color: var(--accent);
-        font-family: 'Noto Serif SC', serif;
-      }
-      
-      .stat-label {
-        font-size: 12px;
-        color: var(--text-muted);
-        margin-top: 4px;
-      }
-      
-      /* Sections */
-      section {
-        margin-bottom: 48px;
-        animation: fadeInUp 0.6s ease-out 0.2s both;
-      }
-      
-      section:nth-child(2) { animation-delay: 0.3s; }
-      section:nth-child(3) { animation-delay: 0.4s; }
-      section:nth-child(4) { animation-delay: 0.5s; }
-      
-      section h2 {
-        font-size: 12px;
-        font-weight: 600;
-        color: var(--text-muted);
-        letter-spacing: 3px;
-        text-transform: uppercase;
-        margin-bottom: 20px;
-        display: flex;
-        align-items: center;
-        gap: 12px;
-      }
-      
-      section h2::after {
-        content: '';
-        flex: 1;
-        height: 1px;
-        background: var(--border);
-      }
-      
-      .section-icon {
-        font-size: 14px;
-        margin-right: 4px;
-      }
-      
-      /* Card */
-      .card {
-        background: var(--bg-card);
-        border: 1px solid var(--border);
-        border-radius: 12px;
-        overflow: hidden;
-      }
-      
-      .article-item {
-        display: block;
-        padding: 20px 24px;
-        text-decoration: none;
-        color: inherit;
-        transition: all 0.2s ease;
-        border-bottom: 1px solid var(--border);
-      }
-      
-      .article-item:last-child {
-        border-bottom: none;
-      }
-      
-      .article-item:hover {
-        background: var(--bg-hover);
-      }
-      
-      .article-item:hover .article-title {
-        color: var(--accent);
-      }
-      
-      .article-header {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        margin-bottom: 8px;
-      }
-      
-      .tag {
-        display: inline-block;
-        padding: 4px 10px;
-        font-size: 11px;
-        border-radius: 4px;
-        font-weight: 500;
-      }
-      
-      .article-date {
-        font-size: 13px;
-        color: var(--text-muted);
-      }
-      
-      .article-title {
-        font-size: 15px;
-        font-weight: 500;
-        color: var(--text-primary);
-        transition: color 0.2s;
-        line-height: 1.5;
-      }
-      
-      .empty-state {
-        text-align: center;
-        padding: 48px 24px;
-        color: var(--text-muted);
-      }
-      
-      /* Footer */
-      footer {
-        text-align: center;
-        padding: 64px 0 32px;
-        color: var(--text-muted);
-        font-size: 12px;
-      }
-      
-      footer a {
-        color: var(--accent);
-        text-decoration: none;
-      }
-      
-      /* Animations */
-      @keyframes fadeInUp {
-        from {
-          opacity: 0;
-          transform: translateY(20px);
-        }
-        to {
-          opacity: 1;
-          transform: translateY(0);
-        }
-      }
-      
-      /* 移动端 */
-      @media (max-width: 640px) {
-        .container {
-          padding: 48px 16px;
-        }
-        .logo {
-          font-size: 48px;
-        }
-        h1 {
-          font-size: 28px;
-          letter-spacing: 6px;
-        }
-        .subtitle {
-          font-size: 12px;
-          letter-spacing: 2px;
-        }
-        .stats {
-          gap: 24px;
-        }
-        .stat-value {
-          font-size: 24px;
-        }
-        .article-item {
-          padding: 16px 20px;
-        }
-      }
-    </style>
+    
+    <!-- Favicon -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%230a0505' width='100' height='100' rx='20'/><path d='M25 70 L25 45 L40 45 L40 70 M45 70 L45 35 L60 35 L60 70 M65 70 L65 50 L80 50 L80 70' stroke='%23e60000' stroke-width='6' fill='none' stroke-linecap='round'/></svg>">
   </head>
   <body>
-    <div class="container">
-      <header>
-        <div class="greeting">{greeting}</div>
-        <div class="logo">📈</div>
-        <h1>财经早餐</h1>
-        <div class="subtitle">宏观趋势 · 行业研究 · 投资思考</div>
-        <div class="update-time">{today} · 每日更新</div>
+    <!-- Background decoration -->
+    <div class="bg-decoration" aria-hidden="true">
+      <div class="bg-gradient"></div>
+      <div class="bg-grid"></div>
+      <div class="bg-vignette"></div>
+    </div>
+    
+    <main class="container">
+      <!-- Header -->
+      <header class="hero">
+        <div class="hero-greeting">
+          <span class="greeting-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              {hour < 18 
+                ? '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>'
+                : '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>'
+              }
+            </svg>
+          </span>
+          <span>{greeting.text}</span>
+        </div>
         
-        <div class="stats">
-          <div class="stat">
-            <div class="stat-value">{groupedArticles['财经早餐分析'].length || 0}</div>
-            <div class="stat-label">财经早餐</div>
-          </div>
-          <div class="stat">
-            <div class="stat-value">{groupedArticles['尚书省奏折'].length || 0}</div>
-            <div class="stat-label">尚书省奏折</div>
-          </div>
-          <div class="stat">
-            <div class="stat-value">{groupedArticles['工作流文档'].length || 0}</div>
-            <div class="stat-label">工作流文档</div>
-          </div>
+        <div class="hero-logo">
+          <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48" fill="none">
+            <rect width="48" height="48" rx="12" fill="var(--color-accent-dim)"/>
+            <path d="M12 34V24M18 34V20M24 34V26M30 34V18M36 34V22" stroke="var(--color-accent)" stroke-width="3" stroke-linecap="round"/>
+          </svg>
+        </div>
+        
+        <h1 class="hero-title gradient-text">财经早餐</h1>
+        
+        <p class="hero-subtitle">宏观趋势 · 行业研究 · 投资思考</p>
+        
+        <time class="hero-date">
+          <Icon name="calendar" size={14} />
+          <span>{today}</span>
+          <span class="hero-date-divider">·</span>
+          <span>每日更新</span>
+        </time>
+        
+        <!-- Stats -->
+        <div class="stats-grid">
+          {stats.map((stat) => (
+            <div class="stat-item">
+              <span class="stat-value">{stat.value}{stat.suffix || ''}</span>
+              <span class="stat-label">{stat.label}</span>
+            </div>
+          ))}
         </div>
       </header>
 
-      {groupedArticles['财经早餐分析'].length > 0 && (
-        <section>
-          <h2><span class="section-icon">📊</span>财经早餐</h2>
-          <div class="card">
-            {groupedArticles['财经早餐分析'].map((article) => (
-              <a href={`/docs/${article.id}`} class="article-item">
-                <div class="article-header">
-                  <span class="tag" style={`background: ${article.tagColor}; color: ${article.tagTextColor}`}>
-                    {article.tag}
-                  </span>
-                  <span class="article-date">{article.formattedDate}</span>
-                </div>
-                <div class="article-title">{article.title}</div>
-              </a>
-            ))}
-          </div>
-        </section>
-      )}
+      <!-- Market Data Section -->
+      <section class="market-section">
+        <MarketBoard indices={indices} />
+        <StockList stocks={stocks} />
+        <div class="data-update-time">
+          数据更新时间: {update_time}
+        </div>
+      </section>
 
-      {groupedArticles['尚书省奏折'].length > 0 && (
-        <section>
-          <h2><span class="section-icon">📜</span>尚书省奏折</h2>
-          <div class="card">
-            {groupedArticles['尚书省奏折'].map((article) => (
-              <a href={`/docs/${article.id}`} class="article-item">
-                <div class="article-header">
-                  <span class="tag" style={`background: ${article.tagColor}; color: ${article.tagTextColor}`}>
-                    {article.tag}
-                  </span>
-                  <span class="article-date">{article.formattedDate}</span>
-                </div>
-                <div class="article-title">{article.title}</div>
-              </a>
-            ))}
-          </div>
-        </section>
-      )}
+      <!-- Sections -->
+      <div class="sections">
+        {groupedArticles['财经早餐'].length > 0 && (
+          <section class="section">
+            <SectionHeader title="财经早餐" icon="chart" count={groupedArticles['财经早餐'].length} />
+            <div class="article-list">
+              {groupedArticles['财经早餐'].map((article) => (
+                <ArticleCard {...article} />
+              ))}
+            </div>
+          </section>
+        )}
 
-      {groupedArticles['工作流文档'].length > 0 && (
-        <section>
-          <h2><span class="section-icon">⚙️</span>工作流文档</h2>
-          <div class="card">
-            {groupedArticles['工作流文档'].map((article) => (
-              <a href={`/docs/${article.id}`} class="article-item">
-                <div class="article-header">
-                  <span class="tag" style={`background: ${article.tagColor}; color: ${article.tagTextColor}`}>
-                    {article.tag}
-                  </span>
-                  <span class="article-date">{article.formattedDate}</span>
-                </div>
-                <div class="article-title">{article.title}</div>
-              </a>
-            ))}
-          </div>
-        </section>
-      )}
 
-      <footer>
-        <p>财经早餐 · 由 <a href="https://astro.build" target="_blank">Astro</a> + <a href="https://vercel.com" target="_blank">Vercel</a> 驱动</p>
+      </div>
+
+      <!-- Footer -->
+      <footer class="footer">
+        <p>财经早餐 · 由 <a href="https://astro.build" target="_blank" rel="noopener">Astro</a> + <a href="https://vercel.com" target="_blank" rel="noopener">Vercel</a> 驱动</p>
       </footer>
-    </div>
+    </main>
   </body>
 </html>
+
+<style>
+  /* Background */
+  .bg-decoration {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    overflow: hidden;
+  }
+  
+  .bg-gradient {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 70%;
+    background: 
+      radial-gradient(ellipse 100% 60% at 50% -20%, rgba(230, 0, 0, 0.15), transparent 60%),
+      radial-gradient(ellipse 80% 40% at 20% -10%, rgba(200, 0, 0, 0.08), transparent 50%),
+      radial-gradient(ellipse 60% 30% at 80% 0%, rgba(230, 0, 0, 0.1), transparent 50%),
+      linear-gradient(180deg, rgba(10, 5, 5, 0.95) 0%, transparent 100%);
+  }
+  
+  .bg-grid {
+    position: absolute;
+    inset: 0;
+    background-image: 
+      linear-gradient(rgba(230, 0, 0, 0.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(230, 0, 0, 0.05) 1px, transparent 1px);
+    background-size: 60px 60px;
+    mask-image: radial-gradient(ellipse 90% 70% at 50% 0%, black 20%, transparent 80%);
+  }
+  
+  .bg-vignette {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse 100% 100% at 50% 50%, transparent 40%, rgba(15, 8, 8, 0.6) 100%);
+  }
+  
+  /* Container */
+  .container {
+    position: relative;
+    z-index: var(--z-base);
+  }
+  
+  /* Hero */
+  .hero {
+    text-align: center;
+    padding-bottom: var(--space-16);
+    margin-bottom: var(--space-12);
+    position: relative;
+  }
+  
+  .hero::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 60px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--color-accent), transparent);
+  }
+  
+  .hero-greeting {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--font-size-sm);
+    color: var(--color-accent);
+    font-weight: var(--font-weight-medium);
+    letter-spacing: 0.1em;
+    margin-bottom: var(--space-5);
+    animation: fadeInUp 0.5s ease-out;
+  }
+  
+  .greeting-icon {
+    display: flex;
+  }
+  
+  .hero-logo {
+    margin-bottom: var(--space-5);
+    animation: fadeInUp 0.5s ease-out 0.1s both;
+  }
+  
+  .hero-title {
+    font-family: var(--font-serif);
+    font-size: clamp(36px, 8vw, var(--font-size-4xl));
+    font-weight: var(--font-weight-bold);
+    letter-spacing: 0.1em;
+    margin-bottom: var(--space-3);
+    animation: fadeInUp 0.5s ease-out 0.15s both;
+  }
+  
+  .hero-subtitle {
+    font-size: var(--font-size-sm);
+    color: var(--color-text-muted);
+    letter-spacing: 0.2em;
+    font-weight: var(--font-weight-light);
+    margin-bottom: var(--space-5);
+    animation: fadeInUp 0.5s ease-out 0.2s both;
+  }
+  
+  .hero-date {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--font-size-xs);
+    color: var(--color-text-muted);
+    animation: fadeInUp 0.5s ease-out 0.25s both;
+  }
+  
+  .hero-date-divider {
+    opacity: 0.5;
+  }
+  
+  /* Stats */
+  .stats-grid {
+    display: flex;
+    justify-content: center;
+    gap: var(--space-8);
+    margin-top: var(--space-8);
+    animation: fadeInUp 0.5s ease-out 0.3s both;
+  }
+  
+  .stat-item {
+    text-align: center;
+  }
+  
+  .stat-value {
+    display: block;
+    font-family: var(--font-serif);
+    font-size: var(--font-size-3xl);
+    font-weight: var(--font-weight-bold);
+    color: var(--color-accent);
+    line-height: 1;
+  }
+  
+  .stat-label {
+    display: block;
+    font-size: var(--font-size-xs);
+    color: var(--color-text-muted);
+    margin-top: var(--space-1);
+    letter-spacing: 0.05em;
+  }
+  
+  /* Sections */
+  .sections {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-12);
+  }
+  
+  .section {
+    animation: fadeInUp 0.5s ease-out 0.4s both;
+  }
+  
+  .article-list {
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Market Section */
+  .market-section {
+    margin-bottom: var(--space-8);
+    animation: fadeInUp 0.5s ease-out 0.35s both;
+  }
+
+  .data-update-time {
+    text-align: center;
+    font-size: 11px;
+    color: var(--color-text-muted);
+    margin-top: var(--space-4);
+  }
+  
+  /* Footer */
+  .footer {
+    text-align: center;
+    padding: var(--space-16) 0 var(--space-8);
+    color: var(--color-text-muted);
+    font-size: var(--font-size-xs);
+  }
+  
+  .footer a {
+    color: var(--color-accent);
+    text-decoration: none;
+    transition: opacity var(--transition-fast);
+  }
+  
+  .footer a:hover {
+    opacity: 0.8;
+  }
+  
+  /* Responsive */
+  @media (max-width: 640px) {
+    .hero {
+      padding-bottom: var(--space-12);
+      margin-bottom: var(--space-10);
+    }
+    
+    .hero-logo svg {
+      width: 40px;
+      height: 40px;
+    }
+    
+    .stats-grid {
+      gap: var(--space-6);
+    }
+    
+    .stat-value {
+      font-size: var(--font-size-2xl);
+    }
+  }
+</style>

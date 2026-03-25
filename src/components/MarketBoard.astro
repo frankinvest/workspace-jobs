@@ -1,0 +1,163 @@
+---
+interface Props {
+  indices: Array<{
+    name: string;
+    code: string;
+    price: number;
+    change: number;
+    change_pct: number;
+  }>;
+}
+
+const { indices } = Astro.props;
+
+function formatNumber(num: number): string {
+  if (num >= 10000) {
+    return (num / 10000).toFixed(2) + '万';
+  }
+  return num.toString();
+}
+
+function getTrendIcon(change: number): string {
+  if (change > 0) return '↑';
+  if (change < 0) return '↓';
+  return '→';
+}
+
+function getTrendClass(change: number): string {
+  if (change > 0) return 'trend-up';
+  if (change < 0) return 'trend-down';
+  return 'trend-flat';
+}
+---
+
+<div class="market-board">
+  <div class="market-header">
+    <span class="market-title">市场行情</span>
+    <span class="market-update">实时更新</span>
+  </div>
+  
+  <div class="index-grid">
+    {indices.map((index) => (
+      <div class={`index-card ${getTrendClass(index.change)}`}>
+        <div class="index-name">{index.name}</div>
+        <div class="index-price">{index.price.toLocaleString()}</div>
+        <div class="index-change">
+          <span class="trend-icon">{getTrendIcon(index.change)}</span>
+          <span class="change-value">{Math.abs(index.change).toFixed(2)}</span>
+          <span class="change-pct">({index.change_pct > 0 ? '+' : ''}{index.change_pct.toFixed(2)}%)</span>
+        </div>
+      </div>
+    ))}
+  </div>
+</div>
+
+<style>
+  .market-board {
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 24px;
+  }
+
+  .market-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+  }
+
+  .market-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--color-text);
+  }
+
+  .market-update {
+    font-size: 11px;
+    color: var(--color-text-muted);
+    background: var(--color-bg);
+    padding: 2px 8px;
+    border-radius: 4px;
+  }
+
+  .index-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+  }
+
+  .index-card {
+    background: var(--color-bg);
+    border-radius: 8px;
+    padding: 12px;
+    border: 1px solid transparent;
+  }
+
+  .index-card.trend-up {
+    border-color: rgba(0, 200, 83, 0.3);
+    background: linear-gradient(135deg, rgba(0, 200, 83, 0.05), transparent);
+  }
+
+  .index-card.trend-down {
+    border-color: rgba(244, 67, 54, 0.3);
+    background: linear-gradient(135deg, rgba(244, 67, 54, 0.05), transparent);
+  }
+
+  .index-card.trend-flat {
+    border-color: var(--color-border);
+  }
+
+  .index-name {
+    font-size: 12px;
+    color: var(--color-text-muted);
+    margin-bottom: 4px;
+  }
+
+  .index-price {
+    font-family: var(--font-serif);
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--color-text);
+    margin-bottom: 4px;
+  }
+
+  .index-change {
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .trend-up .index-change {
+    color: var(--color-success);
+  }
+
+  .trend-down .index-change {
+    color: var(--color-danger);
+  }
+
+  .trend-flat .index-change {
+    color: var(--color-text-muted);
+  }
+
+  .trend-icon {
+    font-weight: bold;
+  }
+
+  .change-pct {
+    opacity: 0.9;
+  }
+
+  @media (max-width: 480px) {
+    .index-grid {
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .index-price {
+      font-size: 18px;
+    }
+  }
+</style>

@@ -1,0 +1,120 @@
+{
+  "update_time": "2026-03-26 00:07:19",
+  "indices": [
+    {
+      "name": "上证指数",
+      "code": "000001",
+      "price": 3931.84,
+      "change": 50.56,
+      "change_pct": 1.3,
+      "high": 3933.06,
+      "low": 3891.82,
+      "volume": 688343626,
+      "turnover": 1.43
+    },
+    {
+      "name": "深证成指",
+      "code": "399001",
+      "price": 13801.0,
+      "change": 264.44,
+      "change_pct": 1.95,
+      "high": 13835.03,
+      "low": 13666.84,
+      "volume": 723433703,
+      "turnover": 2.99
+    },
+    {
+      "name": "创业板指",
+      "code": "399006",
+      "price": 3316.97,
+      "change": 65.42,
+      "change_pct": 2.01,
+      "high": 3325.26,
+      "low": 3278.73,
+      "volume": 206290186,
+      "turnover": 3.96
+    },
+    {
+      "name": "科创50",
+      "code": "000688",
+      "price": 1315.41,
+      "change": 24.62,
+      "change_pct": 1.91,
+      "high": 1326.65,
+      "low": 1299.63,
+      "volume": 11005705,
+      "turnover": 1.66
+    }
+  ],
+  "stocks": [
+    {
+      "name": "贵州茅台",
+      "code": "600519",
+      "price": 1410.27,
+      "change": 2.94,
+      "change_pct": 0.21,
+      "volume": 26093,
+      "turnover": 0.21,
+      "pe": 19.62,
+      "pb": 7.78,
+      "high": 1417.87,
+      "low": 1401.01
+    },
+    {
+      "name": "平安银行",
+      "code": "000001",
+      "price": 10.94,
+      "change": 0.06,
+      "change_pct": 0.55,
+      "volume": 744780,
+      "turnover": 0.38,
+      "pe": 4.98,
+      "pb": 0.47,
+      "high": 10.95,
+      "low": 10.79
+    },
+    {
+      "name": "招商银行",
+      "code": "600036",
+      "price": 39.26,
+      "change": 0.01,
+      "change_pct": 0.03,
+      "volume": 653817,
+      "turnover": 0.32,
+      "pe": 6.59,
+      "pb": 0.9,
+      "high": 39.4,
+      "low": 38.94
+    },
+    {
+      "name": "中国平安",
+      "code": "601318",
+      "price": 58.79,
+      "change": 0.67,
+      "change_pct": 1.15,
+      "volume": 562389,
+      "turnover": 0.53,
+      "pe": 7.59,
+      "pb": 1.08,
+      "high": 59.36,
+      "low": 58.42
+    },
+    {
+      "name": "五 粮 液",
+      "code": "000858",
+      "price": 102.45,
+      "change": 1.11,
+      "change_pct": 1.1,
+      "volume": 108590,
+      "turnover": 0.28,
+      "pe": 13.99,
+      "pb": 3.0,
+      "high": 102.58,
+      "low": 100.88
+    }
+  ],
+  "summary": {
+    "limit_up_count": 84,
+    "limit_down_count": 0
+  }
+}

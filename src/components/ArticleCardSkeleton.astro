@@ -1,0 +1,67 @@
+---
+// Article Card Skeleton - Loading State
+interface Props {
+  count?: number;
+}
+
+const { count = 3 } = Astro.props;
+---
+
+<div class="article-list">
+  {Array.from({ length: count }).map((_, i) => (
+    <div class="article-card-skeleton" style={`animation-delay: ${i * 100}ms`}>
+      <div class="skeleton-meta">
+        <div class="skeleton tag-skeleton"></div>
+        <div class="skeleton date-skeleton"></div>
+      </div>
+      <div class="skeleton title-skeleton"></div>
+    </div>
+  ))}
+</div>
+
+<style>
+  .article-list {
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+  }
+  
+  .article-card-skeleton {
+    padding: var(--space-5) var(--space-6);
+    border-bottom: 1px solid var(--color-border);
+    animation: fadeIn 0.3s ease-out forwards;
+    opacity: 0;
+  }
+  
+  .article-card-skeleton:last-child {
+    border-bottom: none;
+  }
+  
+  .skeleton-meta {
+    display: flex;
+    gap: var(--space-3);
+    margin-bottom: var(--space-3);
+  }
+  
+  .tag-skeleton {
+    width: 80px;
+    height: 22px;
+    border-radius: var(--radius-sm);
+  }
+  
+  .date-skeleton {
+    width: 100px;
+    height: 16px;
+  }
+  
+  .title-skeleton {
+    width: 75%;
+    height: 20px;
+  }
+  
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+</style>
