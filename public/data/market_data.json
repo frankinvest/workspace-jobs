@@ -1,5 +1,5 @@
 {
-  "update_time": "2026-03-26 01:26:46",
+  "update_time": "2026-03-26 01:42:30",
   "indices": [
     {
       "name": "上证指数",
@@ -50,23 +50,23 @@
     {
       "name": "纳斯达克",
       "code": "IXIC",
-      "price": 21980.84,
-      "change": 218.95,
-      "change_pct": 1.01
+      "price": 22004.9,
+      "change": 243.01,
+      "change_pct": 1.12
     },
     {
       "name": "道琼斯",
       "code": "DJI",
-      "price": 46489.39,
-      "change": 365.33,
-      "change_pct": 0.79
+      "price": 46531.82,
+      "change": 407.76,
+      "change_pct": 0.88
     },
     {
       "name": "标普500",
       "code": "SPX",
-      "price": 6605.61,
-      "change": 49.24,
-      "change_pct": 0.75
+      "price": 6612.05,
+      "change": 55.68,
+      "change_pct": 0.85
     },
     {
       "name": "日经225",
@@ -81,6 +81,85 @@
       "price": 25335.95,
       "change": 272.24,
       "change_pct": 1.09
+    },
+    {
+      "name": "韩国综合",
+      "code": "KS11",
+      "price": 5642.21,
+      "change": 88.29,
+      "change_pct": 1.59
+    },
+    {
+      "name": "韩国科斯达克",
+      "code": "KQ11",
+      "price": 1159.55,
+      "change": 62.66,
+      "change_pct": 5.71
+    },
+    {
+      "name": "德国DAX",
+      "code": "GDAXI",
+      "price": 22957.08,
+      "change": 320.17,
+      "change_pct": 1.41
+    },
+    {
+      "name": "英国富时",
+      "code": "FTSE",
+      "price": 10106.84,
+      "change": 141.68,
+      "change_pct": 1.42
+    },
+    {
+      "name": "法国CAC40",
+      "code": "FCHI",
+      "price": 7846.55,
+      "change": 102.63,
+      "change_pct": 1.33
+    }
+  ],
+  "futures": [
+    {
+      "name": "富时A50",
+      "code": "XIN9",
+      "price": 9310.92,
+      "change": -79.48,
+      "change_pct": -0.85
+    },
+    {
+      "name": "纳指期指",
+      "code": "NQ",
+      "price": 24421.25,
+      "change": 207.5,
+      "change_pct": 0.86
+    },
+    {
+      "name": "标普期指",
+      "code": "ES",
+      "price": 6653.75,
+      "change": 47.75,
+      "change_pct": 0.72
+    },
+    {
+      "name": "道指期指",
+      "code": "YM",
+      "price": 46772.0,
+      "change": 357.0,
+      "change_pct": 0.77
+    },
+    {
+      "name": "布伦特原油",
+      "code": "BZ",
+      "price": 96.84,
+      "change": -3.39,
+      "change_pct": -3.38
+    },
+    {
+      "name": "黄金期货",
+      "code": "GC",
+      "price": 4551.7,
+      "change": 149.7,
+      "change_pct": 3.4
     }
   ],
   "stocks": [

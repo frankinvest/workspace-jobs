@@ -150,6 +150,11 @@ def get_us_indices_data() -> list:
         {'symbol': 'sp500', 'name': '标普500', 'code': 'SPX'},
         {'symbol': 'nikkei', 'name': '日经225', 'code': 'N225'},
         {'symbol': 'hangsheng', 'name': '恒生指数', 'code': 'HSI'},
+        {'symbol': '^KS11', 'name': '韩国综合', 'code': 'KS11'},
+        {'symbol': '^KQ11', 'name': '韩国科斯达克', 'code': 'KQ11'},
+        {'symbol': '^GDAXI', 'name': '德国DAX', 'code': 'GDAXI'},
+        {'symbol': '^FTSE', 'name': '英国富时', 'code': 'FTSE'},
+        {'symbol': '^FCHI', 'name': '法国CAC40', 'code': 'FCHI'},
     ]
     
     result = []
@@ -164,6 +169,35 @@ def get_us_indices_data() -> list:
         }
         result.append(item)
         print(f"  {item['name']}: {item['price']} ({item['change_pct']:+.2f}%)")
+    
+    return result
+
+def get_futures_data() -> list:
+    """获取期指数据（A50、纳指期货、标普期指、布伦特原油、黄金等）"""
+    futures = [
+        {'symbol': 'XIN9.L', 'name': '富时A50', 'code': 'XIN9'},
+        {'symbol': 'NQ=F', 'name': '纳指期指', 'code': 'NQ'},
+        {'symbol': 'ES=F', 'name': '标普期指', 'code': 'ES'},
+        {'symbol': 'YM=F', 'name': '道指期指', 'code': 'YM'},
+        {'symbol': 'BZ=F', 'name': '布伦特原油', 'code': 'BZ'},
+        {'symbol': 'GC=F', 'name': '黄金期货', 'code': 'GC'},
+    ]
+    
+    result = []
+    for ft in futures:
+        data = get_us_index(ft['symbol'])
+        item = {
+            'name': ft['name'],
+            'code': ft['code'],
+            'price': data['price'],
+            'change': data['change'],
+            'change_pct': data['change_pct'],
+        }
+        result.append(item)
+        if item['price'] > 0:
+            print(f"  {item['name']}: {item['price']} ({item['change_pct']:+.2f}%)")
+        else:
+            print(f"  {item['name']}: 获取失败")
     
     return result
 
@@ -236,6 +270,7 @@ def main():
         "update_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "indices": [],
         "us_indices": [],
+        "futures": [],
         "stocks": [],
         "summary": {},
     }
@@ -247,6 +282,10 @@ def main():
     # 获取外盘指数数据
     print("\n--- 外盘指数 ---")
     data["us_indices"] = get_us_indices_data()
+    
+    # 获取期指数据
+    print("\n--- 期指期货 ---")
+    data["futures"] = get_futures_data()
     
     # 获取个股数据
     print("\n--- 个股数据 ---")
