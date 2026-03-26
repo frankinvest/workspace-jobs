@@ -11,9 +11,12 @@ interface Props {
   indices: Index[];
   usIndices?: Index[];
   futures?: Index[];
+  lmeMetals?: Index[];
+  shfeMetals?: Index[];
+  updateTime?: string;
 }
 
-const { indices, usIndices = [], futures = [] } = Astro.props;
+const { indices, usIndices = [], futures = [], lmeMetals = [], shfeMetals = [] } = Astro.props;
 
 function getTrendClass(change: number): string {
   if (change > 0) return 'trend-up';  // 红色（涨）
@@ -31,15 +34,31 @@ function formatPrice(price: number, name: string): string {
 ---
 
 <div class="market-board">
-  <!-- A股指数 -->
+  <!-- 标题 -->
   <div class="market-header">
     <span class="market-title">市场行情</span>
-    <span class="market-update">实时更新</span>
+    <button class="update-btn" id="update-btn" title="点击更新数据">
+      <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="refresh-icon">
+        <polyline points="23 4 23 10 17 10"></polyline>
+        <polyline points="1 20 1 14 7 14"></polyline>
+        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+      </svg>
+      <span id="update-btn-text">更新</span>
+    </button>
   </div>
-  
-  <div class="index-grid">
+  <div class="update-time">
+    <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="10"></circle>
+      <polyline points="12 6 12 12 16 14"></polyline>
+    </svg>
+    <span id="update-time-display">{Astro.props.updateTime}</span>
+  </div>
+
+  {/* A股 */}
+  <div class="section-label">A股</div>
+  <div class="index-grid" id="indices-grid">
     {indices.map((index) => (
-      <div class={`index-card ${getTrendClass(index.change)}`}>
+      <div class={`index-card ${getTrendClass(index.change)}`} data-code={index.code}>
         <div class="index-name">{index.name}</div>
         <div class="index-price">{formatPrice(index.price, index.name)}</div>
         <div class="index-change">
@@ -51,17 +70,17 @@ function formatPrice(price: number, name: string): string {
     ))}
   </div>
 
-  {/* 外盘指数 */}
+  {/* 外盘指数 - 可折叠 */}
   {usIndices.length > 0 && (
-    <>
-      <div class="market-header" style="margin-top: 20px;">
-        <span class="market-title">外盘指数</span>
-        <span class="market-update">美股 · 港股 · 日经</span>
-      </div>
-      
-      <div class="index-grid">
+    <div class="collapsible-section" id="us-section">
+      <button class="section-toggle" id="us-toggle">
+        <span class="toggle-icon">▼</span>
+        <span class="toggle-label">外盘</span>
+        <span class="toggle-count">{usIndices.length}个</span>
+      </button>
+      <div class="index-grid" id="us-grid" data-section="us">
         {usIndices.map((index) => (
-          <div class={`index-card ${getTrendClass(index.change)}`}>
+          <div class={`index-card ${getTrendClass(index.change)}`} data-code={index.code}>
             <div class="index-name">{index.name}</div>
             <div class="index-price">{formatPrice(index.price, index.name)}</div>
             <div class="index-change">
@@ -72,19 +91,43 @@ function formatPrice(price: number, name: string): string {
           </div>
         ))}
       </div>
-    </>
+    </div>
   )}
 
-  {/* 期指期货 */}
+  {/* 期指期货 - 可折叠 */}
   {futures.length > 0 && (
-    <>
-      <div class="market-header" style="margin-top: 20px;">
-        <span class="market-title">期指期货</span>
-        <span class="market-update">期货 · 大宗商品</span>
-      </div>
-      
-      <div class="index-grid">
+    <div class="collapsible-section" id="futures-section">
+      <button class="section-toggle" id="futures-toggle">
+        <span class="toggle-icon">▼</span>
+        <span class="toggle-label">期指期货</span>
+        <span class="toggle-count">{futures.length}个</span>
+      </button>
+      <div class="index-grid" id="futures-grid" data-section="futures">
         {futures.map((index) => (
+          <div class={`index-card ${getTrendClass(index.change)}`} data-code={index.code}>
+            <div class="index-name">{index.name}</div>
+            <div class="index-price">{formatPrice(index.price, index.name)}</div>
+            <div class="index-change">
+              <span class="trend-icon">{index.change > 0 ? '↑' : index.change < 0 ? '↓' : '→'}</span>
+              <span class="change-value">{Math.abs(index.change).toFixed(2)}</span>
+              <span class="change-pct">({index.change_pct > 0 ? '+' : ''}{index.change_pct.toFixed(2)}%)</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )}
+
+  {/* LME伦敦金属 - 可折叠 */}
+  {lmeMetals.length > 0 && (
+    <div class="collapsible-section" id="lme-section">
+      <button class="section-toggle" id="lme-toggle">
+        <span class="toggle-icon">▼</span>
+        <span class="toggle-label">LME伦敦金属</span>
+        <span class="toggle-count">{lmeMetals.length}个</span>
+      </button>
+      <div class="index-grid" id="lme-grid" data-section="lme">
+        {lmeMetals.map((index) => (
           <div class={`index-card ${getTrendClass(index.change)}`}>
             <div class="index-name">{index.name}</div>
             <div class="index-price">{formatPrice(index.price, index.name)}</div>
@@ -96,9 +139,141 @@ function formatPrice(price: number, name: string): string {
           </div>
         ))}
       </div>
-    </>
+    </div>
+  )}
+
+  {/* SHFE上海期货 - 可折叠 */}
+  {shfeMetals.length > 0 && (
+    <div class="collapsible-section" id="shfe-section">
+      <button class="section-toggle" id="shfe-toggle">
+        <span class="toggle-icon">▼</span>
+        <span class="toggle-label">SHFE上海期货</span>
+        <span class="toggle-count">{shfeMetals.length}个</span>
+      </button>
+      <div class="index-grid" id="shfe-grid" data-section="shfe">
+        {shfeMetals.map((index) => (
+          <div class={`index-card ${getTrendClass(index.change)}`}>
+            <div class="index-name">{index.name}</div>
+            <div class="index-price">{formatPrice(index.price, index.name)}</div>
+            <div class="index-change">
+              <span class="trend-icon">{index.change > 0 ? '↑' : index.change < 0 ? '↓' : '→'}</span>
+              <span class="change-value">{Math.abs(index.change).toFixed(2)}</span>
+              <span class="change-pct">({index.change_pct > 0 ? '+' : ''}{index.change_pct.toFixed(2)}%)</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   )}
 </div>
+
+<script is:inline>
+  // 默认折叠外盘、期指期货、LME金属和SHFE上海期货
+  document.querySelectorAll('#us-grid, #futures-grid, #lme-grid, #shfe-grid').forEach(function(grid) {
+    grid.style.display = 'none';
+  });
+  
+  document.querySelectorAll('#us-toggle, #futures-toggle, #lme-toggle, #shfe-toggle').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var section = btn.id.split('-')[0];
+      var grid = document.getElementById(section + '-grid');
+      btn.classList.toggle('collapsed');
+      if (grid.style.display === 'none') {
+        grid.style.display = 'grid';
+      } else {
+        grid.style.display = 'none';
+      }
+    });
+  });
+  
+  // 更新按钮功能
+  var updateBtn = document.getElementById('update-btn');
+  var updateBtnText = document.getElementById('update-btn-text');
+  var refreshIcon = document.querySelector('.refresh-icon');
+  var updateTimeDisplay = document.getElementById('update-time-display');
+  
+  function formatPrice(price, name) {
+    if (price >= 10000) {
+      return price.toLocaleString('en-US', { maximumFractionDigits: 0 });
+    }
+    return price.toLocaleString('en-US', { maximumFractionDigits: 2 });
+  }
+  
+  function getTrendClass(change) {
+    if (change > 0) return 'trend-up';
+    if (change < 0) return 'trend-down';
+    return 'trend-flat';
+  }
+  
+  function updateCard(card, data) {
+    var trendClass = getTrendClass(data.change);
+    card.className = 'index-card ' + trendClass;
+    card.querySelector('.index-price').textContent = formatPrice(data.price, data.name);
+    var changeEl = card.querySelector('.index-change');
+    changeEl.innerHTML = 
+      '<span class="trend-icon">' + (data.change > 0 ? '↑' : data.change < 0 ? '↓' : '→') + '</span>' +
+      '<span class="change-value">' + Math.abs(data.change).toFixed(2) + '</span>' +
+      '<span class="change-pct">(' + (data.change_pct > 0 ? '+' : '') + data.change_pct.toFixed(2) + '%)</span>';
+  }
+  
+  function updateMarketData() {
+    if (!updateBtn || updateBtn.classList.contains('loading')) return;
+    
+    updateBtn.classList.add('loading');
+    updateBtnText.textContent = '更新中...';
+    refreshIcon.style.animation = 'spin 1s linear infinite';
+    
+    fetch('/api/update-market')
+      .then(function(res) { return res.json(); })
+      .then(function(data) {
+        if (data.success) {
+          // 更新指数数据
+          if (data.indices) {
+            data.indices.forEach(function(idx) {
+              var card = document.querySelector('#indices-grid [data-code="' + idx.code + '"]');
+              if (card) updateCard(card, idx);
+            });
+          }
+          
+          // 更新外盘数据
+          if (data.us_indices) {
+            data.us_indices.forEach(function(idx) {
+              var card = document.querySelector('#us-grid [data-code="' + idx.code + '"]');
+              if (card) updateCard(card, idx);
+            });
+          }
+          
+          // 更新期货数据
+          if (data.futures) {
+            data.futures.forEach(function(idx) {
+              var card = document.querySelector('#futures-grid [data-code="' + idx.code + '"]');
+              if (card) updateCard(card, idx);
+            });
+          }
+          
+          // 更新时间显示
+          if (data.update_time && updateTimeDisplay) {
+            updateTimeDisplay.textContent = data.update_time;
+          }
+        } else {
+          alert('更新失败: ' + (data.error || '未知错误'));
+        }
+      })
+      .catch(function(err) {
+        console.error('Update error:', err);
+        alert('更新失败，请稍后重试');
+      })
+      .finally(function() {
+        updateBtn.classList.remove('loading');
+        updateBtnText.textContent = '更新';
+        refreshIcon.style.animation = '';
+      });
+  }
+  
+  if (updateBtn) {
+    updateBtn.addEventListener('click', updateMarketData);
+  }
+</script>
 
 <style>
   .market-board {
@@ -128,6 +303,77 @@ function formatPrice(price: number, name: string): string {
     background: var(--color-bg);
     padding: 2px 8px;
     border-radius: 4px;
+  }
+
+  .update-time {
+    font-size: 10px;
+    color: var(--color-text-muted);
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .section-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--color-accent);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 8px;
+    margin-top: 16px;
+  }
+
+  .section-label:first-of-type {
+    margin-top: 0;
+  }
+
+  .collapsible-section {
+    margin-top: 16px;
+  }
+
+  .section-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 6px 10px;
+    border-radius: 6px;
+    width: 100%;
+    text-align: left;
+    color: var(--color-text-secondary);
+    font-size: 12px;
+    transition: background-color 0.2s;
+  }
+
+  .section-toggle:hover {
+    background: var(--color-bg);
+  }
+
+  .toggle-icon {
+    font-size: 10px;
+    transition: transform 0.2s;
+  }
+
+  .section-toggle.collapsed .toggle-icon {
+    transform: rotate(-90deg);
+  }
+
+  .toggle-label {
+    font-weight: 600;
+    color: var(--color-text);
+  }
+
+  .toggle-count {
+    color: var(--color-text-muted);
+    font-size: 11px;
+    margin-left: auto;
+  }
+
+  .hidden {
+    display: none;
   }
 
   .index-grid {
@@ -196,6 +442,45 @@ function formatPrice(price: number, name: string): string {
 
   .change-pct {
     opacity: 0.9;
+  }
+
+  /* 更新按钮样式 */
+  .update-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--color-accent);
+    color: #fff;
+    border: none;
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .update-btn:hover {
+    opacity: 0.9;
+    transform: translateY(-1px);
+  }
+
+  .update-btn:active {
+    transform: translateY(0);
+  }
+
+  .update-btn.loading {
+    opacity: 0.7;
+    cursor: not-allowed;
+  }
+
+  .update-btn .refresh-icon {
+    transition: transform 0.3s;
+  }
+
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
   }
 
   @media (max-width: 480px) {

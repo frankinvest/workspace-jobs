@@ -10,7 +10,7 @@ import StockList from '../components/StockList.astro';
 // 导入市场数据
 import marketData from '../../public/data/market_data.json';
 
-const { indices, us_indices, futures, stocks, summary, update_time } = marketData;
+const { indices, us_indices, futures, lme_metals, shfe_metals, stocks, summary, update_time } = marketData;
 
 // Get all docs and sort by date
 const allDocs = await getCollection('docs');
@@ -173,11 +173,8 @@ const stats = [
 
       <!-- Market Data Section -->
       <section class="market-section">
-        <MarketBoard indices={indices} usIndices={us_indices} futures={futures} />
+        <MarketBoard indices={indices} usIndices={us_indices} futures={futures} lmeMetals={lme_metals} shfeMetals={shfe_metals} updateTime={update_time} />
         <StockList stocks={stocks} />
-        <div class="data-update-time">
-          数据更新时间: {update_time}
-        </div>
       </section>
 
       <!-- Sections -->

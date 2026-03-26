@@ -112,6 +112,101 @@ def get_us_index(symbol: str) -> dict:
     
     return {'price': 0, 'change': 0, 'change_pct': 0}
 
+def get_lme_metals() -> list:
+    """获取LME伦敦金属交易所金属数据（通过 akshare）"""
+    try:
+        import akshare as ak
+        df = ak.futures_global_spot_em()
+        
+        # LME 金属代码
+        lme_codes = {
+            'LCPT': 'LME铜',
+            'LALT': 'LME铝',
+            'LZNT': 'LME锌',
+            'LTNT': 'LME锡',
+            'LNKT': 'LME镍',
+            'LLDT': 'LME铅',
+        }
+        
+        result = []
+        
+        for _, row in df.iterrows():
+            code = str(row.get('代码', ''))
+            price = row.get('最新价', 0)
+            chg = row.get('涨跌额', 0)
+            pct = row.get('涨跌幅', 0)
+            
+            if pd.isna(price) or price == 0:
+                continue
+            
+            if code in lme_codes:
+                result.append({
+                    'name': lme_codes[code],
+                    'code': code,
+                    'price': round(float(price), 2),
+                    'change': round(float(chg), 2) if not pd.isna(chg) else 0,
+                    'change_pct': round(float(pct), 2) if not pd.isna(pct) else 0,
+                })
+                print(f"  {lme_codes[code]}: {price} ({pct:+.2f}%)" if not pd.isna(pct) else f"  {lme_codes[code]}: {price}")
+        
+        return result
+    except Exception as e:
+        print(f"获取LME数据失败: {e}")
+        return []
+
+def get_shfe_metals() -> list:
+    """获取上海期货交易所(SHFE)金属数据"""
+    try:
+        import akshare as ak
+        df = ak.futures_spot_price()
+        
+        # SHFE 金属代码映射
+        shfe_codes = {
+            'CU': '沪铜',
+            'AL': '沪铝',
+            'ZN': '沪锌',
+            'NI': '沪镍',
+            'SN': '沪锡',
+            'PB': '沪铅',
+            'AU': '沪金',
+            'AG': '沪银',
+            'RB': '螺纹钢',
+            'HC': '热卷',
+            'RU': '橡胶',
+            'BU': '沥青',
+            'WR': '线材',
+            'SS': '不锈钢',
+        }
+        
+        result = []
+        for _, row in df.iterrows():
+            symbol = str(row.get('symbol', '')).upper()
+            if symbol in shfe_codes:
+                price = row.get('spot_price', 0)
+                if pd.isna(price) or price == 0:
+                    continue
+                
+                # 计算涨跌幅（基于现货价和近月合约价）
+                near_price = row.get('near_contract_price', price)
+                if pd.notna(near_price) and near_price != 0:
+                    chg_pct = (float(price) - float(near_price)) / float(near_price) * 100
+                else:
+                    chg_pct = 0
+                
+                result.append({
+                    'name': shfe_codes[symbol],
+                    'code': symbol,
+                    'price': round(float(price), 2),
+                    'change': round(float(price) - float(near_price), 2) if pd.notna(near_price) else 0,
+                    'change_pct': round(chg_pct, 2),
+                })
+                print(f"  {shfe_codes[symbol]}: {price} ({chg_pct:+.2f}%)")
+        
+        return result
+    except Exception as e:
+        print(f"获取SHFE数据失败: {e}")
+        return []
+
 def get_index_data():
     """获取A股指数数据"""
     indices = [
@@ -173,14 +268,14 @@ def get_us_indices_data() -> list:
     return result
 
 def get_futures_data() -> list:
-    """获取期指数据（A50、纳指期货、标普期指、布伦特原油、黄金等）"""
+    """获取期指数据（A50、纳指期货、标普期指、道指期指、布伦特原油、黄金）"""
     futures = [
         {'symbol': 'XIN9.L', 'name': '富时A50', 'code': 'XIN9'},
         {'symbol': 'NQ=F', 'name': '纳指期指', 'code': 'NQ'},
         {'symbol': 'ES=F', 'name': '标普期指', 'code': 'ES'},
         {'symbol': 'YM=F', 'name': '道指期指', 'code': 'YM'},
         {'symbol': 'BZ=F', 'name': '布伦特原油', 'code': 'BZ'},
-        {'symbol': 'GC=F', 'name': '黄金期货', 'code': 'GC'},
+        {'symbol': 'GC=F', 'name': '纽约黄金', 'code': 'GC'},
     ]
     
     result = []
@@ -200,6 +295,10 @@ def get_futures_data() -> list:
             print(f"  {item['name']}: 获取失败")
     
     return result
+
+def get_lme_metals_data() -> list:
+    """获取LME伦敦金属数据"""
+    return get_lme_metals()
 
 def get_stock_data():
     """获取个股行情"""
@@ -271,6 +370,8 @@ def main():
         "indices": [],
         "us_indices": [],
         "futures": [],
+        "lme_metals": [],
+        "shfe_metals": [],
         "stocks": [],
         "summary": {},
     }
@@ -286,6 +387,14 @@ def main():
     # 获取期指数据
     print("\n--- 期指期货 ---")
     data["futures"] = get_futures_data()
+    
+    # 获取LME伦敦金属数据
+    print("\n--- LME伦敦金属 ---")
+    data["lme_metals"] = get_lme_metals_data()
+    
+    # 获取SHFE上海期货数据
+    print("\n--- SHFE上海期货 ---")
+    data["shfe_metals"] = get_shfe_metals()
     
     # 获取个股数据
     print("\n--- 个股数据 ---")
