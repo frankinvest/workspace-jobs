@@ -7,10 +7,18 @@ import SectionHeader from '../components/SectionHeader.astro';
 import MarketBoard from '../components/MarketBoard.astro';
 import StockList from '../components/StockList.astro';
 
-// 导入市场数据
-import marketData from '../../public/data/market_data.json';
+// 初始数据（用于 LME/SHFE 等静态数据）
+const marketData = {
+  lme_metals: [],
+  shfe_metals: [],
+  update_time: new Date().toLocaleString('zh-CN', {
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hour12: false
+  }).replace(/\//g, '-')
+};
 
-const { indices, us_indices, futures, lme_metals, shfe_metals, stocks, summary, update_time } = marketData;
+const { lme_metals, shfe_metals, update_time } = marketData;
 
 // Get all docs and sort by date
 const allDocs = await getCollection('docs');
