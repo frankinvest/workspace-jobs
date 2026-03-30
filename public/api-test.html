@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>API 测试</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    .result { background: #f0f0f0; padding: 10px; margin: 10px 0; border-radius: 5px; }
+    .success { color: green; }
+    .error { color: red; }
+    button { background: #007bff; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; }
+    button:hover { background: #0056b3; }
+  </style>
+</head>
+<body>
+  <h1>API 测试页面</h1>
+  <p>测试市场数据 API 是否正常工作</p>
+  
+  <button onclick="testAPI()">测试 API</button>
+  <button onclick="testWithRefresh()">测试强制刷新</button>
+  
+  <div id="output"></div>
+
+  <script>
+    async function testAPI() {
+      const output = document.getElementById('output');
+      output.innerHTML = '<p class="result">正在测试...</p>';
+      
+      try {
+        const response = await fetch('https://workspace-jobs.vercel.app/api/update-market', {
+          headers: { 'Accept': 'application/json' }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          output.innerHTML = `
+            <div class="result success">
+              <h3>✅ API 正常</h3>
+              <p><strong>更新时间：</strong>${data.update_time}</p>
+              <p><strong>A 股指数：</strong>${data.indices?.length || 0}个</p>
+              <p><strong>外盘指数：</strong>${data.us_indices?.length || 0}个</p>
+              <p><strong>期货：</strong>${data.futures?.length || 0}个</p>
+              <p><strong>个股：</strong>${data.stocks?.length || 0}个</p>
+              <pre>${JSON.stringify(data.indices?.[0], null, 2)}</pre>
+            </div>
+          `;
+        } else {
+          output.innerHTML = `<div class="result error"><h3>❌ API 错误</h3><p>${data.error || '未知错误'}</p></div>`;
+        }
+      } catch (error) {
+        output.innerHTML = `<div class="result error"><h3>❌ 请求失败</h3><p>${error.message}</p></div>`;
+      }
+    }
+
+    async function testWithRefresh() {
+      const output = document.getElementById('output');
+      output.innerHTML = '<p class="result">正在强制刷新...</p>';
+      
+      try {
+        const response = await fetch('https://workspace-jobs.vercel.app/api/update-market?refresh=true', {
+          headers: { 'Accept': 'application/json' }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          output.innerHTML = `
+            <div class="result success">
+              <h3>✅ 强制刷新成功</h3>
+              <p><strong>更新时间：</strong>${data.update_time}</p>
+              <p><strong>缓存状态：</strong>${data.cached ? '已缓存' : '未缓存'}</p>
+            </div>
+          `;
+        }
+      } catch (error) {
+        output.innerHTML = `<div class="result error"><h3>❌ 刷新失败</h3><p>${error.message}</p></div>`;
+      }
+    }
+  </script>
+</body>
+</html>
