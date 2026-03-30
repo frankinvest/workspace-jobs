@@ -4,5 +4,9 @@
   "framework": "astro",
   "rewrites": [
     { "source": "/(.*)", "destination": "/index.html" }
-  ]
+  ],
+  "env": {
+    "DATA_SOURCE": "wind",
+    "UPDATE_INTERVAL": "43200000"
+  }
 }

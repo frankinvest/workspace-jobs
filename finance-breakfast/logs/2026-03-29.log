@@ -1,0 +1,44 @@
+2026-03-29 09:00 - 财经早餐抓取任务执行日志
+=====================================
+
+执行时间: 2026-03-29 09:00 (Asia/Shanghai)
+任务ID: JJC-20260325-005
+状态: FAILED (需要重新登录)
+
+执行步骤:
+---------
+1. [OK] 浏览器启动，检查小红圈网站
+2. [OK] 尝试访问 red-ring.cn (备用域名)
+3. [OK] 导航到圈子页面 (红运Dang投, group ID: 27593)
+4. [FAIL] 尝试访问帖子详情页 - 要求登录
+5. [FAIL] 检查浏览器 Cookie 状态 - Session 已过期/无效
+
+失败原因:
+---------
+浏览器中 red-ring.cn 的会话 Cookie 已过期或失效。
+- Cookie 存在但解密后无效
+- 页面显示"请登录"提示
+- 无法访问付费圈子内容
+
+尝试的解决方案:
+--------------
+- 直接访问 xiaohongquan.com: ERR_CONNECTION_CLOSED (域名被墙)
+- 通过 red-ring.cn 备用域名访问: 需要登录
+- 检查 OpenClaw Chrome profile cookies: 加密存储，会话已失效
+- 尝试 RPC API: 返回 error="get from image source failed: E502"
+
+结论:
+-----
+需要手动重新登录小红圈以刷新会话 Cookie。
+建议操作:
+1. 手动在 Chrome 中登录 red-ring.cn
+2. 确保保存登录状态
+3. 下次 cron 执行时 Cookie 将生效
+
+通知状态:
+---------
+[OK] 飞书通知已发送至 ou_8fab5d81798938a771ad4be7bb04593c (2026-03-29 09:08)
+
+附注:
+-----
+同时更新了 cron job (ID: 9919ed7b) 的 delivery to ID 从 ou_0fe34094dd80896b99db5f0f2463b965 修正为 ou_8fab5d81798938a771ad4be7bb04593c（cross-app ID 问题）

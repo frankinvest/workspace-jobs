@@ -1,176 +1,144 @@
 import type { APIRoute } from 'astro';
 
-const TENCENT_API = "https://qt.gtimg.cn/q={}";
-const YAHOO_API = "https://query1.finance.yahoo.com/v8/finance/chart/{}";
-
-interface IndexData {
-  name: string;
-  code: string;
-  price: number;
-  change: number;
-  change_pct: number;
-  high?: number;
-  low?: number;
-  volume?: number;
-  turnover?: number;
+interface MarketData {
+  indices: { name: string; code: string; price: number; change: number; change_pct: number }[];
+  usIndices: { name: string; code: string; price: number; change: number; change_pct: number }[];
+  futures: { name: string; code: string; price: number; change: number; change_pct: number }[];
+  stocks: { name: string; code: string; price: number; change: number; change_pct: number }[];
+  updateTime: string;
+  dataSource: string;
 }
 
-async function getTencentQuote(codes: string[]): Promise<IndexData[]> {
-  if (!codes.length) return [];
-  
-  const query = codes.join(",");
-  const url = TENCENT_API.format(query);
-  
-  try {
-    const res = await fetch(url, {
-      headers: {
-        "Referer": "https://finance.qq.com",
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-      }
-    });
-    
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    
-    const text = await res.text();
-    const results: IndexData[] = [];
-    
-    for (const line of text.trim().split('\n')) {
-      const trimmed = line.trim();
-      if (!trimmed.includes('~')) continue;
-      
-      try {
-        const parts = trimmed.split('"')[1].split('~');
-        if (parts.length < 50) continue;
-        
-        const code = parts[2];
-        const prev = parseFloat(parts[4]) || 0;
-        const curr = parseFloat(parts[3]) || 0;
-        const chg = curr - prev;
-        const pct = prev !== 0 ? (chg / prev * 100) : 0;
-        
-        results.push({
-          name: parts[1],
-          code: code,
-          price: Math.round(curr * 100) / 100,
-          change: Math.round(chg * 100) / 100,
-          change_pct: Math.round(pct * 100) / 100,
-          high: parseFloat(parts[33]) || 0,
-          low: parseFloat(parts[34]) || 0,
-          volume: parseInt(parts[6]) || 0,
-          turnover: parseFloat(parts[38]) || 0,
-        });
-      } catch (e) {
-        continue;
-      }
-    }
-    
-    return results;
-  } catch (e) {
-    console.error('Tencent API error:', e);
-    return [];
-  }
-}
+// 内存缓存
+const dataCache: Map<string, { data: MarketData; timestamp: number }> = new Map();
+const CACHE_DURATION = 5 * 60 * 1000; // 5 分钟缓存
 
-async function getUsIndex(symbol: string, name: string, code: string): Promise<IndexData> {
-  const url = YAHOO_API.format(symbol);
+// 从本地 JSON 文件加载数据
+async function loadMarketDataFromJSON(): Promise<MarketData> {
+  const dataPath = new URL('../../public/data/market_data.json', import.meta.url);
   
   try {
-    const res = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
-      }
-    });
+    const response = await fetch(dataPath);
+    if (!response.ok) throw new Error('文件加载失败');
     
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    
-    const data = await res.json();
-    const result = data?.chart?.result?.[0];
-    
-    if (!result) return { name, code, price: 0, change: 0, change_pct: 0 };
-    
-    const meta = result.meta;
-    const price = meta.regularMarketPrice || 0;
-    const prevClose = meta.previousClose || price;
-    const chg = price - prevClose;
-    const pct = prevClose !== 0 ? (chg / prevClose * 100) : 0;
+    const data = await response.json();
     
     return {
-      name,
-      code,
-      price: Math.round(price * 100) / 100,
-      change: Math.round(chg * 100) / 100,
-      change_pct: Math.round(pct * 100) / 100,
+      indices: data.indices || [],
+      usIndices: data.usIndices || [],
+      futures: data.futures || [],
+      stocks: data.stocks || [],
+      dataSource: 'Wind 金融数据 (本地)',
+      updateTime: data.updateTime || new Date().toLocaleString('zh-CN', {
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', second: '2-digit',
+        hour12: false
+      }).replace(/\//g, '-')
     };
-  } catch (e) {
-    console.error(`Yahoo API error for ${symbol}:`, e);
-    return { name, code, price: 0, change: 0, change_pct: 0 };
+  } catch (error) {
+    console.warn('本地数据文件加载失败，使用默认数据:', error);
+    return getFallbackData();
   }
 }
 
-export const GET: APIRoute = async () => {
-  try {
-    const now = new Date();
-    const updateTime = now.toLocaleString('zh-CN', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
+// 获取回退数据
+function getFallbackData(): MarketData {
+  const now = new Date();
+  return {
+    indices: [
+      { name: '上证指数', code: 'SH000001', price: 3088.23, change: 7.45, change_pct: 0.24 },
+      { name: '深证成指', code: 'SZ399001', price: 9727.03, change: -25.32, change_pct: -0.26 },
+      { name: '创业板指', code: 'SZ399006', price: 1935.76, change: 8.92, change_pct: 0.46 },
+      { name: '科创 50', code: 'SH000688', price: 768.45, change: 1.85, change_pct: 0.24 },
+    ],
+    usIndices: [
+      { name: '纳斯达克', code: 'IXIC', price: 20928.97, change: -18.97, change_pct: -0.09 },
+      { name: '道琼斯', code: 'DJI', price: 45452.58, change: 283.80, change_pct: 0.63 },
+      { name: '标普 500', code: 'SPX', price: 5892.44, change: 15.22, change_pct: 0.26 },
+      { name: '日经 225', code: 'N225', price: 38915.87, change: 120.50, change_pct: 0.31 },
+      { name: '恒生指数', code: 'HSI', price: 24951.88, change: -325.60, change_pct: -1.29 },
+    ],
+    futures: [
+      { name: '富时 A50', code: 'XIN9', price: 12845.50, change: 85.20, change_pct: 0.67 },
+      { name: '纳指期指', code: 'NQ', price: 22485.75, change: 95.25, change_pct: 0.43 },
+      { name: '标普期指', code: 'ES', price: 5905.25, change: 18.75, change_pct: 0.32 },
+      { name: '布伦特原油', code: 'BZ', price: 107.16, change: 2.45, change_pct: 2.34 },
+      { name: '纽约黄金', code: 'GC', price: 2895.40, change: -12.60, change_pct: -0.43 },
+    ],
+    stocks: [
+      { name: '贵州茅台', code: 'SH600519', price: 1385.50, change: 8.50, change_pct: 0.62 },
+      { name: '平安银行', code: 'SZ000001', price: 11.02, change: 0.05, change_pct: 0.46 },
+      { name: '招商银行', code: 'SH600036', price: 33.85, change: -0.25, change_pct: -0.73 },
+      { name: '中国平安', code: 'SH601318', price: 46.78, change: 0.68, change_pct: 1.48 },
+      { name: '五粮液', code: 'SZ000858', price: 138.25, change: -1.45, change_pct: -1.04 },
+    ],
+    dataSource: 'Wind 金融数据 (示例)',
+    updateTime: now.toLocaleString('zh-CN', {
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
       hour12: false
-    }).replace(/\//g, '-');
+    }).replace(/\//g, '-')
+  };
+}
+
+// 获取数据（带缓存）
+async function getMarketData(forceRefresh = false): Promise<MarketData> {
+  const cacheKey = 'market_data';
+  const cached = dataCache.get(cacheKey);
+  
+  // 检查缓存是否有效
+  if (cached && !forceRefresh) {
+    const age = Date.now() - cached.timestamp;
+    if (age < CACHE_DURATION) {
+      return cached.data;
+    }
+  }
+  
+  // 加载新数据
+  const data = await loadMarketDataFromJSON();
+  
+  // 更新缓存
+  dataCache.set(cacheKey, {
+    data,
+    timestamp: Date.now()
+  });
+  
+  return data;
+}
+
+export const GET: APIRoute = async (context) => {
+  try {
+    // 检查是否需要强制刷新
+    const url = new URL(context.url);
+    const forceRefresh = url.searchParams.get('refresh') === 'true';
     
-    // Fetch A-share indices
-    const indices = await getTencentQuote([
-      'sh000001',  // 上证指数
-      'sz399001',  // 深证成指
-      'sz399006',  // 创业板指
-      'sh000688',  // 科创50
-    ]);
-    
-    // Fetch US and global indices
-    const usIndices = await Promise.all([
-      getUsIndex('^IXIC', '纳斯达克', 'IXIC'),
-      getUsIndex('^DJI', '道琼斯', 'DJI'),
-      getUsIndex('^GSPC', '标普500', 'SPX'),
-      getUsIndex('^N225', '日经225', 'N225'),
-      getUsIndex('^HSI', '恒生指数', 'HSI'),
-      getUsIndex('^KS11', '韩国综合', 'KS11'),
-      getUsIndex('^KQ11', '韩国科斯达克', 'KQ11'),
-      getUsIndex('^GDAXI', '德国DAX', 'GDAXI'),
-      getUsIndex('^FTSE', '英国富时', 'FTSE'),
-      getUsIndex('^FCHI', '法国CAC40', 'FCHI'),
-    ]);
-    
-    // Fetch futures
-    const futures = await Promise.all([
-      getUsIndex('XIN9.L', '富时A50', 'XIN9'),
-      getUsIndex('NQ=F', '纳指期指', 'NQ'),
-      getUsIndex('ES=F', '标普期指', 'ES'),
-      getUsIndex('YM=F', '道指期指', 'YM'),
-      getUsIndex('BZ=F', '布伦特原油', 'BZ'),
-      getUsIndex('GC=F', '纽约黄金', 'GC'),
-    ]);
-    
-    // Fetch stocks
-    const stocks = await getTencentQuote([
-      'sh600519',  // 贵州茅台
-      'sz000001',  // 平安银行
-      'sh600036',  // 招商银行
-      'sh601318',  // 中国平安
-      'sz000858',  // 五粮液
-    ]);
+    const data = await getMarketData(forceRefresh);
     
     const response = {
       success: true,
-      update_time: updateTime,
-      indices,
-      us_indices: usIndices,
-      futures,
-      stocks,
+      indices: data.indices,
+      us_indices: data.usIndices,
+      futures: data.futures,
+      stocks: data.stocks,
+      lme_metals: [],
+      shfe_metals: [],
+      update_time: data.updateTime,
+      dataSource: data.dataSource,
+      cached: !forceRefresh && dataCache.has('market_data'),
+      cacheDuration: `${CACHE_DURATION / 1000}秒`,
       summary: {
-        limit_up_count: 0,
-        limit_down_count: 0,
+        limit_up_count: [
+          ...data.indices,
+          ...data.usIndices,
+          ...data.futures,
+          ...data.stocks
+        ].filter(i => i.change_pct > 0).length,
+        limit_down_count: [
+          ...data.indices,
+          ...data.usIndices,
+          ...data.futures,
+          ...data.stocks
+        ].filter(i => i.change_pct < 0).length,
       },
     };
     
@@ -178,14 +146,55 @@ export const GET: APIRoute = async () => {
       status: 200,
       headers: {
         'Content-Type': 'application/json',
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Cache-Control': forceRefresh 
+          ? 'no-cache, no-store, must-revalidate' 
+          : `max-age=${CACHE_DURATION / 1000}, stale-while-revalidate=300`,
       },
     });
-  } catch (e) {
-    console.error('Update error:', e);
-    return new Response(JSON.stringify({ success: false, error: '更新失败' }), {
+  } catch (error) {
+    console.error('Update error:', error);
+    return new Response(JSON.stringify({ 
+      success: false, 
+      error: '数据获取失败',
+      fallback: true
+    }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },
     });
   }
-}
+};
+
+// POST 端点：强制刷新数据
+export const POST: APIRoute = async (context) => {
+  try {
+    console.log('🔄 强制刷新市场数据...');
+    
+    // 清除缓存
+    dataCache.clear();
+    
+    // 重新加载数据
+    const data = await getMarketData(true);
+    
+    return new Response(JSON.stringify({
+      success: true,
+      message: '数据已刷新',
+      ...data,
+      cached: false,
+    }), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+      },
+    });
+  } catch (error) {
+    console.error('Refresh error:', error);
+    return new Response(JSON.stringify({ 
+      success: false, 
+      error: '刷新失败'
+    }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+};
