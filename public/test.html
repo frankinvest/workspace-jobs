@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>财经早餐 - 测试</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5; }
+    .status { padding: 10px; border-radius: 5px; margin: 10px 0; }
+    .success { background: #d4edda; color: #155724; }
+    .error { background: #f8d7da; color: #721c24; }
+    button { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; margin: 5px; }
+    button:hover { background: #0056b3; }
+    pre { background: white; padding: 15px; border-radius: 5px; overflow-x: auto; }
+  </style>
+</head>
+<body>
+  <h1>🧪 财经早餐 - API 测试</h1>
+  <p>测试市场数据 API 是否正常工作</p>
+  
+  <button onclick="testAPI()">测试 API</button>
+  <button onclick="testAPI(true)">强制刷新</button>
+  <button onclick="location.reload()">刷新页面</button>
+  
+  <div id="result"></div>
+
+  <script>
+    async function testAPI(forceRefresh = false) {
+      const resultDiv = document.getElementById('result');
+      resultDiv.innerHTML = '<div class="status">正在测试...</div>';
+      
+      const url = `https://workspace-jobs.vercel.app/api/update-market?refresh=${forceRefresh}`;
+      
+      try {
+        const response = await fetch(url);
+        const data = await response.json();
+        
+        if (data.success) {
+          resultDiv.innerHTML = `
+            <div class="status success">
+              <h2>✅ API 测试成功！</h2>
+              <p><strong>更新时间：</strong>${data.update_time || '未知'}</p>
+              <p><strong>数据源：</strong>${data.dataSource || '未知'}</p>
+              <p><strong>缓存状态：</strong>${data.cached ? '已缓存' : '未缓存'}</p>
+              <hr>
+              <h3>A 股指数</h3>
+              <pre>${JSON.stringify(data.indices?.slice(0, 3), null, 2)}</pre>
+              <h3>外盘指数</h3>
+              <pre>${JSON.stringify(data.us_indices?.slice(0, 3), null, 2)}</pre>
+            </div>
+          `;
+        } else {
+          resultDiv.innerHTML = `<div class="status error"><h2>❌ API 错误</h2><p>${data.error || '未知错误'}</p></div>`;
+        }
+      } catch (error) {
+        resultDiv.innerHTML = `
+          <div class="status error">
+            <h2>❌ API 请求失败</h2>
+            <p><strong>错误:</strong> ${error.message}</p>
+            <p>可能是：API 端点未部署 / 网络问题 / Vercel 还在构建中</p>
+            <p><strong>提示:</strong> 请等待 Vercel 部署完成后再试</p>
+          </div>
+        `;
+      }
+    }
+    
+    // 页面加载时自动测试
+    window.addEventListener('load', () => {
+      console.log('页面已加载');
+      testAPI();
+    });
+  </script>
+</body>
+</html>
