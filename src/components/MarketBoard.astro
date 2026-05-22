@@ -183,15 +183,19 @@ const { initialData }: { initialData?: MarketData } = Astro.props;
       
       items.forEach(item => {
         const card = document.createElement('div');
-        card.className = `index-card ${getTrendClass(item.change)}`;
         card.dataset.code = item.code;
+        const isUp = item.change > 0;
+        const isDown = item.change < 0;
+        const trendColor = isUp ? 'color-up' : isDown ? 'color-down' : 'color-flat';
+        const trendClass = getTrendClass(item.change);
+        card.className = `index-card ${trendClass} ${trendColor}`;
         card.innerHTML = `
           <div class="index-name">${item.name}</div>
           <div class="index-price">${formatPrice(item.price, item.name)}</div>
           <div class="index-change">
-            <span class="trend-icon">${item.change > 0 ? '↑' : item.change < 0 ? '↓' : '→'}</span>
+            <span class="trend-icon">${isUp ? '↑' : isDown ? '↓' : '→'}</span>
             <span class="change-value">${Math.abs(item.change).toFixed(2)}</span>
-            <span class="change-pct">(${item.change_pct > 0 ? '+' : ''}${item.change_pct.toFixed(2)}%)</span>
+            <span class="change-pct">(${isUp ? '+' : ''}${item.change_pct.toFixed(2)}%)</span>
           </div>
         `;
         grid.appendChild(card);
@@ -452,6 +456,23 @@ const { initialData }: { initialData?: MarketData } = Astro.props;
 
   .change-pct {
     opacity: 0.9;
+  }
+
+  /* ── 红涨绿跌数字染色 ── */
+  .color-up,
+  .color-up .index-price,
+  .color-up .index-change {
+    color: var(--color-danger);
+  }
+  .color-down,
+  .color-down .index-price,
+  .color-down .index-change {
+    color: var(--color-success);
+  }
+  .color-flat,
+  .color-flat .index-price,
+  .color-flat .index-change {
+    color: var(--color-text-muted);
   }
 
   /* 更新按钮样式 */
