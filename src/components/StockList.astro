@@ -45,16 +45,20 @@
 
       stocks.forEach(stock => {
         const row = document.createElement('div');
-        row.className = `table-row ${getTrendClass(stock.change)}`;
+        const isUp = stock.change > 0;
+        const isDown = stock.change < 0;
+        const trendColor = isUp ? 'color-up' : isDown ? 'color-down' : 'color-flat';
+        const trendClass = getTrendClass(stock.change);
+        row.className = `table-row ${trendClass} ${trendColor}`;
         row.innerHTML = `
-          <span class="stock-name">
+          <div class="stock-name">
             <span class="name-text">${stock.name}</span>
             <span class="stock-code">${stock.code}</span>
-          </span>
-          <span class="stock-price">${formatPrice(stock.price)}</span>
-          <span class="stock-change">
-            ${stock.change_pct > 0 ? '+' : ''}${stock.change_pct.toFixed(2)}%
-          </span>
+          </div>
+          <div class="stock-price">${formatPrice(stock.price)}</div>
+          <div class="stock-change">
+            ${isUp ? '+' : ''}${stock.change_pct.toFixed(2)}%
+          </div>
         `;
         table.appendChild(row);
       });
@@ -119,8 +123,8 @@
 
   .table-head {
     display: grid;
-    grid-template-columns: 2fr 1.2fr 1fr;
-    gap: 8px;
+    grid-template-columns: 1fr auto auto;
+    gap: 12px;
     padding: 8px 12px;
     font-size: 11px;
     color: var(--color-text-muted);
@@ -128,10 +132,14 @@
     letter-spacing: 0.05em;
   }
 
+  .table-head span:not(:first-child) {
+    text-align: right;
+  }
+
   .table-row {
     display: grid;
-    grid-template-columns: 2fr 1.2fr 1fr;
-    gap: 8px;
+    grid-template-columns: 1fr auto auto;
+    gap: 12px;
     padding: 10px 12px;
     background: var(--color-bg);
     border-radius: 6px;
@@ -155,11 +163,15 @@
     display: flex;
     flex-direction: column;
     gap: 2px;
+    min-width: 0;
   }
 
   .name-text {
     font-weight: 500;
     color: var(--color-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .stock-code {
@@ -170,18 +182,30 @@
   .stock-price {
     font-family: var(--font-serif);
     font-weight: 600;
-    color: var(--color-text);
+    text-align: right;
+    white-space: nowrap;
   }
 
-  .trend-up .stock-change {
+  .stock-change {
+    text-align: right;
+    white-space: nowrap;
+    font-weight: 500;
+  }
+
+  /* ── 红涨绿跌染色 ── */
+  .color-up,
+  .color-up .stock-price,
+  .color-up .stock-change {
     color: var(--color-danger);
   }
-
-  .trend-down .stock-change {
+  .color-down,
+  .color-down .stock-price,
+  .color-down .stock-change {
     color: var(--color-success);
   }
-
-  .trend-flat .stock-change {
+  .color-flat,
+  .color-flat .stock-price,
+  .color-flat .stock-change {
     color: var(--color-text-muted);
   }
 
@@ -191,7 +215,7 @@
     }
 
     .table-row {
-      grid-template-columns: 1.5fr 1fr 1fr;
+      grid-template-columns: 1fr auto auto;
     }
   }
 </style>
