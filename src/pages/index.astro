@@ -79,12 +79,21 @@ const articles = sortedDocs.map((doc, idx) => {
     tagTextColor = 'var(--color-success)';
   }
   
-  // Extract title from filename
+  // Extract title from filename — clean up JJC 前缀和冗余数字
   let title = doc.data.title || '';
   if (!title) {
-    const titleMatch = doc.id.match(/-\d{8}-(.+)\.md$/);
-    title = titleMatch ? titleMatch[1] : doc.id.replace('.md', '');
-    title = title.replace(/-/g, ' ');
+    // 去掉 .md 后缀
+    let raw = doc.id.replace(/\.md$/, '');
+    // 去掉 JJC-YYYYMMDD-NNN- 前缀（通用模式）
+    raw = raw.replace(/^jjc-\d{8}-\d+[-_]*/i, '');
+    // 再次去掉任何残留的日期+数字前缀（如 20260330-001-）
+    raw = raw.replace(/^\d{8}-\d+[-_]*/, '');
+    // 把剩余的横杠替换成空格
+    title = raw.replace(/-/g, ' ').trim();
+    // 如果标题仍然只是纯数字或太短，使用原文件 ID
+    if (!title || /^\d+$/.test(title)) {
+      title = doc.id.replace('.md', '').replace(/-/g, ' ');
+    }
   }
   
   return {
@@ -104,12 +113,8 @@ const groupedArticles = {
   '财经早餐': articles.filter(a => a.tag === '财经早餐'),
 };
 
-// Stats（市场数据由 MarketBoard/StockList 客户端 JS 动态加载，SSR 只负责骨架）
-const stats = [
-  { label: '财经早餐', value: groupedArticles['财经早餐'].length },
-  { label: '涨停', value: '—', suffix: '只' },
-  { label: '跌停', value: '—', suffix: '只' },
-];
+// 文章数量统计（仅用于信息展示）
+const articleCount = groupedArticles['财经早餐'].length;
 ---
 
 <html lang="zh-CN">
@@ -168,15 +173,10 @@ const stats = [
           <span>每日更新</span>
         </time>
         
-        <!-- Stats -->
-        <div class="stats-grid">
-          {stats.map((stat) => (
-            <div class="stat-item">
-              <span class="stat-value">{stat.value}{stat.suffix || ''}</span>
-              <span class="stat-label">{stat.label}</span>
-            </div>
-          ))}
-        </div>
+        <!-- 文章数量 -->
+        {articleCount > 0 && (
+          <p class="hero-count">{articleCount} 篇财经早餐</p>
+        )}
       </header>
 
       <!-- Market Data Section（数据由 MarketBoard/StockList 客户端 JS 动态加载） -->
@@ -320,38 +320,17 @@ const stats = [
     color: var(--color-text-muted);
     animation: fadeInUp 0.5s ease-out 0.25s both;
   }
-  
+
   .hero-date-divider {
     opacity: 0.5;
   }
-  
-  /* Stats */
-  .stats-grid {
-    display: flex;
-    justify-content: center;
-    gap: var(--space-8);
-    margin-top: var(--space-8);
-    animation: fadeInUp 0.5s ease-out 0.3s both;
-  }
-  
-  .stat-item {
-    text-align: center;
-  }
-  
-  .stat-value {
-    display: block;
-    font-family: var(--font-serif);
-    font-size: var(--font-size-3xl);
-    font-weight: var(--font-weight-bold);
-    color: var(--color-accent);
-    line-height: 1;
-  }
-  
-  .stat-label {
-    display: block;
-    font-size: var(--font-size-xs);
+
+  /* 文章数量 */
+  .hero-count {
+    font-size: var(--font-size-sm);
     color: var(--color-text-muted);
-    margin-top: var(--space-1);
+    margin-top: var(--space-5);
+    animation: fadeInUp 0.5s ease-out 0.3s both;
     letter-spacing: 0.05em;
   }
   
@@ -408,18 +387,10 @@ const stats = [
       padding-bottom: var(--space-12);
       margin-bottom: var(--space-10);
     }
-    
+
     .hero-logo svg {
       width: 40px;
       height: 40px;
-    }
-    
-    .stats-grid {
-      gap: var(--space-6);
-    }
-    
-    .stat-value {
-      font-size: var(--font-size-2xl);
     }
   }
 </style>
