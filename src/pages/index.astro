@@ -104,11 +104,11 @@ const groupedArticles = {
   '财经早餐': articles.filter(a => a.tag === '财经早餐'),
 };
 
-// Stats
+// Stats（市场数据由 MarketBoard/StockList 客户端 JS 动态加载，SSR 只负责骨架）
 const stats = [
   { label: '财经早餐', value: groupedArticles['财经早餐'].length },
-  { label: '涨停', value: summary?.limit_up_count || 0, suffix: '只' },
-  { label: '跌停', value: summary?.limit_down_count || 0, suffix: '只' },
+  { label: '涨停', value: '—', suffix: '只' },
+  { label: '跌停', value: '—', suffix: '只' },
 ];
 ---
 
@@ -179,10 +179,10 @@ const stats = [
         </div>
       </header>
 
-      <!-- Market Data Section -->
+      <!-- Market Data Section（数据由 MarketBoard/StockList 客户端 JS 动态加载） -->
       <section class="market-section">
-        <MarketBoard indices={indices} usIndices={us_indices} futures={futures} lmeMetals={lme_metals} shfeMetals={shfe_metals} updateTime={update_time} />
-        <StockList stocks={stocks} />
+        <MarketBoard />
+        <StockList />
       </section>
 
       <!-- Sections -->
