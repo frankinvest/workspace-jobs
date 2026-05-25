@@ -88,7 +88,7 @@
   }
 </script>
 
-<style>
+<style is:global>
   .stock-list {
     background: var(--color-bg-elevated);
     border: 1px solid var(--color-border);
@@ -123,7 +123,7 @@
 
   .table-head {
     display: grid;
-    grid-template-columns: 1fr auto auto;
+    grid-template-columns: 1fr 90px 80px;
     gap: 12px;
     padding: 8px 12px;
     font-size: 11px;
@@ -138,7 +138,7 @@
 
   .table-row {
     display: grid;
-    grid-template-columns: 1fr auto auto;
+    grid-template-columns: 1fr 90px 80px;
     gap: 12px;
     padding: 10px 12px;
     background: var(--color-bg);
@@ -215,7 +215,7 @@
     }
 
     .table-row {
-      grid-template-columns: 1fr auto auto;
+      grid-template-columns: 1fr 90px 80px;
     }
   }
 </style>

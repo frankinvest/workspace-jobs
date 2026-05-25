@@ -56,6 +56,9 @@ const today = new Date().toLocaleDateString('zh-CN', {
   weekday: 'long' 
 });
 
+// 构建时间戳（用于验证部署状态）
+const buildTime = new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false });
+
 // Process articles
 const articles = sortedDocs.map((doc, idx) => {
   const dateMatch = doc.id.match(/(\d{8})/);
@@ -204,6 +207,7 @@ const articleCount = groupedArticles['财经早餐'].length;
       <!-- Footer -->
       <footer class="footer">
         <p>财经早餐 · 由 <a href="https://astro.build" target="_blank" rel="noopener">Astro</a> + <a href="https://vercel.com" target="_blank" rel="noopener">Vercel</a> 驱动</p>
+        <p class="build-info">构建版本: {buildTime}</p>
       </footer>
     </main>
   </body>
@@ -379,6 +383,13 @@ const articleCount = groupedArticles['财经早餐'].length;
   
   .footer a:hover {
     opacity: 0.8;
+  }
+
+  .build-info {
+    font-size: var(--font-size-xs);
+    color: var(--color-text-muted);
+    margin-top: var(--space-2);
+    letter-spacing: 0.05em;
   }
   
   /* Responsive */
