@@ -182,25 +182,30 @@ const articleCount = groupedArticles['财经早餐'].length;
         )}
       </header>
 
-      <!-- Market Data Section（数据由 MarketBoard/StockList 客户端 JS 动态加载） -->
-      <section class="market-section">
-        <MarketBoard />
-        <StockList />
-      </section>
+      <!-- 主内容区：左文右数双栏布局 -->
+      <div class="dashboard-layout">
 
-      <!-- Sections -->
-      <div class="sections">
-        {groupedArticles['财经早餐'].length > 0 && (
-          <section class="section">
-            <SectionHeader title="财经早餐" icon="chart" count={groupedArticles['财经早餐'].length} />
-            <div class="article-list">
-              {groupedArticles['财经早餐'].map((article) => (
-                <ArticleCard {...article} />
-              ))}
-            </div>
-          </section>
-        )}
+        {/* 左侧主栏：文章列表（核心内容） */}
+        <div class="main-column">
+          <div class="sections">
+            {groupedArticles['财经早餐'].length > 0 && (
+              <section class="section">
+                <SectionHeader title="财经早餐" icon="chart" count={groupedArticles['财经早餐'].length} />
+                <div class="article-list">
+                  {groupedArticles['财经早餐'].map((article) => (
+                    <ArticleCard {...article} />
+                  ))}
+                </div>
+              </section>
+            )}
+          </div>
+        </div>
 
+        {/* 右侧边栏：市场行情（盯盘挂件） */}
+        <aside class="sidebar">
+          <MarketBoard />
+          <StockList />
+        </aside>
 
       </div>
 
@@ -278,7 +283,8 @@ const articleCount = groupedArticles['财经早餐'].length;
   }
   
   .hero-greeting {
-    display: inline-flex;
+    display: flex;
+    justify-content: center;
     align-items: center;
     gap: var(--space-2);
     font-size: var(--font-size-sm);
@@ -354,10 +360,41 @@ const articleCount = groupedArticles['财经早餐'].length;
     flex-direction: column;
   }
 
-  /* Market Section */
+  /* ── 双栏布局 ── */
+  .dashboard-layout {
+    display: grid;
+    grid-template-columns: 1fr 340px;
+    gap: 32px;
+    align-items: start;
+  }
+
+  .main-column {
+    min-width: 0;
+  }
+
+  .sidebar {
+    position: sticky;
+    top: var(--space-6);
+  }
+
+  /* 移动端优雅降级：单栏显示 */
+  @media (max-width: 860px) {
+    .dashboard-layout {
+      grid-template-columns: 1fr;
+    }
+
+    .sidebar {
+      order: 2;
+    }
+
+    .main-column {
+      order: 1;
+    }
+  }
+
+  /* Market Section — 侧边栏内不再需要 margin-bottom */
   .market-section {
-    margin-bottom: var(--space-8);
-    animation: fadeInUp 0.5s ease-out 0.35s both;
+    margin-bottom: 0;
   }
 
   .data-update-time {
