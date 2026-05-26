@@ -23,7 +23,28 @@ const { lme_metals, shfe_metals, update_time } = marketData;
 // Get all docs and sort by date
 const allDocs = await getCollection('docs');
 
-const sortedDocs = allDocs.sort((a, b) => {
+// 用 import.meta.glob 扫描 docs/ 目录下的 .html 原生文件（build time，SSR 安全）
+const htmlGlob = import.meta.glob<string>('/docs/*.html', {
+  query: '?raw',
+  import: 'default',
+  eager: true,
+});
+
+// 构建与 allDocs 结构兼容的 HTML 条目
+const htmlEntries = Object.keys(htmlGlob).map(rawPath => {
+  const fname = rawPath.split('/').pop() || '';
+  const dateStr = fname.match(/(\d{8})/)?.[1] || '';
+  const y = dateStr.slice(0, 4), m = dateStr.slice(4, 6), d = dateStr.slice(6, 8);
+  return {
+    id: fname,
+    data: { title: '财经早餐 ' + (y && m && d ? `${y}-${m}-${d}` : dateStr) },
+    body: '',
+    collection: 'docs',
+    isRawHtml: true,
+  };
+});
+
+const sortedDocs = [...allDocs, ...htmlEntries].sort((a, b) => {
   const dateA = a.id.match(/(\d{8})/)?.[1] || '';
   const dateB = b.id.match(/(\d{8})/)?.[1] || '';
   return dateB.localeCompare(dateA);
@@ -68,7 +89,7 @@ const articles = sortedDocs.map((doc, idx) => {
   let tagColor = 'var(--color-bg-elevated)';
   let tagTextColor = 'var(--color-text-muted)';
   
-  if (doc.id.includes('财经早餐分析') || doc.id.includes('年报') || doc.id.includes('原文')) {
+  if (doc.id.includes('财经早餐分析') || doc.id.includes('年报') || doc.id.includes('原文') || doc.id.endsWith('.html')) {
     tag = '财经早餐';
     tagColor = 'var(--color-accent-dim)';
     tagTextColor = 'var(--color-accent)';

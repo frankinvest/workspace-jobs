@@ -1,62 +1,55 @@
 ---
 import { getCollection, render } from 'astro:content';
 import ArticleLayout from '../../layouts/ArticleLayout.astro';
-import fs from 'node:fs';
-import path from 'node:path';
 
 export const prerender = true;
 
 export async function getStaticPaths() {
-  const docs = await getCollection('docs');
+  // import.meta.glob 在 getStaticPaths 内运行，build time 执行，SSR 安全
+  const htmlGlob = import.meta.glob<string>('/docs/*.html', {
+    query: '?raw',
+    import: 'default',
+    eager: true,
+  });
 
-  // 扫描 docs/ 目录下的 .html 文件（不走 content collection）
-  const docsDir = path.join(process.cwd(), 'docs');
-  let htmlFiles: string[] = [];
-  try {
-    htmlFiles = fs.readdirSync(docsDir).filter(f => f.endsWith('.html'));
-  } catch (e) {
-    console.error('[getStaticPaths] readdir error:', e);
+  const htmlFilesMap: Record<string, string> = {};
+  for (const [path, content] of Object.entries(htmlGlob)) {
+    const filename = path.split('/').pop() || '';
+    htmlFilesMap[filename] = content as string;
   }
+
+  const docs = await getCollection('docs');
+  const htmlFilenames = Object.keys(htmlFilesMap);
 
   return [
     ...docs.map((entry) => ({
       params: { id: entry.id },
-      props: { entry, isRawHtml: false, rawHtmlPath: '' },
+      props: { entry, isRawHtml: false, rawHtmlContent: '' },
     })),
-    ...htmlFiles.map((fname) => ({
+    ...htmlFilenames.map((fname) => ({
       params: { id: fname },
       props: {
         entry: null,
         isRawHtml: true,
-        rawHtmlPath: path.join(docsDir, fname),
+        rawHtmlContent: htmlFilesMap[fname] || '',
       },
     })),
   ];
 }
 
-const { entry, isRawHtml, rawHtmlPath } = Astro.props;
+const { entry, isRawHtml, rawHtmlContent } = Astro.props;
 
-let filename = '';
 let date = '';
 let tag = '财经早餐';
 let title = '';
-let rawHtmlContent = '';
 let Content: any = null;
 
 if (isRawHtml) {
-  filename = rawHtmlPath;
-  date = path.basename(rawHtmlPath).match(/(\d{8})/)?.[1] || '';
+  const filename = Astro.params.id || '';
+  date = filename.match(/(\d{8})/)?.[1] || '';
   title = '财经早餐 ' + date.slice(0, 4) + '-' + date.slice(4, 6) + '-' + date.slice(6, 8);
-  tag = '财经早餐';
-
-  try {
-    rawHtmlContent = fs.readFileSync(rawHtmlPath, 'utf-8');
-  } catch (e) {
-    console.error('[raw-html] read error:', e);
-    rawHtmlContent = '<p>文件读取失败</p>';
-  }
 } else {
-  filename = entry.id;
+  const filename = entry.id;
   date = filename.match(/(\d{8})/)?.[1] || '';
 
   if (filename.includes('奏折')) {
