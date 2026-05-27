@@ -128,18 +128,6 @@ def md_to_html_with_comments(md_str, title, comments):
     clean_cmt = regex.sub(r'\s*style="[^"]*"', '', cmt_html)
     return f'<div class="post">\n{clean_post}\n</div>\n<div class="cmt-wrap">\n<h2>💬 评论区</h2>\n{clean_cmt}\n</div>\n'
 
-def gh_put(path, content_b64, msg, branch="main"):
-    api = f"https://api.github.com/repos/{REPO}/contents/{path}"
-    payload = {"message": msg, "content": content_b64, "branch": branch}
-    try:
-        greq = urllib.request.Request(api + "?ref=" + branch, headers={"Authorization": "token " + TOKEN})
-        with urllib.request.urlopen(greq, timeout=8) as r:
-            payload["sha"] = json.loads(r.read()).get('sha')
-    except: pass
-    req = urllib.request.Request(api, data=json.dumps(payload).encode(), headers={"Authorization": "token " + TOKEN, "Content-Type": "application/json"}, method="PUT")
-    with urllib.request.urlopen(req, timeout=15) as r:
-        return json.loads(r.read())
-
 def build(html_file, date, output_file=None, title=None):
     date_str = date
     display_date = f"{date[:4]}-{date[4:6]}-{date[6:]}"
@@ -150,23 +138,38 @@ def build(html_file, date, output_file=None, title=None):
     post_body_html = extract_post_body(full_html)
 
     if not post_body_html.strip():
-        print("[build] \u274c \u5373\u65f6\u505c\u6b62\uff1a\u6b63\u6587\u63d0\u53d6\u4e3a\u7a7a\uff01\u89e6\u53d1\u786c\u7106\u65ad\uff0c\u62d2\u7edd\u5c06\u810f\u6570\u636e\u6df7\u5165\u7cfb\u7edf\u3002")
+        print("[build] \u274c \u537d\u65f6\u505c\u6b62\uff1a\u6b63\u6587\u63d0\u53d6\u4e3a\u7a7a\uff01\u89e6\u53d1\u786c\u7106\u65ad\u3002")
         sys.exit(1)
 
     post_images = extract_post_images(post_body_html)
     comments = extract_comments(full_html)
     print(f"[build] innerHTML: {len(full_html)} chars | body: {len(post_body_html)} chars")
+
     gh = GitHubUploader(token=TOKEN, repo=REPO)
     mapping = upload_images(post_images, date_str, gh) if post_images else {}
+
     post_md = mf.markdownify(post_body_html, heading_style="atx", link_style="inlined")
     for old_url, new_url in mapping.items(): post_md = post_md.replace(old_url, new_url)
+
     if title is None: title = f"\u8d22\u7ecf\u65e9\u9910 {display_date}"
     final_html = md_to_html_with_comments(post_md, title=title, comments=comments)
-    if output_file is None: output_file = f"caijing_{date_str}.html"
-    b64 = base64.b64encode(final_html.encode('utf-8')).decode('ascii')
-    result = gh_put(output_file, b64, f"\u53d1\u5e03 {display_date} \u8d22\u7ecf\u65e9\u9910 (SSOT build)")
-    print(f"[build] HTML \u4e0a\u4f20\u6210\u529f\u3002")
-    return {"html_file": output_file, "images": len(mapping), "comments": len(comments)}
+
+    # \u5f3a\u5236\u4fee\u6539\u4e3a .md \u540e\u7f00\uff0cAstro \u624d\u80fd\u8bc6\u522b
+    if output_file is None: output_file = f"caijing-{date_str}.md"
+
+    # \u62fc\u88c5 Astro \u5fc5\u9700\u7684 Frontmatter \u8868\u5934
+    astro_content = f"---\ntitle: '{title}'\n---\n\n{final_html}"
+
+    # \u5f3a\u5236\u5199\u5165 Astro \u672c\u5730\u76ee\u5f55
+    out_dir = "/tmp/workspace-jobs/docs"
+    os.makedirs(out_dir, exist_ok=True)
+    out_path = os.path.join(out_dir, output_file)
+
+    with open(out_path, "w", encoding="utf-8") as f:
+        f.write(astro_content)
+
+    print(f"[build] \u2705 \u6210\u529f\u5199\u5165 Astro \u672c\u5730\u76ee\u5f55: {out_path}")
+    return {"md_file": out_path, "images": len(mapping), "comments": len(comments)}
 
 def main():
     ap = argparse.ArgumentParser()
