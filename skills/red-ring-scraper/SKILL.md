@@ -42,24 +42,22 @@ description: >
 
 ## 架构图
 
-```
 User → Skill (编排器，只负责调用)
-         │
-         └── Step 1: exec build_full.py --auto-latest
-                        │
-                        ├── cdp_get_innerhtml.py --auto-latest
-                        │     ├── 导航到圈子页面
-                        │     ├── 解析所有帖子 → 定位今日财经早餐
-                        │     ├── 【熔断】今日帖子不存在 → exit 3，停止一切
-                        │     └── 提取 innerHTML → /tmp/<date>_post.html
-                        │
-                        ├── build_full.py（读取 HTML）
-                        │     ├── 上传图片 → GitHub
-                        │     ├── 渲染 HTML
-                        │     └── 触发 GitHub Pages
-                        │
-                        └── Step 2: 上报结果
-```
+ │
+ └── Step 1: exec build_full.py --auto-latest
+ │
+ ├── cdp_get_innerhtml.py --auto-latest
+ │ ├── 导航到圈子页面
+ │ ├── 解析所有帖子 → 定位今日财经早餐
+ │ ├── 【熔断】今日帖子不存在 → exit 3，停止一切
+ │ └── 提取 innerHTML → /tmp/<date>_post.html
+ │
+ ├── build_full.py（读取 HTML）
+ │ ├── 上传图片 → GitHub
+ │ ├── 渲染 HTML
+ │ └── 触发 GitHub Pages
+ │
+ └── Step 2: 上报结果
 
 ---
 
@@ -76,94 +74,6 @@ python3 /Users/frank_bot/.openclaw/workspace/shared/build_full.py \
     --auto-latest \
     --output caijing_$(date +%Y%m%d).html
 ```
-
-**参数说明**：
-| 参数 | 值 | 说明 |
-|------|-----|------|
-| `AUTO` | 固定值 | 告诉 build_full.py 启用自动找帖模式 |
-| `$(date +%Y%m%d)` | 如 `20260519` | 仅作初始占位，会被 HTML 内标题覆盖 |
-| `--auto-latest` | 标志 | 启用 cdp_get_innerhtml.py 的自动找帖+熔断 |
-| `--output` | 如 `caijing_20260519.html` | GitHub 仓库输出文件名 |
-
-**日期熔断机制**（cdp_get_innerhtml.py 内置）：
-```
-[CDP] 今日日期: 2026-05-19
-[CDP] 发现 N 条帖子
-[CDP] 今日帖子: /post/27593-2155333 （05/19 06:59）  ← 校验通过
-       ↓
-[CDP] ✅ 今日帖子: /post/27593-2155333 （05/19 06:59）
-
-# 如果今日帖子不存在：
-[CDP] ❌ 今日（2026-05-19）未找到财经早餐帖子，触发熔断！
-# exit 3，脚本终止，不执行任何文件写入或上传
-```
-
-**预期输出**：
-```
-[build] AUTO模式: python3 .../cdp_get_innerhtml.py /tmp/xxx_post.html AUTO --auto-latest ...
-[AUTO] 今日日期: 2026-05-19
-[AUTO] ✅ 今日帖子: https://www.red-ring.cn/post/27593-2155333
-[CDP] 提取完成: comments=45, scrollHeight=...
-[CDP] ✅ 45678 bytes → /tmp/20260519_post.html
-[build] innerHTML: 45678 chars | body: 32000 chars
-[build] 正文图片: 16 张 | 评论: 45 条
-  [OK] 1/16 caijing_20260519_img_01.jpg (43KB)
-  ...
-[build] 图片映射: 16/16 成功
-[build] 最终 HTML: 8923 bytes | GitHub 图片: 16 张
-[build] HTML 上传: https://raw.githubusercontent.com/...
-[build] GitHub Pages: OK https://frankinvest.github.io/caijing-daily/caijing_20260519.html
-
-✅ 完成: {"html_file": "caijing_20260519.html", "images": 16, "comments": 45, "url": "..."}
-```
-
-**熔断退出码**：
-| 退出码 | 含义 | Skill 行为 |
-|--------|------|-----------|
-| `0` | 成功 | 向用户报告 URL |
-| `3` | 日期熔断（今日帖子不存在） | 通知用户"今日帖子尚未发布"，停止 |
-| `1` | 参数错误或网络失败 | 重试一次，仍失败则报告错误 |
-
----
-
-## 手动指定日期（可选，用于补抓历史帖子）
-
-> 🛠️ **本步声明**：仅在用户明确要求补抓某日帖子时使用。日常抓取**禁止**传入旧日期。
-
-**补抓命令格式**：
-```bash
-python3 /Users/frank_bot/.openclaw/workspace/shared/build_full.py \
-    /tmp/20260513_post.html \
-    20260513 \
-    caijing_20260513.html \
-    --title "财经早餐 2026-05-13"
-```
-
-⚠️ **警告**：此模式绕过熔断，适用于补抓历史帖子。新帖抓取**必须**用 `--auto-latest`。
-
----
-
-## 特殊情况处理
-
-### CDP 连接失败（gateway 重启等）
-
-build_full.py 会自动降级：
-```
-[CDP] WebSocket 连接失败: [Errno 111] Connection refused
-       URL 可能已失效（gateway 重启后会变化）。
-       请从 browser status 中获取新的 CDP WebSocket URL。
-```
-
-**操作**：获取新 CDP URL，更新 `~/.openclaw/workspace/shared/cdp_get_innerhtml.py` 中的 `DEFAULT_WS`，或通过 `--cdp-ws-url` 参数传入。
-
-### build_full.py 识别不了 HTML 日期
-
-`_extract_date_from_html()` 使用正则 `YYYY年MM月DD日` 或 `YYYY-MM-DD` 匹配。
-若帖子标题格式变化导致识别失败，脚本会报错并退出：
-```
-[build] ❌ 无法从 HTML 推断日期，且未传入 date 参数
-```
-此时需要手动指定日期（补抓模式）并尽快更新正则。
 
 ---
 
