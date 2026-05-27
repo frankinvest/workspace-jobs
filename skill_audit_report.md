@@ -317,61 +317,41 @@ def _extract_replies(reply_html):
 
 
 def extract_comments(html):
-    """
-    从完整 innerHTML 提取所有评论（含嵌套子回复）。
-    
-    DOM 结构：
-      <div class="py-12 flex bt">           — 主评论容器
-        <span class="cup mr-5">用户名</span>
-        <span class="dark-9 fz-sm">时间</span>
-        <span class="wpw">主评论正文</span>
-        <div class="cup fz-sm ml-9 c-primary"> 回复 </div>          — 分隔符
-        <div class="bgc-body px-9 py-5">   — 子回复容器
-          <span class="c-primary cup">子回复用户名</span>
-          <span class="wpw">子回复正文</span>
-          ...
-    """
+    from bs4 import BeautifulSoup
+    soup = BeautifulSoup(html, 'html.parser')
     comments = []
-    top_pat = re.compile(
-        r'<div class="py-12 flex bt">(.*?)(?=<div class="py-12 flex bt">|<div class="py-24"></div>)',
-        re.DOTALL
-    )
-    for m in top_pat.finditer(html):
-        block = m.group(1)
+    # 寻找所有的顶级评论块
+    comment_blocks = soup.find_all('div', class_=lambda x: x and 'py-12' in x and 'flex' in x and 'bt' in x)
 
-        # 主评论用户名
-        um = re.search(r'<span class="cup mr-5">([^<]+)</span>', block)
-        if not um:
-            continue
-        user = um.group(1).strip()
+    for block in comment_blocks:
+        user_el = block.find('span', class_=lambda x: x and 'cup' in x and 'mr-5' in x)
+        if not user_el: continue
+        user = user_el.get_text(strip=True)
 
-        # 主评论时间
-        tm = re.search(r'<span class="dark-9 fz-sm">([^<]+)</span>', block)
-        time_str = tm.group(1).strip() if tm else ''
+        time_el = block.find('span', class_=lambda x: x and 'dark-9' in x and 'fz-sm' in x)
+        time_str = time_el.get_text(strip=True) if time_el else ''
 
-        # 主评论正文：截取到 " 回复 " 分隔符为止，取第一个 <span class="wpw">
-        divider_idx = block.find('"> 回复 <')
-        main_block = block[:divider_idx] if divider_idx >= 0 else block
-        wpm = re.search(r'<span class="wpw">(.+?)</span>', main_block, re.DOTALL)
-        if not wpm:
-            continue
-        text = _clean(wpm.group(1))
-        if not text:
-            continue
-        if '查看图片' in block:
-            text = '[图片] ' + text
-        if '[图片' in text and '图片评论' not in text:
+        wpws = block.find_all('span', class_='wpw')
+        if not wpws: continue
+        # 顶级评论正文通常是第一个 wpw
+        text = wpws[0].get_text(strip=True)
+        if '查看图片' in block.get_text():
             text = '[图片] ' + text
 
         item = {'user': user, 'time': time_str, 'content': text, 'replies': []}
 
-        # 子回复：提取 bgc-body px-9 py-5 片段
-        bgc_m = re.search(r'<div class="bgc-body px-9 py-5">(.*)', block, re.DOTALL)
-        if bgc_m:
-            item['replies'] = _extract_replies(bgc_m.group(1))
-
+        # 提取楼中楼回复
+        bgc = block.find('div', class_=lambda x: x and 'bgc-body' in x)
+        if bgc:
+            for reply_div in bgc.find_all('div', class_=lambda x: x and 'tools-v-trigger' in x):
+                r_user = reply_div.find('span', class_=lambda x: x and 'c-primary' in x and 'cup' in x)
+                r_text = reply_div.find('span', class_='wpw')
+                if r_user and r_text:
+                    item['replies'].append({
+                        'user': r_user.get_text(strip=True),
+                        'content': r_text.get_text(strip=True)
+                    })
         comments.append(item)
-
     return comments
 
 def extract_post_images(post_html):
@@ -385,15 +365,21 @@ def extract_post_images(post_html):
     return imgs
 
 def extract_post_body(html):
-    """
-    提取正文 HTML。
-    innerHTML 来源有两个版本：
-    1. CDP 提取（ql-view）：<div class="fzx-2 wwb ql-view ql-ring">...
-    2. 备用（legacy）：<div class="post-body ...">...
-    """
-    # CDP 版本（主要）
-    m = re.search(r'<div class="[^"]*ql-view[^"]*">(.*?)</div>\s*<!---->', html, re.DOTALL)
-    if m and len(m.group(1)) > 100:
+    from bs4 import BeautifulSoup
+    soup = BeautifulSoup(html, 'html.parser')
+    # 精准定位正文容器，绝不波及外围 UI
+    content_div = soup.find('div', class_=lambda x: x and 'ql-view' in x)
+    if not content_div:
+        content_div = soup.find('div', class_=lambda x: x and 'post-body' in x)
+
+    if content_div:
+        # 物理超度：砍掉所有可能误入正文的交互控件
+        for unwanted in content_div.find_all(['input', 'button', 'svg', 'form']):
+            unwanted.decompose()
+        # 仅返回干净的正文内部 HTML
+        return "".join(str(item) for item in content_div.contents)
+    return ''
+
         return m.group(1)
     # Legacy 版本（降级）
     m = re.search(r'<div class="post-body[^"]*">(.*?)</div>\s*<!---->', html, re.DOTALL)
