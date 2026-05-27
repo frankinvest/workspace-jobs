@@ -1,12 +1,22 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-build_full.py — SSOT 渲染引擎
-用法:
+build_full.py — SSOT 渲染引擎（v11 熔断版）
+
+新增 --auto-latest 模式：
+  传入 --auto-latest 时，脚本自动调用 cdp_get_innerhtml.py --auto-latest
+  完成"找帖→日期校验→提取"流水线，无需手动传 post_id。
+
+  重要：date 参数在 auto-latest 模式下会被 HTML 内的标题日期覆盖，
+  旧日期参数只作初始占位，脚本发现不匹配时会自动校正并报告。
+
+用法（手动模式）:
     python3 build_full.py <innerhtml_file> <date_YYYYMMDD> [output_file] [title]
-示例:
-    python3 build_full.py /tmp/may13_post.html 20260513
-    python3 build_full.py /tmp/may13_post.html 20260513 caijing_20260513.html "财经早餐 20260513"
+    python3 build_full.py /tmp/20260519_post.html 20260519 caijing_20260519.html "财经早餐 2026-05-19"
+
+用法（自动模式）:
+    python3 build_full.py AUTO <date_YYYYMMDD> --auto-latest
+    python3 build_full.py AUTO 20260519 --auto-latest --output caijing_20260519.html
 """
 import re, base64, urllib.request, json, time, sys, os, argparse, html as html_mod
 
@@ -17,7 +27,31 @@ import markdownify as mf
 from shared.network import GitHubUploader
 from shared.deploy import GitHubPagesTrigger
 
-TOKEN = "${GITHUB_TOKEN}"
+# ── GitHub Token：本地密钥库优先，环境变量降级 ─────────────────────
+_GH_TOKEN_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'auth', 'github_token.txt')
+
+def _load_github_token():
+    """优先读本地密钥库 github_token.txt；其次读环境变量。"""
+    # ① 本地密钥库
+    if os.path.exists(_GH_TOKEN_PATH):
+        with open(_GH_TOKEN_PATH, 'r', encoding='utf-8') as f:
+            token = f.read().strip()
+        if token:
+            print(f"[AUTH] OK: GitHub Token 从本地密钥库加载 ({len(token)} chars)")
+            return token
+    # ② 环境变量降级
+    token = os.environ.get("GITHUB_TOKEN", "").strip()
+    if token:
+        print("[AUTH] OK: GitHub Token 从环境变量加载")
+        return token
+    # ③ 皆无
+    raise ValueError(
+        "[AUTH] FAIL: 找不到 GitHub Token。\n"
+        f"  ① 创建密钥库: shared/auth/github_token.txt\n"
+        "  ② 或设置环境变量: export GITHUB_TOKEN=ghp_xxx"
+    )
+
+TOKEN = _load_github_token()
 REPO = "frankinvest/caijing-daily"
 REF_URL = "https://www.red-ring.cn/post/27593-2120574"
 # ── 鉴权：动态加载 Cookie（禁止硬编码） ──────────────────────────────
@@ -205,20 +239,10 @@ def upload_images(urls, date, gh):
 # ═══════════════════════════════════════════════════════════════
 
 def md_to_html_with_comments(md_str, title, comments):
-    """
-    将 Markdown（含正文 + 评论）渲染为完整 HTML
-    - 图片: ![alt](url) → <img src="url" ...>
-    - 强调: **text** → <strong>text</strong>
-    - 分割: --- → <hr>
-    """
     def img_replace(m):
         src, alt = m.group(2), m.group(1)
-        return (
-            f'<img src="{src}" alt="{alt}" '
-            f'loading="lazy" style="max-width:100%;border-radius:4px;margin:8px 0;display:block">'
-        )
+        return f'<img src="{src}" alt="{alt}" loading="lazy">'
 
-    # ⚠️ 必须用 (.+?) 非贪婪匹配，[^)]+ 会在 URL 第一个 ) 处截断
     body = re.sub(r'!\[([^\]]*)\]\((.+?)\)', img_replace, md_str)
     body = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', body)
 
@@ -233,42 +257,19 @@ def md_to_html_with_comments(md_str, title, comments):
             paras.append('<hr class="divider">')
         else:
             paras.append(f'<p>{line}</p>')
+
     post_body_html = '\n'.join(paras)
     cmt_html = _render_comments_html(comments)
 
-    CSS = """
-    body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
-         font-size:14px;max-width:720px;margin:0 auto;padding:16px;
-         background:#fafafa;line-height:1.7;color:#333}
-    .post{background:white;border-radius:8px;padding:20px;margin-bottom:16px;
-          box-shadow:0 1px 3px rgba(0,0,0,.08)}
-    .cmt-wrap{background:white;border-radius:8px;padding:20;margin-bottom:16px;
-              box-shadow:0 1px 3px rgba(0,0,0,.08)}
-    img{max-width:100%;border-radius:4px;margin:8px 0;display:block}
-    strong{color:#c00}
-    .cmt-item{background:#f9f9f9;border-radius:6px;padding:12px;margin-bottom:10px}
-    .u{color:#1a73e8;font-weight:600}
-    .t{color:#999;font-size:.8em}
-    .r{margin-top:6px;padding:6px 10px 6px 14px;background:#f5f5f5;border-radius:4px;font-size:.88em;color:#555;border-left:3px solid #bdbdbd}
-    .footer{text-align:center;color:#999;font-size:.8em;padding:20px 0;
-            border-top:1px solid #eee;margin-top:30px}
-    p{margin:.5em 0}
-    .divider{border:none;border-top:1px solid #eee;margin:24px 0}
-    h2{font-size:1.1em;margin-top:0;padding-bottom:8px;border-bottom:1px solid #eee}
-    """
+    # 清理可能混入的行内 style 属性，防止污染 Astro 全局黑金主题
+    import re as regex
+    clean_post = regex.sub(r'\s*style="[^"]*"', '', post_body_html)
+    clean_cmt = regex.sub(r'\s*style="[^"]*"', '', cmt_html)
 
+    # 仅返回纯净的 HTML 骨架片段
     return (
-        '<!DOCTYPE html>\n<html lang="zh">\n<head>\n'
-        '<meta charset="UTF-8">\n'
-        '<meta name="viewport" content="width=device-width,initial-scale=1">\n'
-        f'<title>{title}</title>\n'
-        '<style>\n' + CSS + '\n</style>\n'
-        '</head>\n<body>\n'
-        f'<div class="post">\n{post_body_html}\n</div>\n'
-        '<div class="cmt-wrap">\n<h2>💬 评论区</h2>\n' + cmt_html + '\n</div>\n'
-        '<div class="footer"><p>来源：小红圈 · 红运Dang投 · MR Dang<br>'
-        'MCP-RedRing · SSOT 架构自动生成</p></div>\n'
-        '</body>\n</html>'
+        f'<div class="post">\n{clean_post}\n</div>\n'
+        f'<div class="cmt-wrap">\n<h2>💬 评论区</h2>\n{clean_cmt}\n</div>\n'
     )
 
 def _render_comments_html(comments):
@@ -351,10 +352,11 @@ def build(html_file, date, output_file=None, title=None):
     post_images = extract_post_images(post_body_html)
     comments = extract_comments(full_html)
 
-    # 如果正文提取为空，尝试直接用完整 innerHTML（去掉 POST_START/POST_END）
+    # 如果正文提取为空，触发硬熔断，拒绝将脏数据混入系统
     if not post_body_html.strip():
-        print("[build] WARN: post-body 为空，直接使用完整 innerHTML")
-        post_body_html = full_html
+        print("[build] ❌ 致命错误：正文提取为空！触发硬熔断，拒绝将脏数据混入系统。")
+        import sys
+        sys.exit(1)
 
     print(f"[build] innerHTML: {len(full_html)} chars | body: {len(post_body_html)} chars")
     print(f"[build] 正文图片: {len(post_images)} 张 | 评论: {len(comments)} 条")
@@ -400,13 +402,65 @@ def build(html_file, date, output_file=None, title=None):
     }
 
 def main():
-    ap = argparse.ArgumentParser(description='SSOT 渲染引擎 - 从 innerHTML 生成财经早餐 HTML')
-    ap.add_argument('html_file', help='innerHTML 文件路径（来自 cdp_get_innerhtml.py）')
-    ap.add_argument('date', help='日期 YYYYMMDD，如 20260513')
+    ap = argparse.ArgumentParser(
+        description='SSOT 渲染引擎 - 从 innerHTML 生成财经早餐 HTML（v11 熔断版）',
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    ap.add_argument('html_file',
+                    help='innerHTML 文件路径（来自 cdp_get_innerhtml.py），或填 AUTO 启用自动模式')
+    ap.add_argument('date', nargs='?', default=None,
+                    help='日期 YYYYMMDD（auto-latest 模式下只作初始占位，会被 HTML 内标题覆盖）')
     ap.add_argument('output_file', nargs='?', default=None,
                     help='输出 HTML 文件名，如 caijing_20260513.html（默认: caijing_{date}.html）')
     ap.add_argument('--title', '-t', default=None, help='页面标题（默认: 财经早餐 YYYY-MM-DD）')
+    ap.add_argument('--auto-latest', action='store_true',
+                    help='自动调用 cdp_get_innerhtml.py --auto-latest，完成找帖+日期熔断+提取全流程')
+    ap.add_argument('--group-url',
+                    default='https://www.red-ring.cn/group/27593',
+                    help='圈子页面 URL（auto-latest 模式使用）')
+    ap.add_argument('--cdp-ws-url', default='AUTO',
+                    help='CDP WebSocket URL（默认 AUTO）')
     args = ap.parse_args()
+
+    auto_mode = args.html_file == 'AUTO' or args.auto_latest
+
+    if auto_mode:
+        import subprocess, tempfile, os as _os
+        _parent = _os.path.dirname(_os.path.abspath(__file__))
+        cdp_script = _os.path.join(_parent, 'cdp_get_innerhtml.py')
+        tmp_file = tempfile.NamedTemporaryFile(suffix='_post.html', delete=False, mode='w')
+        tmp_path = tmp_file.name
+        tmp_file.close()
+
+        cdp_cmd = [
+            'python3', cdp_script, tmp_path,
+            args.cdp_ws_url,
+            '--auto-latest',
+            '--group-url', args.group_url,
+            '--selector', 'main'
+        ]
+        print(f"[build] AUTO模式: {' '.join(cdp_cmd[:3])} ...")
+        cp = subprocess.run(cdp_cmd, capture_output=True, text=True, timeout=180)
+        print(cp.stdout)
+        if cp.stderr:
+            print(cp.stderr, file=sys.stderr)
+        if cp.returncode == 3:
+            print("[build] ❌ 日期熔断：今日帖子不存在或未发布，退出。")
+            sys.exit(3)
+        if cp.returncode != 0:
+            print(f"[build] ❌ cdp_get_innerhtml 失败 (exit {cp.returncode})")
+            sys.exit(1)
+        args.html_file = tmp_path
+        # 从 HTML 内容提取真实日期
+        discovered = _extract_date_from_html(tmp_path)
+        if discovered:
+            print("[build] INFO: discovered date from HTML:", discovered, "| original:", args.date or "none")
+            if args.date and args.date != discovered:
+                print("[build] WARNING: date mismatch, auto-corrected to", discovered)
+            args.date = discovered
+        if not args.date:
+            print("[build] ❌ 无法从 HTML 推断日期，且未传入 date 参数")
+            sys.exit(1)
 
     result = build(
         html_file=args.html_file,
@@ -416,27 +470,26 @@ def main():
     )
     print("\n✅ 完成:", json.dumps(result, ensure_ascii=False))
 
+
+def _extract_date_from_html(html_file):
+    """从 HTML 内容提取帖子标题中的日期，返回 YYYYMMDD 或 None"""
+    import re
+    try:
+        with open(html_file, encoding='utf-8', errors='replace') as f:
+            content = f.read()
+        s = content.find('POST_START')
+        e = content.find('POST_END')
+        if s != -1 and e != -1:
+            content = content[s+10:e]
+        # 匹配标题中的日期：2026年5月19日、2026-05-19、2026/05/19
+        m = re.search(r'(\d{4})[年\-/:](\d{1,2})[月\-/:](\d{1,2})', content)
+        if m:
+            y, mo, d = m.group(1), m.group(2).zfill(2), m.group(3).zfill(2)
+            return f"{y}{mo}{d}"
+    except:
+        pass
+    return None
+
+
 if __name__ == "__main__":
     main()
-def _render_comments_html(comments):
-    """评论数组 → HTML 片段（含嵌套子回复）"""
-    if not comments:
-        return '<p style="color:#999;text-align:center">暂无评论</p>'
-    parts = []
-    for c in comments:
-        reply_html = ''
-        for r in c.get('replies', []):
-            reply_html += (
-                '<div class="r">'
-                '<span class="u">' + r['user'] + '</span>' + r['content'] +
-                '</div>'
-            )
-        parts.append(
-            '<div class="cmt-item">'
-            '<div><span class="u">' + c['user'] + '</span> '
-            '<span class="t">' + c['time'] + '</span></div>'
-            '<div style="margin-top:4px">' + c['content'] + '</div>'
-            + reply_html +
-            '</div>'
-        )
-    return '\n'.join(parts)
