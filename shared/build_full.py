@@ -30,41 +30,57 @@ def get_headers():
     if not cfg.get('Cookie'): raise ValueError("[AUTH] FAIL: Cookie为空")
     return {k: cfg[k] for k in ('Cookie', 'User-Agent', 'Referer', 'Accept', 'Accept-Language') if cfg.get(k)}
 
-def _clean(html_str):
-    return re.sub(r'<[^>]+>', '', html_str).strip().replace('&nbsp;', ' ').replace('&lt;', '<').replace('&gt;', '>')
-
-def _extract_replies(reply_html):
+def extract_post_body(html):
     from bs4 import BeautifulSoup
-    soup = BeautifulSoup(reply_html, 'html.parser')
-    replies = []
-    for div in soup.find_all('div', class_='my-5 tools-v-trigger por pr-60'):
-        cups = div.find_all('span', class_='c-primary cup')
-        wpws = div.find_all('span', class_='wpw')
-        user = cups[0].get_text(strip=True) if cups else ''
-        text = _clean(wpws[0].get_text()) if wpws else ''
-        replies.append({'user': user, 'content': text})
-    return replies
+    soup = BeautifulSoup(html, 'html.parser')
+    # 精准定位正文容器，绝不波及外围 UI
+    content_div = soup.find('div', class_=lambda x: x and 'ql-view' in x)
+    if not content_div:
+        content_div = soup.find('div', class_=lambda x: x and 'post-body' in x)
+
+    if content_div:
+        # 物理超度：砍掉所有可能误入正文的交互控件
+        for unwanted in content_div.find_all(['input', 'button', 'svg', 'form']):
+            unwanted.decompose()
+        # 仅返回干净的正文内部 HTML
+        return "".join(str(item) for item in content_div.contents)
+    return ''
 
 def extract_comments(html):
+    from bs4 import BeautifulSoup
+    soup = BeautifulSoup(html, 'html.parser')
     comments = []
-    top_pat = re.compile(r'<div class="py-12 flex bt">(.*?)(?=<div class="py-12 flex bt">|<div class="py-24"></div>)', re.DOTALL)
-    for m in top_pat.finditer(html):
-        block = m.group(1)
-        um = re.search(r'<span class="cup mr-5">([^<]+)</span>', block)
-        if not um: continue
-        user = um.group(1).strip()
-        tm = re.search(r'<span class="dark-9 fz-sm">([^<]+)</span>', block)
-        time_str = tm.group(1).strip() if tm else ''
-        divider_idx = block.find('"> 回复 <')
-        main_block = block[:divider_idx] if divider_idx >= 0 else block
-        wpm = re.search(r'<span class="wpw">(.+?)</span>', main_block, re.DOTALL)
-        if not wpm: continue
-        text = _clean(wpm.group(1))
-        if not text: continue
-        if '查看图片' in block: text = '[图片] ' + text
+    # 寻找所有的顶级评论块
+    comment_blocks = soup.find_all('div', class_=lambda x: x and 'py-12' in x and 'flex' in x and 'bt' in x)
+
+    for block in comment_blocks:
+        user_el = block.find('span', class_=lambda x: x and 'cup' in x and 'mr-5' in x)
+        if not user_el: continue
+        user = user_el.get_text(strip=True)
+
+        time_el = block.find('span', class_=lambda x: x and 'dark-9' in x and 'fz-sm' in x)
+        time_str = time_el.get_text(strip=True) if time_el else ''
+
+        wpws = block.find_all('span', class_='wpw')
+        if not wpws: continue
+        # 顶级评论正文通常是第一个 wpw
+        text = wpws[0].get_text(strip=True)
+        if '查看图片' in block.get_text():
+            text = '[图片] ' + text
+
         item = {'user': user, 'time': time_str, 'content': text, 'replies': []}
-        bgc_m = re.search(r'<div class="bgc-body px-9 py-5">(.*)', block, re.DOTALL)
-        if bgc_m: item['replies'] = _extract_replies(bgc_m.group(1))
+
+        # 提取楼中楼回复
+        bgc = block.find('div', class_=lambda x: x and 'bgc-body' in x)
+        if bgc:
+            for reply_div in bgc.find_all('div', class_=lambda x: x and 'tools-v-trigger' in x):
+                r_user = reply_div.find('span', class_=lambda x: x and 'c-primary' in x and 'cup' in x)
+                r_text = reply_div.find('span', class_='wpw')
+                if r_user and r_text:
+                    item['replies'].append({
+                        'user': r_user.get_text(strip=True),
+                        'content': r_text.get_text(strip=True)
+                    })
         comments.append(item)
     return comments
 
