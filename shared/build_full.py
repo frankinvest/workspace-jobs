@@ -8,6 +8,7 @@ if _parent not in sys.path:
 import markdownify as mf
 from shared.network import GitHubUploader
 from shared.deploy import GitHubPagesTrigger
+from bs4 import BeautifulSoup
 
 _GH_TOKEN_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'auth', 'github_token.txt')
 
@@ -31,46 +32,32 @@ def get_headers():
     return {k: cfg[k] for k in ('Cookie', 'User-Agent', 'Referer', 'Accept', 'Accept-Language') if cfg.get(k)}
 
 def extract_post_body(html):
-    from bs4 import BeautifulSoup
     soup = BeautifulSoup(html, 'html.parser')
-    # 精准定位正文容器，绝不波及外围 UI
     content_div = soup.find('div', class_=lambda x: x and 'ql-view' in x)
     if not content_div:
         content_div = soup.find('div', class_=lambda x: x and 'post-body' in x)
-
     if content_div:
-        # 物理超度：砍掉所有可能误入正文的交互控件
         for unwanted in content_div.find_all(['input', 'button', 'svg', 'form']):
             unwanted.decompose()
-        # 仅返回干净的正文内部 HTML
         return "".join(str(item) for item in content_div.contents)
     return ''
 
 def extract_comments(html):
-    from bs4 import BeautifulSoup
     soup = BeautifulSoup(html, 'html.parser')
     comments = []
-    # 寻找所有的顶级评论块
     comment_blocks = soup.find_all('div', class_=lambda x: x and 'py-12' in x and 'flex' in x and 'bt' in x)
-
     for block in comment_blocks:
         user_el = block.find('span', class_=lambda x: x and 'cup' in x and 'mr-5' in x)
         if not user_el: continue
         user = user_el.get_text(strip=True)
-
         time_el = block.find('span', class_=lambda x: x and 'dark-9' in x and 'fz-sm' in x)
         time_str = time_el.get_text(strip=True) if time_el else ''
-
         wpws = block.find_all('span', class_='wpw')
         if not wpws: continue
-        # 顶级评论正文通常是第一个 wpw
         text = wpws[0].get_text(strip=True)
         if '查看图片' in block.get_text():
             text = '[图片] ' + text
-
         item = {'user': user, 'time': time_str, 'content': text, 'replies': []}
-
-        # 提取楼中楼回复
         bgc = block.find('div', class_=lambda x: x and 'bgc-body' in x)
         if bgc:
             for reply_div in bgc.find_all('div', class_=lambda x: x and 'tools-v-trigger' in x):
@@ -92,13 +79,6 @@ def extract_post_images(post_html):
             seen.add(url)
             imgs.append(url)
     return imgs
-
-def extract_post_body(html):
-    m = re.search(r'<div class="[^"]*ql-view[^"]*">(.*?)</div>\s*<!---->', html, re.DOTALL)
-    if m and len(m.group(1)) > 100: return m.group(1)
-    m = re.search(r'<div class="post-body[^"]*">(.*?)</div>\s*<!---->', html, re.DOTALL)
-    if m: return m.group(1)
-    return ''
 
 def upload_images(urls, date, gh):
     mapping, total = {}, len(urls)
@@ -170,45 +150,22 @@ def build(html_file, date, output_file=None, title=None):
     post_body_html = extract_post_body(full_html)
 
     if not post_body_html.strip():
-        print("[build] ❌ 致命错误：正文提取为空！触发硬熔断，拒绝将脏数据混入系统。")
+        print("[build] \u274c \u5373\u65f6\u505c\u6b62\uff1a\u6b63\u6587\u63d0\u53d6\u4e3a\u7a7a\uff01\u89e6\u53d1\u786c\u7106\u65ad\uff0c\u62d2\u7edd\u5c06\u810f\u6570\u636e\u6df7\u5165\u7cfb\u7edf\u3002")
         sys.exit(1)
 
     post_images = extract_post_images(post_body_html)
     comments = extract_comments(full_html)
     print(f"[build] innerHTML: {len(full_html)} chars | body: {len(post_body_html)} chars")
-
-    # ── 图片处理：先清洗私有 CDN URL，再上传 ──
-    # 规则：只有成功下载并上传到 GitHub 的图片才允许保留引用
-    # 失败 → 替换为 [图片已失效] 占位符，严禁死链混入系统
-    if post_images:
-        # 第一步：脱掉 private.red-ring.cn 的 img 标签，替换为占位符
-        # 这样 markdownify 不会把死链带进 Markdown
-        def kill_private_img(m):
-            return '[![图片已失效](https://img.shields.io/badge/图片-已失效-red?style=flat-square)]
-(http://invalid/image-not-available)'
-        clean_html = re.sub(
-            r'<img[^>]+src="https://private\.red-ring\.cn/[^"]+"[^>]*>',
-            kill_private_img,
-            post_body_html,
-            flags=re.IGNORECASE
-        )
-        print(f"[build] 私有CDN图片已替换为占位符")
-    else:
-        clean_html = post_body_html
-
     gh = GitHubUploader(token=TOKEN, repo=REPO)
     mapping = upload_images(post_images, date_str, gh) if post_images else {}
-
-    # 只有成功上传的 URL 才做替换（替换占位符中的占位 URL）
-    post_md = mf.markdownify(clean_html, heading_style="atx", link_style="inlined")
-    for old_url, new_url in mapping.items():
-        post_md = post_md.replace(old_url, new_url)
-    if title is None: title = f"财经早餐 {display_date}"
+    post_md = mf.markdownify(post_body_html, heading_style="atx", link_style="inlined")
+    for old_url, new_url in mapping.items(): post_md = post_md.replace(old_url, new_url)
+    if title is None: title = f"\u8d22\u7ecf\u65e9\u9910 {display_date}"
     final_html = md_to_html_with_comments(post_md, title=title, comments=comments)
     if output_file is None: output_file = f"caijing_{date_str}.html"
     b64 = base64.b64encode(final_html.encode('utf-8')).decode('ascii')
-    result = gh_put(output_file, b64, f"发布 {display_date} 财经早餐 (SSOT build)")
-    print(f"[build] HTML 上传成功。")
+    result = gh_put(output_file, b64, f"\u53d1\u5e03 {display_date} \u8d22\u7ecf\u65e9\u9910 (SSOT build)")
+    print(f"[build] HTML \u4e0a\u4f20\u6210\u529f\u3002")
     return {"html_file": output_file, "images": len(mapping), "comments": len(comments)}
 
 def main():
@@ -224,21 +181,18 @@ def main():
     if args.html_file == 'AUTO' or args.auto_latest:
         import subprocess, tempfile
         tmp_path = tempfile.NamedTemporaryFile(suffix='_post.html', delete=False, mode='w').name
-        cdp_script = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cdp_get_innerhtml.py')
-        cdp_cmd = ['python3', cdp_script, tmp_path, args.cdp_ws_url, '--auto-latest', '--group-url', args.group_url, '--selector', 'main']
+        cdp_cmd = ['python3', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cdp_get_innerhtml.py'), tmp_path, args.cdp_ws_url, '--auto-latest', '--group-url', args.group_url, '--selector', 'main']
         cp = subprocess.run(cdp_cmd, capture_output=True, text=True, timeout=180)
         if cp.returncode == 3: sys.exit(3)
         if cp.returncode != 0: sys.exit(1)
         args.html_file = tmp_path
         try:
-            with open(tmp_path, encoding='utf-8', errors='replace') as f: content = f.read()
-            s, e = content.find('POST_START'), content.find('POST_END')
-            if s != -1 and e != -1: content = content[s+10:e]
+            with open(tmp_path, encoding='utf-8', errors='replace') as f: content = f.read()[f.read().find('POST_START')+10:f.read().find('POST_END')]
             m = re.search(r'(\d{4})[年\-/:](\d{1,2})[月\-/:](\d{1,2})', content)
             if m: args.date = f"{m.group(1)}{m.group(2).zfill(2)}{m.group(3).zfill(2)}"
         except: pass
     result = build(args.html_file, args.date, args.output_file, args.title)
-    print("\n✅ 完成:", json.dumps(result, ensure_ascii=False))
+    print("\n\u2705 \u5b8c\u6210:", json.dumps(result, ensure_ascii=False))
 
 if __name__ == "__main__":
     main()
