@@ -160,10 +160,33 @@ def build(html_file, date, output_file=None, title=None):
     post_images = extract_post_images(post_body_html)
     comments = extract_comments(full_html)
     print(f"[build] innerHTML: {len(full_html)} chars | body: {len(post_body_html)} chars")
+
+    # ── 图片处理：先清洗私有 CDN URL，再上传 ──
+    # 规则：只有成功下载并上传到 GitHub 的图片才允许保留引用
+    # 失败 → 替换为 [图片已失效] 占位符，严禁死链混入系统
+    if post_images:
+        # 第一步：脱掉 private.red-ring.cn 的 img 标签，替换为占位符
+        # 这样 markdownify 不会把死链带进 Markdown
+        def kill_private_img(m):
+            return '[![图片已失效](https://img.shields.io/badge/图片-已失效-red?style=flat-square)]
+(http://invalid/image-not-available)'
+        clean_html = re.sub(
+            r'<img[^>]+src="https://private\.red-ring\.cn/[^"]+"[^>]*>',
+            kill_private_img,
+            post_body_html,
+            flags=re.IGNORECASE
+        )
+        print(f"[build] 私有CDN图片已替换为占位符")
+    else:
+        clean_html = post_body_html
+
     gh = GitHubUploader(token=TOKEN, repo=REPO)
     mapping = upload_images(post_images, date_str, gh) if post_images else {}
-    post_md = mf.markdownify(post_body_html, heading_style="atx", link_style="inlined")
-    for old_url, new_url in mapping.items(): post_md = post_md.replace(old_url, new_url)
+
+    # 只有成功上传的 URL 才做替换（替换占位符中的占位 URL）
+    post_md = mf.markdownify(clean_html, heading_style="atx", link_style="inlined")
+    for old_url, new_url in mapping.items():
+        post_md = post_md.replace(old_url, new_url)
     if title is None: title = f"财经早餐 {display_date}"
     final_html = md_to_html_with_comments(post_md, title=title, comments=comments)
     if output_file is None: output_file = f"caijing_{date_str}.html"
