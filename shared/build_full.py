@@ -157,11 +157,11 @@ def build(html_file, date, output_file=None, title=None):
     if title is None: title = f"\u8d22\u7ecf\u65e9\u9910 {display_date}"
     final_html = md_to_html_with_comments(post_md, title=title, comments=comments)
 
-    # \u5f3a\u5236\u4fee\u6539\u4e3a .md \u540e\u7f00\uff0cAstro \u624d\u80fd\u8bc6\u522b
-    if output_file is None: output_file = f"caijing-{date_str}.md"
+    # \u6587\u4ef6\u540d\u5fc5\u987b\u5305\u542b \u201c\u539f\u6587\u201d \u624d\u80fd\u88ab\u9996\u9875\u8fc7\u6ee4\u5668\u8bc6\u522b\u4e3a\u201c\u8d22\u7ecf\u65e9\u9910\u201d\u6807\u7b7e
+    if output_file is None: output_file = f"JJC-{date_str}-001-\u539f\u6587.md"
 
-    # \u62fc\u88c5 Astro \u5fc5\u9700\u7684 Frontmatter \u8868\u5934
-    astro_content = f"---\ntitle: '{title}'\n---\n\n{final_html}"
+    # Astro Frontmatter \u8868\u5934\uff1a\u5305\u542b title \u548c date\uff0c\u786e\u4fdd\u9996\u9875\u6392\u5e8f\u6b63\u786e\u8bc6\u522b
+    astro_content = f"---\ntitle: '{title}'\ndate: '{date_str}'\n---\n\n{final_html}"
 
     # \u5f3a\u5236\u5199\u5165 Astro \u672c\u5730\u76ee\u5f55
     out_dir = "/tmp/workspace-jobs/docs"
