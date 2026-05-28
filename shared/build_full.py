@@ -25,11 +25,13 @@ TOKEN = _load_github_token()
 REPO = "frankinvest/caijing-daily"
 _AUTH_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'auth', 'redring_cookies.json')
 
-def get_headers():
+def get_headers(post_url=None):
     if not os.path.exists(_AUTH_PATH): raise FileNotFoundError(f"[AUTH] FAIL: 鉴权文件不存在: {_AUTH_PATH}")
     with open(_AUTH_PATH, encoding='utf-8') as f: cfg = json.load(f)
     if not cfg.get('Cookie'): raise ValueError("[AUTH] FAIL: Cookie为空")
-    headers = {k: cfg[k] for k in ('Cookie', 'User-Agent', 'Referer', 'Accept', 'Accept-Language') if cfg.get(k)}
+    headers = {k: cfg[k] for k in ('Cookie', 'User-Agent', 'Accept', 'Accept-Language') if cfg.get(k)}
+    # Referer 必须指向具体帖子页面才能通过四牛 CDN 鉴权
+    headers['Referer'] = post_url if post_url else cfg.get('Referer', 'https://www.red-ring.cn/')
     if cfg.get('accessToken'):
         headers['Authorization'] = f"Bearer {cfg['accessToken']}"
     return headers
@@ -77,20 +79,20 @@ def extract_comments(html):
 def extract_post_images(post_html):
     seen, imgs = set(), []
     for m in re.finditer(r'<img[^>]+src="([^"]+)"', post_html):
-        url = m.group(1)
+        url = html_mod.unescape(m.group(1))  # 修复：HTML实体 &amp; -> &
         if 'private.red-ring.cn' in url and url not in seen:
             seen.add(url)
             imgs.append(url)
     return imgs
 
-def upload_images(urls, date, gh):
+def upload_images(urls, date, gh, post_url=None):
     mapping, total = {}, len(urls)
     for i, url in enumerate(urls, 1):
         ext = 'png' if '.png' in url else ('webp' if 'webp' in url else 'jpg')
         fname = f"caijing_{date}_img_{i:02d}.{ext}"
         gh_path = f"images/{date}/{fname}"
         try:
-            req = urllib.request.Request(url, headers=get_headers())
+            req = urllib.request.Request(url, headers=get_headers(post_url))
             with urllib.request.urlopen(req, timeout=15) as r:
                 if r.status != 200: raise Exception(f"HTTP {r.status}")
                 data = r.read()
@@ -149,7 +151,9 @@ def build(html_file, date, output_file=None, title=None):
     print(f"[build] innerHTML: {len(full_html)} chars | body: {len(post_body_html)} chars")
 
     gh = GitHubUploader(token=TOKEN, repo=REPO)
-    mapping = upload_images(post_images, date_str, gh) if post_images else {}
+    # Referer 必须指向 red-ring.cn 域名，四牛 CDN 据此鉴权
+    post_url = "https://www.red-ring.cn/group/27593"
+    mapping = upload_images(post_images, date_str, gh, post_url) if post_images else {}
 
     post_md = mf.markdownify(post_body_html, heading_style="atx", link_style="inlined")
     for old_url, new_url in mapping.items(): post_md = post_md.replace(old_url, new_url)
