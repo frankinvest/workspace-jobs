@@ -29,7 +29,10 @@ def get_headers():
     if not os.path.exists(_AUTH_PATH): raise FileNotFoundError(f"[AUTH] FAIL: 鉴权文件不存在: {_AUTH_PATH}")
     with open(_AUTH_PATH, encoding='utf-8') as f: cfg = json.load(f)
     if not cfg.get('Cookie'): raise ValueError("[AUTH] FAIL: Cookie为空")
-    return {k: cfg[k] for k in ('Cookie', 'User-Agent', 'Referer', 'Accept', 'Accept-Language') if cfg.get(k)}
+    headers = {k: cfg[k] for k in ('Cookie', 'User-Agent', 'Referer', 'Accept', 'Accept-Language') if cfg.get(k)}
+    if cfg.get('accessToken'):
+        headers['Authorization'] = f"Bearer {cfg['accessToken']}"
+    return headers
 
 def extract_post_body(html):
     soup = BeautifulSoup(html, 'html.parser')

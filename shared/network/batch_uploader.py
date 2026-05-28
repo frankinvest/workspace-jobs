@@ -84,7 +84,7 @@ class GitHubUploader:
             headers=self.headers
         )
         try:
-            with urllib.request.urlopen(req, timeout=10) as r:
+            with urllib.request.urlopen(req, timeout=2) as r:
                 return json.loads(r.read()).get("sha")
         except Exception:
             return None
@@ -241,7 +241,7 @@ class BatchUploader:
                     # fetch 验证可访问性（携带防盗链 Headers）
                     import urllib.request
                     req = urllib.request.Request(url, headers=self.download_headers)
-                    with urllib.request.urlopen(req, timeout=10) as resp:
+                    with urllib.request.urlopen(req, timeout=2) as resp:
                         if resp.status != 200:
                             raise Exception(f"HTTP {resp.status}")
 
