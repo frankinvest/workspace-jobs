@@ -4,21 +4,6 @@ import '../styles/global.css';
 import Icon from '../components/icons/Icon.astro';
 import ArticleCard from '../components/ArticleCard.astro';
 import SectionHeader from '../components/SectionHeader.astro';
-import MarketBoard from '../components/MarketBoard.astro';
-import StockList from '../components/StockList.astro';
-
-// 初始数据（用于 LME/SHFE 等静态数据）
-const marketData = {
-  lme_metals: [],
-  shfe_metals: [],
-  update_time: new Date().toLocaleString('zh-CN', {
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', second: '2-digit',
-    hour12: false
-  }).replace(/\//g, '-')
-};
-
-const { lme_metals, shfe_metals, update_time } = marketData;
 
 // Get all docs and sort by date
 const allDocs = await getCollection('docs');
@@ -203,31 +188,20 @@ const articleCount = groupedArticles['财经早餐'].length;
         )}
       </header>
 
-      <!-- 主内容区：左文右数双栏布局 -->
-      <div class="dashboard-layout">
-
-        {/* 左侧主栏：文章列表（核心内容） */}
-        <div class="main-column">
-          <div class="sections">
-            {groupedArticles['财经早餐'].length > 0 && (
-              <section class="section">
-                <SectionHeader title="财经早餐" icon="chart" count={groupedArticles['财经早餐'].length} />
-                <div class="article-list">
-                  {groupedArticles['财经早餐'].map((article) => (
-                    <ArticleCard {...article} />
-                  ))}
-                </div>
-              </section>
-            )}
-          </div>
+      <!-- 主内容区：居中单栏，文章列表更宽更舒展 -->
+      <div class="article-container">
+        <div class="sections">
+          {groupedArticles['财经早餐'].length > 0 && (
+            <section class="section">
+              <SectionHeader title="财经早餐" icon="chart" count={groupedArticles['财经早餐'].length} />
+              <div class="article-list">
+                {groupedArticles['财经早餐'].map((article) => (
+                  <ArticleCard {...article} />
+                ))}
+              </div>
+            </section>
+          )}
         </div>
-
-        {/* 右侧边栏：市场行情（盯盘挂件） */}
-        <aside class="sidebar">
-          <MarketBoard />
-          <StockList />
-        </aside>
-
       </div>
 
       <!-- Footer -->
@@ -381,48 +355,11 @@ const articleCount = groupedArticles['财经早餐'].length;
     flex-direction: column;
   }
 
-  /* ── 双栏布局 ── */
-  .dashboard-layout {
-    display: grid;
-    grid-template-columns: 1fr 340px;
-    gap: 32px;
-    align-items: start;
-  }
-
-  .main-column {
-    min-width: 0;
-  }
-
-  .sidebar {
-    position: sticky;
-    top: var(--space-6);
-  }
-
-  /* 移动端优雅降级：单栏显示 */
-  @media (max-width: 860px) {
-    .dashboard-layout {
-      grid-template-columns: 1fr;
-    }
-
-    .sidebar {
-      order: 2;
-    }
-
-    .main-column {
-      order: 1;
-    }
-  }
-
-  /* Market Section — 侧边栏内不再需要 margin-bottom */
-  .market-section {
-    margin-bottom: 0;
-  }
-
-  .data-update-time {
-    text-align: center;
-    font-size: 11px;
-    color: var(--color-text-muted);
-    margin-top: var(--space-4);
+  /* ── 居中单栏布局：PC 端加宽到 920px ── */
+  .article-container {
+    max-width: 920px;
+    margin: 0 auto;
+    padding: 0 var(--space-4);
   }
   
   /* Footer */
@@ -460,6 +397,10 @@ const articleCount = groupedArticles['财经早餐'].length;
     .hero-logo svg {
       width: 40px;
       height: 40px;
+    }
+    
+    .article-container {
+      padding: 0 var(--space-3);
     }
   }
 </style>
