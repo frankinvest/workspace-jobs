@@ -127,7 +127,14 @@ def test_a_stock_three_sources():
                     code = var.replace('var hq_str_', '').strip()
                     vals = val.strip().strip(';').strip('"').split(',')
                     if len(vals) >= 6:
-                        print(f"      {code:>10} | {vals[0]:<10} | 现价={vals[1]:>8} | 昨收={vals[2]} | 最高={vals[4]} | 最低={vals[5]}")
+                        # 新浪 hq.sinajs.cn 字段顺序 (v3 修正):
+                        #   [0] 名称
+                        #   [1] 今日开盘价 (⚠️ 不是现价!)
+                        #   [2] 昨日收盘价
+                        #   [3] 当前价 (实时/最新) ← Frank 2026-06-03 16:25 纠错：必须用 [3]
+                        #   [4] 今日最高价
+                        #   [5] 今日最低价
+                        print(f"      {code:>10} | {vals[0]:<10} | 开盘={vals[1]:>8} | 昨收={vals[2]} | 现价={vals[3]:>8} | 最高={vals[4]} | 最低={vals[5]}")
         else:
             print(f"   ❌ HTTP {resp.status_code}")
     except Exception as e:
