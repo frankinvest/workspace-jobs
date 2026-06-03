@@ -2,40 +2,178 @@
 import { getCollection, render } from 'astro:content';
 import ArticleLayout from '../../layouts/ArticleLayout.astro';
 
+export const prerender = true;
+
 export async function getStaticPaths() {
+  // import.meta.glob 在 getStaticPaths 内运行，build time 执行，SSR 安全
+  const htmlGlob = import.meta.glob<string>('/docs/*.html', {
+    query: '?raw',
+    import: 'default',
+    eager: true,
+  });
+
+  const htmlFilesMap: Record<string, string> = {};
+  for (const [path, content] of Object.entries(htmlGlob)) {
+    const filename = path.split('/').pop() || '';
+    htmlFilesMap[filename] = content as string;
+  }
+
   const docs = await getCollection('docs');
-  return docs.map((entry) => ({
-    params: { id: entry.id },
-    props: { entry },
-  }));
+  const htmlFilenames = Object.keys(htmlFilesMap);
+
+  return [
+    ...docs.map((entry) => ({
+      params: { id: entry.id },
+      props: { entry, isRawHtml: false, rawHtmlContent: '' },
+    })),
+    ...htmlFilenames.map((fname) => ({
+      params: { id: fname },
+      props: {
+        entry: null,
+        isRawHtml: true,
+        rawHtmlContent: htmlFilesMap[fname] || '',
+      },
+    })),
+  ];
 }
 
-const { entry } = Astro.props;
-const { Content } = await render(entry);
+const { entry, isRawHtml, rawHtmlContent } = Astro.props;
 
-// 从文件名提取日期和标题
-const filename = entry.id;
-const dateMatch = filename.match(/(\d{8})/);
-const date = dateMatch ? dateMatch[1] : '';
-
-// 根据文件类型设置标签
+let date = '';
 let tag = '财经早餐';
-if (filename.includes('奏折')) {
-  tag = '尚书省奏折';
-} else if (filename.includes('问题总结')) {
-  tag = '工作流文档';
-}
+let title = '';
+let Content: any = null;
 
-// 提取标题
-let title = entry.data.title;
-if (!title) {
-  // 从文件名提取
-  const titleMatch = filename.match(/-\d{8}-(.+)\.md$/);
-  title = titleMatch ? titleMatch[1] : filename.replace('.md', '');
-  title = title.replace(/-/g, ' ');
+if (isRawHtml) {
+  const filename = Astro.params.id || '';
+  date = filename.match(/(\d{8})/)?.[1] || '';
+  title = '财经早餐 ' + date.slice(0, 4) + '-' + date.slice(4, 6) + '-' + date.slice(6, 8);
+} else {
+  const filename = entry.id;
+  date = filename.match(/(\d{8})/)?.[1] || '';
+
+  if (filename.includes('奏折')) {
+    tag = '尚书省奏折';
+  } else if (filename.includes('问题总结')) {
+    tag = '工作流文档';
+  }
+
+  title = entry.data.title;
+  if (!title) {
+    const titleMatch = filename.match(/-\d{8}-(.+)\.md$/);
+    title = titleMatch ? titleMatch[1] : filename.replace(/\.md$/, '');
+    title = title.replace(/-/g, ' ');
+  }
+
+  const result = await render(entry);
+  Content = result.Content;
 }
 ---
 
 <ArticleLayout title={title} date={date} tag={tag}>
-  <Content />
+  {isRawHtml ? (
+    <div class="raw-html-content" set:html={rawHtmlContent} />
+  ) : (
+    <Content />
+  )}
 </ArticleLayout>
+
+<style>
+  /* 原生 HTML 评论区样式 — 暗黑主题（从 build_full.py 移植并暗黑化） */
+  .raw-html-content {
+    max-width: 720px;
+    margin: 0 auto;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 14px;
+    line-height: 1.7;
+    color: #e0d8d8;
+  }
+
+  /* 文章正文 & 评论区容器 */
+  .raw-html-content :global(.post),
+  .raw-html-content :global(.cmt-wrap) {
+    background: var(--color-bg-card, #150a0a);
+    border: 1px solid var(--color-border, #2a1515);
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 16px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  }
+
+  /* 正文图片 */
+  .raw-html-content :global(img) {
+    max-width: 100%;
+    border-radius: 4px;
+    margin: 8px 0;
+    display: block;
+    border: 1px solid var(--color-border, #2a1515);
+  }
+
+  /* 正文加粗强调 */
+  .raw-html-content :global(strong) {
+    color: var(--color-accent, #e60000);
+  }
+
+  /* 单条评论 */
+  .raw-html-content :global(.cmt-item) {
+    background: var(--color-bg-elevated, #1a0f0f);
+    border: 1px solid var(--color-border, #2a1515);
+    border-radius: 6px;
+    padding: 12px;
+    margin-bottom: 10px;
+  }
+
+  /* 评论用户名 */
+  .raw-html-content :global(.u) {
+    color: var(--color-accent, #e60000);
+    font-weight: 600;
+  }
+
+  /* 评论时间戳 */
+  .raw-html-content :global(.t) {
+    color: var(--color-text-muted, #6b6b6b);
+    font-size: 0.8em;
+  }
+
+  /* 回复气泡 */
+  .raw-html-content :global(.r) {
+    margin-top: 6px;
+    padding: 6px 10px 6px 14px;
+    background: var(--color-bg-secondary, #120808);
+    border-radius: 4px;
+    font-size: 0.88em;
+    color: #c8c0c0;
+    border-left: 3px solid var(--color-accent-dim, rgba(230,0,0,0.3));
+  }
+
+  /* 页脚 */
+  .raw-html-content :global(.footer) {
+    text-align: center;
+    color: var(--color-text-muted, #6b6b6b);
+    font-size: 0.8em;
+    padding: 20px 0;
+    border-top: 1px solid var(--color-border, #2a1515);
+    margin-top: 30px;
+  }
+
+  /* 正文段落 */
+  .raw-html-content :global(p) {
+    margin: 0.5em 0;
+  }
+
+  /* 分割线 */
+  .raw-html-content :global(hr),
+  .raw-html-content :global(.divider) {
+    border: none;
+    border-top: 1px solid var(--color-border, #2a1515);
+    margin: 24px 0;
+  }
+
+  /* 标题 */
+  .raw-html-content :global(h2) {
+    font-size: 1.1em;
+    margin-top: 0;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--color-border, #2a1515);
+  }
+</style>

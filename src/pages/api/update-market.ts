@@ -13,15 +13,15 @@ interface MarketData {
 const dataCache: Map<string, { data: MarketData; timestamp: number }> = new Map();
 const CACHE_DURATION = 5 * 60 * 1000; // 5 分钟缓存
 
-// 从本地 JSON 文件加载数据
+// 从本地 JSON 文件加载数据（兼容 Vercel SSR 运行时）
 async function loadMarketDataFromJSON(): Promise<MarketData> {
-  const dataPath = new URL('../../public/data/market_data.json', import.meta.url);
+  // 使用 process.cwd() 兼容 Vercel SSR 运行时
+  const dataPath = `${process.cwd()}/public/data/market_data.json`;
   
   try {
-    const response = await fetch(dataPath);
-    if (!response.ok) throw new Error('文件加载失败');
-    
-    const data = await response.json();
+    const fs = await import('fs');
+    const raw = fs.readFileSync(dataPath, 'utf-8');
+    const data = JSON.parse(raw);
     
     return {
       indices: data.indices || [],

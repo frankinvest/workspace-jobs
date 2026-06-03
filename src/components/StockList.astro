@@ -5,19 +5,16 @@
 <div class="stock-list" id="stock-list">
   <div class="stock-header">
     <span class="stock-title">热门个股</span>
-    <span class="stock-subtitle">市盈率 · 市净率</span>
+    <span class="stock-subtitle">每日动态更新</span>
   </div>
-  
+
   <div class="stock-table" id="stock-table">
     <div class="table-head">
       <span>名称</span>
       <span>现价</span>
       <span>涨跌幅</span>
-      <span>换手率</span>
-      <span>市盈率</span>
-      <span>市净率</span>
     </div>
-    
+
     <!-- 由 JS 动态加载 -->
   </div>
 </div>
@@ -28,7 +25,7 @@
       try {
         const response = await fetch('/api/update-market');
         const data = await response.json();
-        
+
         if (data.success) {
           renderStocks(data.stocks || []);
         }
@@ -48,19 +45,20 @@
 
       stocks.forEach(stock => {
         const row = document.createElement('div');
-        row.className = `table-row ${getTrendClass(stock.change)}`;
+        const isUp = stock.change > 0;
+        const isDown = stock.change < 0;
+        const trendColor = isUp ? 'color-up' : isDown ? 'color-down' : 'color-flat';
+        const trendClass = getTrendClass(stock.change);
+        row.className = `table-row ${trendClass} ${trendColor}`;
         row.innerHTML = `
-          <span class="stock-name">
+          <div class="stock-name">
             <span class="name-text">${stock.name}</span>
             <span class="stock-code">${stock.code}</span>
-          </span>
-          <span class="stock-price">${formatPrice(stock.price)}</span>
-          <span class="stock-change">
-            ${stock.change_pct > 0 ? '+' : ''}${stock.change_pct.toFixed(2)}%
-          </span>
-          <span class="stock-turnover">${(stock.turnover || 0).toFixed(2)}%</span>
-          <span class="stock-pe">${formatPe(stock.pe || 0)}</span>
-          <span class="stock-pb">${stock.pb ? stock.pb.toFixed(2) : '--'}</span>
+          </div>
+          <div class="stock-price">${formatPrice(stock.price)}</div>
+          <div class="stock-change">
+            ${isUp ? '+' : ''}${stock.change_pct.toFixed(2)}%
+          </div>
         `;
         table.appendChild(row);
       });
@@ -79,11 +77,6 @@
       return price.toLocaleString('en-US', { maximumFractionDigits: 2 });
     };
 
-    const formatPe = (pe) => {
-      if (pe === 0 || !pe) return '--';
-      return pe.toFixed(1);
-    };
-
     // 初始化
     loadStocks();
   };
@@ -95,7 +88,7 @@
   }
 </script>
 
-<style>
+<style is:global>
   .stock-list {
     background: var(--color-bg-elevated);
     border: 1px solid var(--color-border);
@@ -130,8 +123,8 @@
 
   .table-head {
     display: grid;
-    grid-template-columns: 1.5fr 1fr 1fr 0.8fr 0.8fr 0.8fr;
-    gap: 8px;
+    grid-template-columns: 1fr 90px 80px;
+    gap: 12px;
     padding: 8px 12px;
     font-size: 11px;
     color: var(--color-text-muted);
@@ -139,10 +132,14 @@
     letter-spacing: 0.05em;
   }
 
+  .table-head span:not(:first-child) {
+    text-align: right;
+  }
+
   .table-row {
     display: grid;
-    grid-template-columns: 1.5fr 1fr 1fr 0.8fr 0.8fr 0.8fr;
-    gap: 8px;
+    grid-template-columns: 1fr 90px 80px;
+    gap: 12px;
     padding: 10px 12px;
     background: var(--color-bg);
     border-radius: 6px;
@@ -166,11 +163,15 @@
     display: flex;
     flex-direction: column;
     gap: 2px;
+    min-width: 0;
   }
 
   .name-text {
     font-weight: 500;
     color: var(--color-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .stock-code {
@@ -181,26 +182,31 @@
   .stock-price {
     font-family: var(--font-serif);
     font-weight: 600;
-    color: var(--color-text);
+    text-align: right;
+    white-space: nowrap;
   }
 
-  .trend-up .stock-change {
+  .stock-change {
+    text-align: right;
+    white-space: nowrap;
+    font-weight: 500;
+  }
+
+  /* ── 红涨绿跌染色 ── */
+  .color-up,
+  .color-up .stock-price,
+  .color-up .stock-change {
     color: var(--color-danger);
   }
-
-  .trend-down .stock-change {
+  .color-down,
+  .color-down .stock-price,
+  .color-down .stock-change {
     color: var(--color-success);
   }
-
-  .trend-flat .stock-change {
+  .color-flat,
+  .color-flat .stock-price,
+  .color-flat .stock-change {
     color: var(--color-text-muted);
-  }
-
-  .stock-turnover,
-  .stock-pe,
-  .stock-pb {
-    color: var(--color-text-muted);
-    font-size: 12px;
   }
 
   @media (max-width: 640px) {
@@ -209,29 +215,7 @@
     }
 
     .table-row {
-      grid-template-columns: 1fr 1fr 1fr;
-      grid-template-rows: auto auto;
-    }
-
-    .stock-name {
-      grid-column: 1;
-      grid-row: 1 / 3;
-    }
-
-    .stock-price {
-      grid-column: 2;
-      grid-row: 1;
-    }
-
-    .stock-change {
-      grid-column: 3;
-      grid-row: 1;
-    }
-
-    .stock-turnover,
-    .stock-pe,
-    .stock-pb {
-      display: none;
+      grid-template-columns: 1fr 90px 80px;
     }
   }
 </style>

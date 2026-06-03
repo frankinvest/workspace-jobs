@@ -1,10 +1,9 @@
 {
+  "framework": "astro",
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
-  "framework": "astro",
-  "rewrites": [
-    { "source": "/(.*)", "destination": "/index.html" }
-  ],
+  "installCommand": "npm install",
+  "devCommand": "npm run dev",
   "env": {
     "DATA_SOURCE": "wind",
     "UPDATE_INTERVAL": "43200000"

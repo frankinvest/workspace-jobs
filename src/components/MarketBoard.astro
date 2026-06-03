@@ -22,6 +22,20 @@ interface MarketData {
 
 // 初始状态 - 空数据，由客户端 JS 加载
 const { initialData }: { initialData?: MarketData } = Astro.props;
+
+// SSR 工具函数（供模板使用）
+function getTrendClass(change: number): string {
+  if (change > 0) return 'trend-up';
+  if (change < 0) return 'trend-down';
+  return 'trend-flat';
+}
+
+function formatPrice(price: number, name: string): string {
+  if (price >= 10000) {
+    return price.toLocaleString('en-US', { maximumFractionDigits: 0 });
+  }
+  return price.toLocaleString('en-US', { maximumFractionDigits: 2 });
+}
 ---
 
 <div class="market-board" id="market-board">
@@ -91,7 +105,7 @@ const { initialData }: { initialData?: MarketData } = Astro.props;
             <div class="index-change">
               <span class="trend-icon">{index.change > 0 ? '↑' : index.change < 0 ? '↓' : '→'}</span>
               <span class="change-value">{Math.abs(index.change).toFixed(2)}</span>
-              <span class="change-pct">({index.change_pct > 0 ? '+' : ''}{index.change_pct.toFixed(2)}%)</span>
+              <span class="change-pct">({(index.change_pct ?? 0) > 0 ? '+' : ''}{(index.change_pct ?? 0).toFixed(2)}%)</span>
             </div>
           </div>
         ))}
@@ -115,7 +129,7 @@ const { initialData }: { initialData?: MarketData } = Astro.props;
             <div class="index-change">
               <span class="trend-icon">{index.change > 0 ? '↑' : index.change < 0 ? '↓' : '→'}</span>
               <span class="change-value">{Math.abs(index.change).toFixed(2)}</span>
-              <span class="change-pct">({index.change_pct > 0 ? '+' : ''}{index.change_pct.toFixed(2)}%)</span>
+              <span class="change-pct">({(index.change_pct ?? 0) > 0 ? '+' : ''}{(index.change_pct ?? 0).toFixed(2)}%)</span>
             </div>
           </div>
         ))}
@@ -183,15 +197,19 @@ const { initialData }: { initialData?: MarketData } = Astro.props;
       
       items.forEach(item => {
         const card = document.createElement('div');
-        card.className = `index-card ${getTrendClass(item.change)}`;
         card.dataset.code = item.code;
+        const isUp = item.change > 0;
+        const isDown = item.change < 0;
+        const trendColor = isUp ? 'color-up' : isDown ? 'color-down' : 'color-flat';
+        const trendClass = getTrendClass(item.change);
+        card.className = `index-card ${trendClass} ${trendColor}`;
         card.innerHTML = `
           <div class="index-name">${item.name}</div>
           <div class="index-price">${formatPrice(item.price, item.name)}</div>
           <div class="index-change">
-            <span class="trend-icon">${item.change > 0 ? '↑' : item.change < 0 ? '↓' : '→'}</span>
+            <span class="trend-icon">${isUp ? '↑' : isDown ? '↓' : '→'}</span>
             <span class="change-value">${Math.abs(item.change).toFixed(2)}</span>
-            <span class="change-pct">(${item.change_pct > 0 ? '+' : ''}${item.change_pct.toFixed(2)}%)</span>
+            <span class="change-pct">(${isUp ? '+' : ''}${item.change_pct.toFixed(2)}%)</span>
           </div>
         `;
         grid.appendChild(card);
@@ -293,7 +311,7 @@ const { initialData }: { initialData?: MarketData } = Astro.props;
   }
 </script>
 
-<style>
+<style is:global>
   .market-board {
     background: var(--color-bg-elevated);
     border: 1px solid var(--color-border);
@@ -452,6 +470,23 @@ const { initialData }: { initialData?: MarketData } = Astro.props;
 
   .change-pct {
     opacity: 0.9;
+  }
+
+  /* ── 红涨绿跌数字染色 ── */
+  .color-up,
+  .color-up .index-price,
+  .color-up .index-change {
+    color: var(--color-danger);
+  }
+  .color-down,
+  .color-down .index-price,
+  .color-down .index-change {
+    color: var(--color-success);
+  }
+  .color-flat,
+  .color-flat .index-price,
+  .color-flat .index-change {
+    color: var(--color-text-muted);
   }
 
   /* 更新按钮样式 */
