@@ -146,20 +146,50 @@ def test_a_stock_three_sources():
 # ══════════════════════════════════════════════════════════════════════════════
 
 def run_rigorous_test():
-    print("🚀 开始执行 AKShare 严谨性基准测试 v3 (突围+三源)...\n" + "=" * 60)
-    print(f"📌 akshare v{ak.__version__} | Frank 4 点指令对齐 + hq.sinajs.cn 增强")
+    print("🚀 开始执行 AKShare 严谨性基准测试 v4 (突围+三源+硬核断言)...\n" + "=" * 60)
+    print(f"📌 akshare v{ak.__version__} | Frank 4 点指令对齐 + hq.sinajs.cn 增强 + 财务指标硬核断言")
     print("=" * 60)
 
     # 目标 1: A 股实时行情 (三源)
     test_a_stock_three_sources()
 
-    # 目标 2: A 股个股财务指标 (Frank 原名 — 已知空数据)
-    print("\n【目标 2: A 股个股财务指标 (Frank 原名 — 已知空数据)】")
+    # 目标 2: A 股个股财务指标 (v4 升级: 弃用原断流接口, 改用 abstract + 硬核断言)
+    print("\n【目标 2: A 股个股财务指标 (v4 升级: abstract + 硬核断言)】")
     status, df, elapsed, err = try_call(
-        "2) stock_financial_analysis_indicator(600519)",
-        ak.stock_financial_analysis_indicator, symbol="600519"
+        "2) stock_financial_abstract(600519)",
+        ak.stock_financial_abstract, symbol="600519"
     )
-    report("2) stock_financial_analysis_indicator", status, df, elapsed, err)
+    report("2) stock_financial_abstract(600519)", status, df, elapsed, err)
+
+    # v4 硬核断言: 茅台 2026Q1 财报核心数据
+    if status == "OK" and df is not None and not df.empty:
+        try:
+            # 期望: 80 行季度数据
+            assert len(df) == 80, f"❌ 行数 != 80 (实际 {len(df)})"
+            print(f"   ✅ 行数断言通过: 80 行 (实际 {len(df)})")
+
+            # 期望: 2026Q1 归母净利润 = 272.43 亿 (2.724251e+10)
+            # 报表结构: '指标' 列含 '归母净利润', '20260331' 列含值
+            assert "归母净利润" in df['指标'].values, "❌ 找不到'归母净利润'行"
+            net_profit = df.loc[df['指标'] == '归母净利润', '20260331'].iloc[0]
+            assert abs(net_profit - 2.724251e+10) < 1e8, \
+                f"❌ 2026Q1 归母净利润 = {net_profit} 偏离基准 2.724251e+10"
+            print(f"   ✅ 2026Q1 归母净利润断言通过: ¥{net_profit/1e8:.2f} 亿 (基准 ¥272.43 亿)")
+
+            # 期望: 2026Q1 营业总收入 = 547.03 亿 (5.470291e+10)
+            assert "营业总收入" in df['指标'].values, "❌ 找不到'营业总收入'行"
+            revenue = df.loc[df['指标'] == '营业总收入', '20260331'].iloc[0]
+            assert abs(revenue - 5.470291e+10) < 1e8, \
+                f"❌ 2026Q1 营业总收入 = {revenue} 偏离基准 5.470291e+10"
+            print(f"   ✅ 2026Q1 营业总收入断言通过: ¥{revenue/1e8:.2f} 亿 (基准 ¥547.03 亿)")
+
+            print(f"   🎯 v4 硬核断言: 3/3 全部通过 (茅台 600519 2026Q1)")
+        except AssertionError as ae:
+            print(f"   {ae}")
+            raise
+    else:
+        print(f"   ⚠️ 无法执行硬核断言 (status={status}, df empty={df is None or df.empty})")
+        raise AssertionError("财务数据为空, 硬核断言无法执行")
 
     # 目标 3: A 股个股官方公告 (修正 symbol+date+二次过滤)
     print("\n【目标 3: A 股个股官方公告 (修正 symbol+date+二次过滤)】")
@@ -233,7 +263,7 @@ def run_rigorous_test():
     report("6′) bond_gb_us_sina", status, df, elapsed, err)
 
     print("\n" + "=" * 60)
-    print("🎯 v3 测试完成。汇总：6 个核心数据点 + 三源备份 + hq.sinajs.cn 稳定抓取")
+    print("🎯 v4 测试完成。汇总：6 个核心数据点 + 三源备份 + hq.sinajs.cn 稳定抓取 + 财务指标硬核断言")
     print("=" * 60)
 
 
