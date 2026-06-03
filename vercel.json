@@ -1,0 +1,4 @@
+{
+ "cleanUrls": true,
+ "ignoreCommand": "git diff --quiet HEAD^ HEAD -- src/ public/ finance-breakfast/"
+}

@@ -23,3 +23,9 @@ pnpm-debug.log*
 # jetbrains setting folder
 .idea/
 .vercel
+
+# 不入仓: OpenClaw 引擎 cron 运行时配置
+cron/
+
+# 不入仓: 财经早餐 cron 运行日志 (运行时数据)
+finance-breakfast/logs/
