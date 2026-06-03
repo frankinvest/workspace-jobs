@@ -1,7 +1,15 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-dividend_predictor.py — 前瞻性预期股息率全流程计算引擎 (时序动态外推完美版)
+⚠️ DEPRECATED 2026-06-03: 此 Monolith 版本已被彻底解耦重构为
+`dividend_calculator.py` + `dividend_engine/` 4 大子模块。
+请改用新版本:
+    python3 tools/dividend_calculator.py
+旧文件保留仅作 git history 留痕, 不会再被新代码引用。
+
+============================================================
+原文档 (Monolith 版本 - 时序动态外推完美版):
+============================================================
 
 核心优化点：
  - Step 2 彻底告别写死数据。引入动态财报时序扫描，年报已出直接取实际值；
