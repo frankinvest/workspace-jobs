@@ -29,3 +29,9 @@ cron/
 
 # 不入仓: 财经早餐 cron 运行日志 (运行时数据)
 finance-breakfast/logs/
+
+# 彻底杜绝凭证上云 (2026-06-04 Frank + Jobs 拍板)
+*cookies.json
+*token.txt
+*.html
+tools/_legacy/
