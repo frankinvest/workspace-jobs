@@ -323,9 +323,15 @@ def step_format(date_str, dry_run=False):
         
         # 输出 .md
         display_date = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:]}"
-        full_md = f"# {title}\n\n"
+        normalized_title = f"财经早餐 {display_date}"  # Frank 拍板的标题格式 (Vercel 首页列靠这个识别)
+        # ⚠️ 重要: 顶部必须严格 YAML frontmatter (Astro 首页靠 title 字段识别，不能出现"原文"等文件后缀)
+        full_md = "---\n"
+        full_md += f'title: "{normalized_title}"\n'
+        full_md += f'date: "{display_date}"\n'
+        full_md += "---\n\n"
+        full_md += f"# {normalized_title}\n\n"
         full_md += f"> 自动抓取于 {shanghai_now_iso()}\n"
-        full_md += f"> 来源: 小红圈 (red-ring.cn) | 帖子 ID: 27593 (红运Dang投)\n\n"
+        full_md += f"> 来源: 小红圈 (red-ring.cn) | 圈子: 红运Dang投 (ID: 27593)\n\n"
         full_md += "---\n\n"
         full_md += "## 原文\n\n"
         full_md += post_md + "\n\n"
