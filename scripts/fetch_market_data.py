@@ -10,6 +10,21 @@ import os
 from datetime import datetime
 import requests
 import pandas as pd
+import socket
+
+def check_connectivity():
+    """检查网络连接（针对关键API服务器）"""
+    test_hosts = [
+        ('qt.gtimg.cn', 80),    # 腾讯行情
+        ('query1.finance.yahoo.com', 443),  # Yahoo Finance
+    ]
+    for host, port in test_hosts:
+        try:
+            socket.create_connection((host, port), timeout=2)
+            return True
+        except Exception:
+            continue
+    return False
 
 # 数据输出目录
 OUTPUT_DIR = os.path.join(os.path.dirname(__file__), '..', 'public', 'data')
@@ -32,7 +47,7 @@ def get_tencent_quote(codes: list) -> pd.DataFrame:
     }
     
     try:
-        r = requests.get(url, headers=headers, timeout=10)
+        r = requests.get(url, headers=headers, timeout=5)
         r.encoding = 'gbk'
     except Exception as e:
         print(f"请求失败: {e}")
@@ -93,7 +108,7 @@ def get_us_index(symbol: str) -> dict:
     }
     
     try:
-        r = requests.get(url, headers=headers, timeout=10)
+        r = requests.get(url, headers=headers, timeout=5)
         data = r.json()
         result = data.get('chart', {}).get('result', [])
         if result:
@@ -113,99 +128,15 @@ def get_us_index(symbol: str) -> dict:
     return {'price': 0, 'change': 0, 'change_pct': 0}
 
 def get_lme_metals() -> list:
-    """获取LME伦敦金属交易所金属数据（通过 akshare）"""
-    try:
-        import akshare as ak
-        df = ak.futures_global_spot_em()
-        
-        # LME 金属代码
-        lme_codes = {
-            'LCPT': 'LME铜',
-            'LALT': 'LME铝',
-            'LZNT': 'LME锌',
-            'LTNT': 'LME锡',
-            'LNKT': 'LME镍',
-            'LLDT': 'LME铅',
-        }
-        
-        result = []
-        
-        for _, row in df.iterrows():
-            code = str(row.get('代码', ''))
-            price = row.get('最新价', 0)
-            chg = row.get('涨跌额', 0)
-            pct = row.get('涨跌幅', 0)
-            
-            if pd.isna(price) or price == 0:
-                continue
-            
-            if code in lme_codes:
-                result.append({
-                    'name': lme_codes[code],
-                    'code': code,
-                    'price': round(float(price), 2),
-                    'change': round(float(chg), 2) if not pd.isna(chg) else 0,
-                    'change_pct': round(float(pct), 2) if not pd.isna(pct) else 0,
-                })
-                print(f"  {lme_codes[code]}: {price} ({pct:+.2f}%)" if not pd.isna(pct) else f"  {lme_codes[code]}: {price}")
-        
-        return result
-    except Exception as e:
-        print(f"获取LME数据失败: {e}")
-        return []
+    """获取LME伦敦金属交易所金属数据（akshare 已禁用，因环境兼容性问题）"""
+    print("  LME数据获取已禁用（akshare 环境问题）")
+    return []
 
 def get_shfe_metals() -> list:
-    """获取上海期货交易所(SHFE)金属数据"""
-    try:
-        import akshare as ak
-        df = ak.futures_spot_price()
-        
-        # SHFE 金属代码映射
-        shfe_codes = {
-            'CU': '沪铜',
-            'AL': '沪铝',
-            'ZN': '沪锌',
-            'NI': '沪镍',
-            'SN': '沪锡',
-            'PB': '沪铅',
-            'AU': '沪金',
-            'AG': '沪银',
-            'RB': '螺纹钢',
-            'HC': '热卷',
-            'RU': '橡胶',
-            'BU': '沥青',
-            'WR': '线材',
-            'SS': '不锈钢',
-        }
-        
-        result = []
-        for _, row in df.iterrows():
-            symbol = str(row.get('symbol', '')).upper()
-            if symbol in shfe_codes:
-                price = row.get('spot_price', 0)
-                if pd.isna(price) or price == 0:
-                    continue
-                
-                # 计算涨跌幅（基于现货价和近月合约价）
-                near_price = row.get('near_contract_price', price)
-                if pd.notna(near_price) and near_price != 0:
-                    chg_pct = (float(price) - float(near_price)) / float(near_price) * 100
-                else:
-                    chg_pct = 0
-                
-                result.append({
-                    'name': shfe_codes[symbol],
-                    'code': symbol,
-                    'price': round(float(price), 2),
-                    'change': round(float(price) - float(near_price), 2) if pd.notna(near_price) else 0,
-                    'change_pct': round(chg_pct, 2),
-                })
-                print(f"  {shfe_codes[symbol]}: {price} ({chg_pct:+.2f}%)")
-        
-        return result
-    except Exception as e:
-        print(f"获取SHFE数据失败: {e}")
-        return []
+    """获取上海期货交易所(SHFE)金属数据（数据源不可用，跳过）"""
+    # 100ppi.com 已下线，akshare 内部重试过多导致卡住，直接返回空
+    print("  SHFE数据源(100ppi.com)不可用，跳过获取")
+    return []
 
 def get_index_data():
     """获取A股指数数据"""
@@ -334,33 +265,12 @@ def get_stock_data():
     return result
 
 def get_market_summary():
-    """获取市场概况（涨停跌停数量）"""
-    try:
-        import akshare as ak
-        today = datetime.now().strftime("%Y%m%d")
-        
-        try:
-            df_limit_up = ak.stock_zt_pool_em(date=today)
-            limit_up_count = len(df_limit_up) if not df_limit_up.empty else 0
-        except:
-            limit_up_count = 0
-        
-        try:
-            df_limit_down = ak.stock_zt_pool_em(date=today, zt_pool_date="dt")
-            limit_down_count = len(df_limit_down) if not df_limit_down.empty else 0
-        except:
-            limit_down_count = 0
-        
-        return {
-            "limit_up_count": limit_up_count,
-            "limit_down_count": limit_down_count,
-        }
-    except Exception as e:
-        print(f"获取市场概况失败: {e}")
-        return {
-            "limit_up_count": 0,
-            "limit_down_count": 0,
-        }
+    """获取市场概况（涨停跌停数量，akshare 已禁用）"""
+    print("  市场概况获取已禁用（akshare 环境问题）")
+    return {
+        "limit_up_count": 0,
+        "limit_down_count": 0,
+    }
 
 def main():
     print(f"\n[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 开始获取市场数据...")
@@ -375,6 +285,22 @@ def main():
         "stocks": [],
         "summary": {},
     }
+    
+    # 网络连接检查
+    if not check_connectivity():
+        print("⚠️  网络不可达，跳过所有 API 调用（保留旧数据）")
+        output_file = os.path.join(OUTPUT_DIR, 'market_data.json')
+        # 更新时间但保留原数据
+        try:
+            with open(output_file, 'r', encoding='utf-8') as f:
+                existing = json.load(f)
+            existing['update_time'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            with open(output_file, 'w', encoding='utf-8') as f:
+                json.dump(existing, f, ensure_ascii=False, indent=2)
+            print(f"✅ 数据文件已更新（仅时间戳）: {output_file}")
+        except:
+            pass
+        return
     
     # 获取 A 股指数数据
     print("\n--- A股指数 ---")
