@@ -152,59 +152,25 @@ def _fetch_dynamic_eps(code: str) -> dict:
         return {"estimated_eps": INDUSTRY_BASE_EPS_FALLBACK, "report_period": "n/a", "source": "fallback"}
 
 
-# ── 实时现价拉取 (腾讯 qt.gtimg.cn, 闪电快照, <50ms) ──────────────────────
-import urllib.request
-import urllib.error
-
-TENCENT_QUOTE_URL = "https://qt.gtimg.cn/q=s_{market}{code}"
-
-
-def _market_prefix(code: str) -> str:
-    """根据股票代码推导市场前缀
-    6 → sh (沪市主板/科创)
-    0, 3 → sz (深市主板/创业)
-    8, 4, 9 → bj (北交所老代码 83/87/4 + 新代码 92)
-    其他 → sh (fallback, 腾讯通常接受 sh fallback)
-    """
-    c = code.replace("bj", "").lstrip()  # 兼容 bj920992 这种带前缀的
-    if not c:
-        return "sh"
-    if c.startswith("6"):
-        return "sh"
-    if c.startswith(("0", "3")):
-        return "sz"
-    if c.startswith(("8", "4", "9")):
-        return "bj"
-    return "sh"
+# ── 实时现价拉取 (从 stock_index.json 静态字典直读) ──────────────────────────
+# 1. 由于 stock_index.json 本身已经过 generate_stock_index.py 离线落库了最新价格
+#    api 运行时不再发外部请求, 避免腾讯接口限速 / Vercel 运行时网络依赖。
+# 2. 静态字典里的价格是收盘后到下一次跑 generate 之间的"上一个批次价格",
+#    对首页面板足够使用 (非高频实时监控场景)。
 
 
 def _fetch_realtime_price(code: str) -> float:
-    """拉取腾讯闪电快照, 返回 float 现价; 任何异常 fallback 0.0
+    """从 STOCK_BY_CODE 静态字典直读价格, 任何异常 fallback 0.0
 
-    响应格式示例: v_s_sh600036="1~招商银行~600036~38.49~-0.01~-0.03~..."
-    字段 (按 ~ 分割): [0]=status, [1]=name, [2]=code, [3]=现价, ...
+    数据源: public/data/stock_index.json (由 tools/generate_stock_index.py 生成)
     """
-    market = _market_prefix(code)
-    code_clean = code.replace("bj", "").lstrip()
-    url = TENCENT_QUOTE_URL.format(market=market, code=code_clean)
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=3) as r:
-            raw = r.read().decode("gbk", errors="replace").strip()
-        if not raw or "pv_none_match" in raw or "=" not in raw:
+        s = STOCK_BY_CODE.get(code)
+        if not s:
             return 0.0
-        # 解析 v_s_sh600036="1~name~code~price~..."
-        body = raw.split('"', 1)[1].rstrip('";').strip('";')
-        if not body:
-            return 0.0
-        parts = body.split("~")
-        if len(parts) < 4:
-            return 0.0
-        price_str = parts[3].strip()
-        if not price_str or price_str in ("0", "0.00", "0.0"):
-            return 0.0
-        return float(price_str)
-    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, ValueError, Exception):
+        price = float(s.get("price", 0.0))
+        return round(price, 2) if price > 0 else 0.0
+    except (TypeError, ValueError, Exception):
         return 0.0
 
 
@@ -235,7 +201,8 @@ def _mock_quant(code: str, name: str, realtime_price: float = 0.0) -> dict:
         "predicted_dividend_yield": "6.85%",  # 静态 Mock (阶段 3 才接真实计算)
         "industry": industry,
         "qualitative_adjustment": (
-            f"实时现价已对接腾讯 qt.gtimg.cn (闪电快照 <50ms); "
+            f"现价从 public/data/stock_index.json 静态字典直读 "
+            f"(generate_stock_index.py 离线落库, 后端零网络依赖); "
             f"EPS 动态年化 (Stage 3 已对接 FinancialDataHub); "
             f"股息率仍 Mock (阶段 4 才接 dividend_calculator.py)"
         ),
