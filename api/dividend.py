@@ -67,9 +67,68 @@ STOCK_BY_CODE = {s["code"]: s for s in STOCK_INDEX}
 STOCK_BY_NAME = {s["name"]: s for s in STOCK_INDEX}
 
 
+# ── 实时现价拉取 (腾讯 qt.gtimg.cn, 闪电快照, <50ms) ──────────────────────
+import urllib.request
+import urllib.error
+
+TENCENT_QUOTE_URL = "https://qt.gtimg.cn/q=s_{market}{code}"
+
+
+def _market_prefix(code: str) -> str:
+    """根据股票代码推导市场前缀
+    6 → sh (沪市主板/科创)
+    0, 3 → sz (深市主板/创业)
+    8, 4, 9 → bj (北交所老代码 83/87/4 + 新代码 92)
+    其他 → sh (fallback, 腾讯通常接受 sh fallback)
+    """
+    c = code.replace("bj", "").lstrip()  # 兼容 bj920992 这种带前缀的
+    if not c:
+        return "sh"
+    if c.startswith("6"):
+        return "sh"
+    if c.startswith(("0", "3")):
+        return "sz"
+    if c.startswith(("8", "4", "9")):
+        return "bj"
+    return "sh"
+
+
+def _fetch_realtime_price(code: str) -> float:
+    """拉取腾讯闪电快照, 返回 float 现价; 任何异常 fallback 0.0
+
+    响应格式示例: v_s_sh600036="1~招商银行~600036~38.49~-0.01~-0.03~..."
+    字段 (按 ~ 分割): [0]=status, [1]=name, [2]=code, [3]=现价, ...
+    """
+    market = _market_prefix(code)
+    code_clean = code.replace("bj", "").lstrip()
+    url = TENCENT_QUOTE_URL.format(market=market, code=code_clean)
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=3) as r:
+            raw = r.read().decode("gbk", errors="replace").strip()
+        if not raw or "pv_none_match" in raw or "=" not in raw:
+            return 0.0
+        # 解析 v_s_sh600036="1~name~code~price~..."
+        body = raw.split('"', 1)[1].rstrip('";').strip('";')
+        if not body:
+            return 0.0
+        parts = body.split("~")
+        if len(parts) < 4:
+            return 0.0
+        price_str = parts[3].strip()
+        if not price_str or price_str in ("0", "0.00", "0.0"):
+            return 0.0
+        return float(price_str)
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, ValueError, Exception):
+        return 0.0
+
+
 # ── Mock 量化数据 (阶段 2 仍占位, 阶段 3 接 dividend_calculator.py) ──────────
-def _mock_quant(code: str, name: str) -> dict:
-    """根据股票代码前缀推测市场 + 行业, 给出合理 Mock 数据"""
+def _mock_quant(code: str, name: str, realtime_price: float = 0.0) -> dict:
+    """根据股票代码前缀推测市场 + 行业, 给出合理 Mock 数据
+
+    realtime_price 来自腾讯闪电快照, 0.0 表示拉取失败 (停牌/网络/不存在)
+    """
     code_clean = code.replace("bj", "")
     industry = "未分类"
     if code_clean.startswith(("600", "601", "603", "605")):
@@ -85,14 +144,15 @@ def _mock_quant(code: str, name: str) -> dict:
     elif code_clean.startswith(("8", "4")):
         industry = "北交所"
 
-    # 银行/保险类给个看起来合理的 yield (5-8%)
-    yield_5 = "6.85%"
     return {
-        "current_price": round(7.42 + (hash(code) % 100) / 10.0, 2),
-        "estimated_eps": round(1.95 - (hash(code + "eps") % 100) / 100.0, 2),
-        "predicted_dividend_yield": yield_5,
+        "current_price": realtime_price,  # 真实盘中价, 失败 fallback 0.0
+        "estimated_eps": round(1.95 - (hash(code + "eps") % 100) / 100.0, 2),  # 静态 Mock
+        "predicted_dividend_yield": "6.85%",  # 静态 Mock (阶段 3 才接真实计算)
         "industry": industry,
-        "qualitative_adjustment": f"Mock 阶段 (feature/dividend-web-ui): 命中 {len(STOCK_INDEX)} 股票库; 量化指标待对接 dividend_calculator.py",
+        "qualitative_adjustment": (
+            f"实时现价已对接腾讯 qt.gtimg.cn (闪电快照 <50ms); "
+            f"EPS/股息率仍 Mock (阶段 3 才接 dividend_calculator.py)"
+        ),
     }
 
 
@@ -164,8 +224,9 @@ class handler(BaseHTTPRequestHandler):
             ))
             return
 
-        # 命中: 拼装响应
-        quant = _mock_quant(stock["code"], stock["name"])
+        # 命中: 拼装响应 (实时现价 → 腾讯 qt.gtimg.cn 闪电快照)
+        realtime_price = _fetch_realtime_price(stock["code"])
+        quant = _mock_quant(stock["code"], stock["name"], realtime_price)
         result = {
             "code": stock["code"],
             "name": stock["name"],
