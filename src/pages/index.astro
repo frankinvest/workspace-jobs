@@ -188,20 +188,80 @@ const articleCount = groupedArticles['财经早餐'].length;
         )}
       </header>
 
-      <!-- 主内容区：居中单栏，文章列表更宽更舒展 -->
-      <div class="article-container">
-        <div class="sections">
-          {groupedArticles['财经早餐'].length > 0 && (
-            <section class="section">
-              <SectionHeader title="财经早餐" icon="chart" count={groupedArticles['财经早餐'].length} />
-              <div class="article-list">
-                {groupedArticles['财经早餐'].map((article) => (
-                  <ArticleCard {...article} />
-                ))}
-              </div>
-            </section>
-          )}
+      <!-- 主内容区：左目录 + 右查询 双栏布局 (feature/dividend-web-ui) -->
+      <div class="main-split-layout">
+        <!-- 左栏：财经早餐文章列表 (~70%) -->
+        <div class="article-column">
+          <div class="sections">
+            {groupedArticles['财经早餐'].length > 0 && (
+              <section class="section">
+                <SectionHeader title="财经早餐" icon="chart" count={groupedArticles['财经早餐'].length} />
+                <div class="article-list">
+                  {groupedArticles['财经早餐'].map((article) => (
+                    <ArticleCard {...article} />
+                  ))}
+                </div>
+              </section>
+            )}
+          </div>
         </div>
+
+        <!-- 右栏：红利狙击查询面板 (~30%, sticky) -->
+        <aside class="dividend-column">
+          <div class="dividend-column-header">
+            <h2 class="dividend-column-title">🎯 红利狙击</h2>
+            <p class="dividend-column-sub">前瞻股息率智能预测</p>
+          </div>
+          <section class="sniper-panel">
+            <form id="sniper-form" autocomplete="off">
+              <input
+                id="sniper-code"
+                class="sniper-input"
+                type="text"
+                name="code"
+                placeholder="股票代码 / 简称"
+                maxlength="20"
+              />
+              <button id="sniper-btn" class="sniper-btn" type="submit">
+                狙击股息率
+              </button>
+              <div id="sniper-loading" class="sniper-loading">
+                正在调度预测引擎...
+              </div>
+            </form>
+
+            <div id="sniper-result" class="result-board" aria-live="polite">
+              <div class="result-grid">
+                <div class="result-cell full">
+                  <div class="result-label">股票</div>
+                  <div class="result-value" data-field="name">—</div>
+                  <div class="result-meta">
+                    <span data-field="code">—</span>
+                    ·
+                    <span data-field="industry">—</span>
+                  </div>
+                </div>
+                <div class="result-cell">
+                  <div class="result-label">现价 (元)</div>
+                  <div class="result-value" data-field="current_price">—</div>
+                </div>
+                <div class="result-cell">
+                  <div class="result-label">前瞻 EPS (元)</div>
+                  <div class="result-value" data-field="estimated_eps">—</div>
+                </div>
+                <div class="result-cell full">
+                  <div class="result-label">前瞻股息率 TTM</div>
+                  <div class="result-value accent" data-field="predicted_dividend_yield">—</div>
+                  <div class="result-meta" data-field="qualitative_adjustment">—</div>
+                </div>
+              </div>
+              <div id="sniper-error" class="result-error" style="display:none"></div>
+            </div>
+          </section>
+          <p class="dividend-column-foot">
+            ⚠️ Mock 模式 (feature/dividend-web-ui)，未对接 dividend_calculator.py
+          </p>
+        </aside>
       </div>
 
       <!-- Footer -->
@@ -403,4 +463,242 @@ const articleCount = groupedArticles['财经早餐'].length;
       padding: 0 var(--space-3);
     }
   }
+  /* ============================================
+     Feature: 主页双栏布局 + 红利狙击查询面板
+     (feature/dividend-web-ui)
+     ============================================ */
+
+  /* 双栏网格: 左 70% / 右 30%, 中间 gap */
+  .main-split-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 360px;
+    gap: var(--space-6);
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 0 var(--space-6);
+    align-items: start;
+  }
+  .article-column { min-width: 0; }
+
+  /* 右栏 sticky 跟随滚动 */
+  .dividend-column {
+    position: sticky;
+    top: var(--space-6);
+    display: flex;
+    flex-direction: column;
+  }
+  .dividend-column-header {
+    text-align: center;
+    margin-bottom: var(--space-3);
+  }
+  .dividend-column-title {
+    font-size: var(--font-size-xl);
+    font-weight: var(--font-weight-bold);
+    color: var(--color-text-primary);
+    margin: 0 0 var(--space-1);
+    background: linear-gradient(135deg, #fafafa 0%, #e60000 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .dividend-column-sub {
+    font-size: var(--font-size-xs);
+    color: var(--color-text-secondary);
+    margin: 0;
+  }
+  .dividend-column-foot {
+    text-align: center;
+    margin-top: var(--space-3);
+    color: var(--color-text-muted);
+    font-size: 11px;
+    line-height: 1.4;
+  }
+
+  /* 磨砂玻璃面板 (从 dividend.astro 移植, 紧凑版) */
+  .sniper-panel {
+    background: rgba(18, 8, 8, 0.6);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid rgba(230, 0, 0, 0.18);
+    border-radius: 14px;
+    padding: 20px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4),
+                inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  }
+  .sniper-input {
+    width: 100%;
+    padding: 12px 14px;
+    font-size: var(--font-size-base);
+    color: var(--color-text-primary);
+    background: rgba(10, 5, 5, 0.7);
+    border: 1.5px solid var(--color-border);
+    border-radius: 10px;
+    outline: none;
+    transition: all 0.2s ease;
+    box-sizing: border-box;
+  }
+  .sniper-input::placeholder { color: var(--color-text-muted); }
+  .sniper-input:focus {
+    border-color: var(--color-accent);
+    background: rgba(10, 5, 5, 0.9);
+    box-shadow: 0 0 0 3px var(--color-accent-dim);
+  }
+  .sniper-btn {
+    width: 100%;
+    margin-top: var(--space-3);
+    padding: 12px;
+    font-size: var(--font-size-base);
+    font-weight: var(--font-weight-semibold);
+    color: var(--color-text-primary);
+    background: linear-gradient(135deg, var(--color-accent) 0%, #b30000 100%);
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    letter-spacing: 1.5px;
+    box-shadow: 0 4px 16px rgba(230, 0, 0, 0.25);
+  }
+  .sniper-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 24px rgba(230, 0, 0, 0.4);
+    background: linear-gradient(135deg, var(--color-accent-hover) 0%, #c20000 100%);
+  }
+  .sniper-btn:active { transform: translateY(0); }
+  .sniper-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* 结果看板 */
+  .result-board {
+    margin-top: var(--space-4);
+    opacity: 0;
+    transform: translateY(8px);
+    max-height: 0;
+    overflow: hidden;
+    transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .result-board.visible {
+    opacity: 1;
+    transform: translateY(0);
+    max-height: 800px;
+  }
+  .result-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-2);
+  }
+  .result-cell {
+    padding: var(--space-3);
+    background: rgba(10, 5, 5, 0.5);
+    border: 1px solid var(--color-border-subtle);
+    border-radius: 8px;
+  }
+  .result-cell.full { grid-column: 1 / -1; }
+  .result-label {
+    font-size: 10px;
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 2px;
+  }
+  .result-value {
+    font-size: var(--font-size-lg);
+    font-weight: var(--font-weight-bold);
+    color: var(--color-text-primary);
+    font-variant-numeric: tabular-nums;
+  }
+  .result-value.accent {
+    color: var(--color-accent);
+    text-shadow: 0 0 16px rgba(230, 0, 0, 0.3);
+    font-size: var(--font-size-xl);
+  }
+  .result-meta {
+    font-size: 11px;
+    color: var(--color-text-secondary);
+    margin-top: 2px;
+  }
+  .result-error {
+    color: var(--color-danger);
+    text-align: center;
+    padding: var(--space-3);
+    font-size: 12px;
+  }
+  .sniper-loading {
+    display: none;
+    text-align: center;
+    margin-top: var(--space-2);
+    color: var(--color-text-secondary);
+    font-size: 11px;
+  }
+  .sniper-loading.active { display: block; }
+  .sniper-loading::after { content: '⏳'; margin-right: var(--space-1); }
+
+  /* 响应式: 窄屏折叠为单栏, 右栏变底部 */
+  @media (max-width: 960px) {
+    .main-split-layout {
+      grid-template-columns: 1fr;
+      gap: var(--space-8);
+    }
+    .dividend-column { position: static; max-width: 480px; margin: 0 auto; width: 100%; }
+  }
 </style>
+
+<script>
+  // Feature: 红利狙击查询 - fetch /api/dividend 并渐入渲染
+  // (从 src/pages/dividend.astro 迁移)
+  const sniperForm = document.getElementById('sniper-form') as HTMLFormElement | null;
+  const sniperCode = document.getElementById('sniper-code') as HTMLInputElement | null;
+  const sniperBtn = document.getElementById('sniper-btn') as HTMLButtonElement | null;
+  const sniperLoading = document.getElementById('sniper-loading') as HTMLDivElement | null;
+  const sniperResult = document.getElementById('sniper-result') as HTMLDivElement | null;
+  const sniperError = document.getElementById('sniper-error') as HTMLDivElement | null;
+
+  function sniperSetField(name: string, value: string) {
+    if (!sniperResult) return;
+    const el = sniperResult.querySelector<HTMLElement>(`[data-field="${name}"]`);
+    if (el) el.textContent = value;
+  }
+
+  function sniperShowError(msg: string) {
+    if (!sniperResult || !sniperError) return;
+    sniperResult.classList.add('visible');
+    sniperError.textContent = msg;
+    sniperError.style.display = 'block';
+  }
+
+  function sniperClearError() {
+    if (!sniperError) return;
+    sniperError.textContent = '';
+    sniperError.style.display = 'none';
+  }
+
+  sniperForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const code = (sniperCode?.value || '').trim();
+    if (!code) { sniperShowError('请输入股票代码或简称'); return; }
+
+    if (sniperBtn) sniperBtn.disabled = true;
+    sniperLoading?.classList.add('active');
+    sniperResult?.classList.remove('visible');
+    sniperClearError();
+
+    try {
+      const res = await fetch(`/api/dividend?code=${encodeURIComponent(code)}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+
+      sniperSetField('code', data.code ?? '—');
+      sniperSetField('name', data.name ?? '—');
+      sniperSetField('industry', data.industry ?? '—');
+      sniperSetField('current_price', typeof data.current_price === 'number' ? data.current_price.toFixed(2) : '—');
+      sniperSetField('estimated_eps', typeof data.estimated_eps === 'number' ? data.estimated_eps.toFixed(2) : '—');
+      sniperSetField('predicted_dividend_yield', data.predicted_dividend_yield ?? '—');
+      sniperSetField('qualitative_adjustment', data.qualitative_adjustment ?? '—');
+
+      sniperResult?.classList.add('visible');
+    } catch (err: any) {
+      sniperShowError(`⚠️ ${err?.message || '请求失败'} (确认 Vercel api/dividend.py 已部署)`);
+    } finally {
+      if (sniperBtn) sniperBtn.disabled = false;
+      sniperLoading?.classList.remove('active');
+    }
+  });
+</script>
