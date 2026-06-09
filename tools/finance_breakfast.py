@@ -200,61 +200,46 @@ def extract_title(html):
 
 
 def extract_comments_from_html(html):
-    """从 innerHTML 提取评论 (用 build_comments.py 的 regex 逻辑)
+    """从 innerHTML 提取评论 (调用 build_comments.py BS4 重构版)
     返回 list[dict] {user, time, content, replies}
+
+    【2026-06-09 修复】原版内嵌脆弱正则，已替换为 subprocess 调新版 build_comments.py
+    (e2ad95e 提交: replace regex with BeautifulSoup and fix path bugs)
     """
-    # 评论区起点
-    cmt_start = html.find('class="por px-15"')
-    if cmt_start == -1:
+    import subprocess
+    import os
+    import json
+
+    # 评论区起点 (BS4 重构后 build_comments.py 内部锁定, 这里只做短路保护)
+    if 'class="por px-15"' not in html and 'por px-15' not in html:
         return []
-    cmt_html = html[cmt_start:]
-    
-    # 顶级评论: <div class="py-12 flex bt">
-    top_cmt_pat = re.compile(
-        r'<div class="py-12 flex bt">(.*?)(?=<div class="py-12 flex bt"|</div>\s*</div>\s*</div>\s*<div class="por px-15"|\Z)',
-        re.DOTALL
-    )
-    # 回复 (在 bgc-body 容器内): <span class="c-primary cup">...</span>...<span class="wpw">...</span>
-    reply_pat = re.compile(
-        r'<span class="c-primary cup">([^<]+)</span>.*?<span class="wpw">([^<]*(?:<[^>]+>[^<]*</[^>]+>)*[^<]*)</span>',
-        re.DOTALL
-    )
-    # 顶级用户/时间/正文
-    top_user_pat = re.compile(r'<span class="cup mr-5">([^<]+)</span>')
-    top_time_pat = re.compile(r'<span class="dark-9 fz-sm">([^<]+)</span>')
-    top_text_pat = re.compile(r'<span class="wpw">([^<]*(?:<[^>]+>[^<]*</[^>]+>)*[^<]*)</span>', re.DOTALL)
-    
-    comments = []
-    for m in top_cmt_pat.finditer(cmt_html):
-        block = m.group(1)
-        u_m = top_user_pat.search(block)
-        t_m = top_time_pat.search(block)
-        w_m = re.search(r'<span class="wpw">(.+?)</span>', block, re.DOTALL)
-        if not u_m or not w_m:
-            continue
-        u = u_m.group(1).strip()
-        t = t_m.group(1).strip() if t_m else ""
-        txt = re.sub(r'<[^>]+>', '', w_m.group(1)).strip()
-        txt = txt.replace('&nbsp;', ' ').replace('&lt;', '<').replace('&gt;', '>')
-        if not txt:
-            # 可能是图片评论
-            if '查看图片' in block:
-                txt = '[图片评论]'
-            else:
-                continue
-        item = {'user': u, 'time': t, 'content': txt, 'replies': []}
-        # 回复
-        reply_section = re.search(r'<div class="bgc-body px-9 py-5">(.*?)</div>\s*</div>\s*</div>\s*</div>', block, re.DOTALL)
-        if reply_section:
-            reply_block = reply_section.group(1)
-            for rm in reply_pat.finditer(reply_block):
-                ru = rm.group(1).strip()
-                rt = re.sub(r'<[^>]+>', '', rm.group(2)).strip()
-                rt = rt.replace('&nbsp;', ' ').replace('&lt;', '<').replace('&gt;', '>')
-                if ru and rt:
-                    item['replies'].append({'user': ru, 'content': rt})
-        comments.append(item)
-    return comments
+
+    try:
+        cp = subprocess.run(
+            [sys.executable, str(BUILD_COMMENTS_SCRIPT)],
+            input=html,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if cp.returncode != 0:
+            log(f"  [comments] build_comments.py 失败 rc={cp.returncode}: {cp.stderr[:200]}")
+            return []
+
+        # build_comments.py 硬编码输出到 ~/.openclaw/workspace-jobs/comments.json
+        output_path = os.path.expanduser('~/.openclaw/workspace-jobs/comments.json')
+        if not os.path.exists(output_path):
+            log(f"  [comments] build_comments.py 未生成 {output_path}")
+            return []
+
+        with open(output_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except subprocess.TimeoutExpired:
+        log(f"  [comments] build_comments.py 超时 (>30s)")
+        return []
+    except Exception as e:
+        log(f"  [comments] extract 异常: {type(e).__name__}: {e}")
+        return []
 
 
 def render_comments_md(comments):
