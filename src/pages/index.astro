@@ -186,7 +186,47 @@ const articleCount = groupedArticles['财经早餐'].length;
         {articleCount > 0 && (
           <p class="hero-count">{articleCount} 篇财经早餐</p>
         )}
+
+        <!-- Feature 入口: 红利狙击看板 (feature/dividend-web-ui) -->
+        <a class="dividend-cta" href="/dividend" aria-label="进入红利狙击看板">
+          <span class="dividend-cta-icon">🎯</span>
+          <span class="dividend-cta-body">
+            <span class="dividend-cta-title">红利狙击看板</span>
+            <span class="dividend-cta-sub">前瞻股息率智能预测</span>
+          </span>
+          <span class="dividend-cta-arrow">→</span>
+        </a>
       </header>
+
+      <style>
+        .dividend-cta {
+          display: inline-flex;
+          align-items: center;
+          gap: var(--space-3);
+          margin: var(--space-4) auto 0;
+          padding: 14px 22px;
+          background: linear-gradient(135deg, rgba(230, 0, 0, 0.12) 0%, rgba(179, 0, 0, 0.18) 100%);
+          border: 1.5px solid rgba(230, 0, 0, 0.45);
+          border-radius: 14px;
+          color: var(--color-text-primary);
+          text-decoration: none;
+          transition: all 0.2s ease;
+          box-shadow: 0 4px 16px rgba(230, 0, 0, 0.15);
+          backdrop-filter: blur(8px);
+        }
+        .dividend-cta:hover {
+          transform: translateY(-2px);
+          border-color: var(--color-accent);
+          background: linear-gradient(135deg, rgba(230, 0, 0, 0.22) 0%, rgba(179, 0, 0, 0.28) 100%);
+          box-shadow: 0 6px 24px rgba(230, 0, 0, 0.35);
+        }
+        .dividend-cta-icon { font-size: 22px; line-height: 1; }
+        .dividend-cta-body { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.2; }
+        .dividend-cta-title { font-size: 16px; font-weight: 600; letter-spacing: 0.5px; }
+        .dividend-cta-sub { font-size: 12px; color: var(--color-text-secondary); margin-top: 2px; }
+        .dividend-cta-arrow { font-size: 18px; color: var(--color-accent); margin-left: 4px; transition: transform 0.2s ease; }
+        .dividend-cta:hover .dividend-cta-arrow { transform: translateX(3px); }
+      </style>
 
       <!-- 主内容区：居中单栏，文章列表更宽更舒展 -->
       <div class="article-container">
