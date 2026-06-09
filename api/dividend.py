@@ -1,24 +1,29 @@
 """
-api/dividend.py — 前瞻股息率 Mock API (feature/dividend-web-ui 阶段)
+api/dividend.py — 前瞻股息率 API (feature/dividend-web-ui 阶段 2)
 
-⚠️ 当前为 Mock 契约：未对接 tools/dividend_calculator.py 真实计算。
-   仅作为前端 /api/dividend 路由的通电桩，验证请求-响应链路。
+阶段 2: 真实股票代码/名称检索 (基于 public/data/stock_index.json 全量 5500+ 沪深京股)
+  - code/name 参数 → 精确/模糊匹配 stock_index.json
+  - 命中: 返回真实 code + name, 量化字段 (price/eps/yield) 仍 Mock
+  - 未命中: HTTP 404 + 标准错误 JSON
+  - 数据更新: 跑 tools/generate_stock_index.py 重抓即可
 
 接口契约:
   - 方法: GET
   - Query 参数:
-      code  (str, 必填)  — 股票代码 (6 位) 或简称
-  - 响应: application/json; charset=utf-8
+      code  (str, 必填)  — 股票代码 (6 位或 bj+6 位) 或简称 (中文/部分)
+  - 响应 (命中): 200 application/json
       {
-        "code": "600015",
-        "name": "华夏银行",
+        "code": "600015",  ← 真实匹配
+        "name": "华夏银行", ← 真实匹配
         "current_price": 7.42,
         "estimated_eps": 1.95,
         "predicted_dividend_yield": "7.85%",
         "industry": "银行-商业银行",
-        "qualitative_adjustment": "已触发大股东派息率历史均值纠偏修正"
+        "qualitative_adjustment": "已触发大股东派息率历史均值纠偏修正",
+        "match_type": "exact_code"  ← 新增: exact_code | exact_name | fuzzy_name
       }
-  - 错误响应: HTTP 4xx/5xx + { "error": "...", "code": "..." }
+  - 响应 (未命中): 404 application/json
+      { "error": "未在 stock_index.json 找到匹配项", "query": "xxx", "code": "NOT_FOUND" }
 
 Vercel Python runtime 自动识别 api/*.py 暴露为 /api/<basename> 路由。
 """
@@ -26,84 +31,112 @@ Vercel Python runtime 自动识别 api/*.py 暴露为 /api/<basename> 路由。
 from http.server import BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 import json
+import os
+import sys
+from pathlib import Path
 
 
-# ── Mock 静态映射表 (阶段 1: 假数据; 阶段 2: 替换为 dividend_calculator.py) ──
-MOCK_DB = {
-    "600015": {
-        "code": "600015",
-        "name": "华夏银行",
-        "current_price": 7.42,
-        "estimated_eps": 1.95,
-        "predicted_dividend_yield": "7.85%",
-        "industry": "银行-商业银行",
-        "qualitative_adjustment": "已触发大股东派息率历史均值纠偏修正 (近 3 年派息率均值 26.8%)",
-    },
-    "601398": {
-        "code": "601398",
-        "name": "工商银行",
-        "current_price": 7.18,
-        "estimated_eps": 1.06,
-        "predicted_dividend_yield": "6.42%",
-        "industry": "银行-国有大行",
-        "qualitative_adjustment": "国有大行派息率稳定，无重大行业资本开支变动",
-    },
-    "002170": {
-        "code": "002170",
-        "name": "芭田股份",
-        "current_price": 9.85,
-        "estimated_eps": 0.45,
-        "predicted_dividend_yield": "4.12%",
-        "industry": "化工-复合肥",
-        "qualitative_adjustment": "已识别高派息率倾向 (近 3 年均值 60%), 行业周期底部需谨慎外推",
-    },
-    "601319": {
-        "code": "601319",
-        "name": "中国人保",
-        "current_price": 6.55,
-        "estimated_eps": 0.85,
-        "predicted_dividend_yield": "5.18%",
-        "industry": "非银金融-保险",
-        "qualitative_adjustment": "财险行业派息率稳定, IFRS17 切换后利润释放节奏需观察",
-    },
-}
+# ── 加载 stock_index.json (启动时一次, Vercel runtime 内存缓存) ──────────────
+def _load_stock_index():
+    """从 public/data/stock_index.json 加载全量股票名录
 
-# 简称 → 代码 模糊匹配
-NAME_TO_CODE = {
-    "华夏银行": "600015",
-    "工行": "601398",
-    "工商银行": "601398",
-    "芭田": "002170",
-    "芭田股份": "002170",
-    "人保": "601319",
-    "中国人保": "601319",
-}
+    路径优先级:
+      1. <repo_root>/public/data/stock_index.json (本地开发 + Vercel Python runtime)
+      2. <repo_root>/dist/data/stock_index.json (Astro build 后的产物)
+    """
+    candidates = [
+        Path.home() / ".openclaw" / "workspace-jobs" / "public" / "data" / "stock_index.json",
+        Path(__file__).parent.parent / "public" / "data" / "stock_index.json",
+        Path(__file__).parent.parent / "dist" / "data" / "stock_index.json",
+    ]
+    for p in candidates:
+        try:
+            if p.exists():
+                with open(p, encoding="utf-8") as f:
+                    data = json.load(f)
+                print(f"[dividend] loaded {len(data)} stocks from {p}", file=sys.stderr)
+                return data, p
+        except Exception as e:
+            print(f"[dividend] FAIL load {p}: {type(e).__name__}: {e}", file=sys.stderr)
+    print(f"[dividend] ❌ stock_index.json not found, tried: {[str(p) for p in candidates]}", file=sys.stderr)
+    return [], None
 
 
-def _mock_lookup(query: str) -> dict:
-    """根据输入的 code/简称 查 Mock 表，找不到返回 fallback。"""
+STOCK_INDEX, STOCK_INDEX_PATH = _load_stock_index()
+STOCK_BY_CODE = {s["code"]: s for s in STOCK_INDEX}
+STOCK_BY_NAME = {s["name"]: s for s in STOCK_INDEX}
+
+
+# ── Mock 量化数据 (阶段 2 仍占位, 阶段 3 接 dividend_calculator.py) ──────────
+def _mock_quant(code: str, name: str) -> dict:
+    """根据股票代码前缀推测市场 + 行业, 给出合理 Mock 数据"""
+    code_clean = code.replace("bj", "")
+    industry = "未分类"
+    if code_clean.startswith(("600", "601", "603", "605")):
+        industry = "沪市主板"
+    elif code_clean.startswith("688"):
+        industry = "沪市科创板"
+    elif code_clean.startswith(("000", "001", "002")):
+        industry = "深市主板/中小板"
+    elif code_clean.startswith("300"):
+        industry = "深市创业板"
+    elif code_clean.startswith(("83", "87", "920")):
+        industry = "北交所"
+    elif code_clean.startswith(("8", "4")):
+        industry = "北交所"
+
+    # 银行/保险类给个看起来合理的 yield (5-8%)
+    yield_5 = "6.85%"
+    return {
+        "current_price": round(7.42 + (hash(code) % 100) / 10.0, 2),
+        "estimated_eps": round(1.95 - (hash(code + "eps") % 100) / 100.0, 2),
+        "predicted_dividend_yield": yield_5,
+        "industry": industry,
+        "qualitative_adjustment": f"Mock 阶段 (feature/dividend-web-ui): 命中 {len(STOCK_INDEX)} 股票库; 量化指标待对接 dividend_calculator.py",
+    }
+
+
+def _lookup(query: str):
+    """查询股票: 精确代码 > 精确名称 > 模糊名称 (含 query 子串)
+
+    返回 (result_dict, match_type) 或 (None, None)
+    """
     q = (query or "").strip()
     if not q:
-        return None
+        return None, None
 
-    # 1. 直接匹配代码
-    if q in MOCK_DB:
-        return MOCK_DB[q]
+    # 1. 精确代码 (支持 bj 前缀)
+    code_candidates = [q, q.lower(), q.upper()]
+    if q.lower().startswith("bj"):
+        code_candidates.append(q[2:])  # 也试 bj 前缀去掉后
+    for c in code_candidates:
+        if c in STOCK_BY_CODE:
+            s = STOCK_BY_CODE[c]
+            return (s, "exact_code")
 
-    # 2. 简称 → 代码
-    code = NAME_TO_CODE.get(q)
-    if code and code in MOCK_DB:
-        return MOCK_DB[code]
+    # 2. 精确名称
+    if q in STOCK_BY_NAME:
+        s = STOCK_BY_NAME[q]
+        return (s, "exact_name")
 
-    # 3. fallback: 任何输入都给一个"待解析"响应
+    # 3. 模糊名称 (substring match)
+    hits = [s for s in STOCK_INDEX if q in s["name"]]
+    if len(hits) == 1:
+        return (hits[0], "fuzzy_name")
+    elif len(hits) > 1:
+        # 多个匹配: 返回 code 最小的一个 + 标注模糊
+        hits.sort(key=lambda x: x["code"])
+        return (hits[0], f"fuzzy_name ({len(hits)} matches)")
+
+    return None, None
+
+
+# ── 错误响应模板 ──────────────────────────────────────────────────────────────
+def _error_response(status: int, code: str, message: str, query: str = "") -> dict:
     return {
-        "code": q,
-        "name": f"未识别标的 ({q})",
-        "current_price": 0.00,
-        "estimated_eps": 0.00,
-        "predicted_dividend_yield": "N/A",
-        "industry": "未分类",
-        "qualitative_adjustment": "Mock 阶段未实现真实分类与外推逻辑",
+        "error": message,
+        "code": code,
+        "query": query,
     }
 
 
@@ -113,20 +146,33 @@ class handler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
         qs = parse_qs(parsed.query)
-        code = (qs.get("code") or qs.get("name") or [""])[0]
+        query = (qs.get("code") or qs.get("name") or [""])[0]
 
-        if not code:
-            self._respond_json(
-                400,
-                {
-                    "error": "缺少必填参数: code (股票代码或简称)",
-                    "code": "MISSING_PARAM",
-                },
-            )
+        if not query:
+            self._respond_json(400, _error_response(
+                400, "MISSING_PARAM",
+                "缺少必填参数: code (股票代码或简称)",
+            ))
             return
 
-        data = _mock_lookup(code)
-        self._respond_json(200, data)
+        stock, match_type = _lookup(query)
+        if stock is None:
+            self._respond_json(404, _error_response(
+                404, "NOT_FOUND",
+                f"未在 stock_index.json 找到匹配项 (库内 {len(STOCK_INDEX)} 只股票)",
+                query=query,
+            ))
+            return
+
+        # 命中: 拼装响应
+        quant = _mock_quant(stock["code"], stock["name"])
+        result = {
+            "code": stock["code"],
+            "name": stock["name"],
+            "match_type": match_type,
+            **quant,
+        }
+        self._respond_json(200, result)
 
     def log_message(self, format, *args):
         """静默 stderr 日志，避免污染 Vercel runtime output。"""
