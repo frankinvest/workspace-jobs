@@ -1,0 +1,304 @@
+---
+import '../styles/global.css';
+
+// 页面元数据
+const title = '🎯 红利狙击：前瞻股息率智能预测';
+const description = '基于行业穿透 + 时序 EPS 外推 + 大股东派息率定性纠偏，给出前瞻预期股息率';
+---
+
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{title} | 财经早餐</title>
+  <meta name="description" content={description} />
+  <style>
+    /* 暗黑磨砂玻璃面板 (局部作用域) */
+    .sniper-shell {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 64px 24px 80px;
+    }
+
+    .sniper-title {
+      font-size: var(--font-size-3xl);
+      font-weight: var(--font-weight-bold);
+      color: var(--color-text-primary);
+      text-align: center;
+      margin: 0 0 var(--space-2);
+      letter-spacing: 0.5px;
+      background: linear-gradient(135deg, #fafafa 0%, #e60000 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .sniper-subtitle {
+      font-size: var(--font-size-sm);
+      color: var(--color-text-secondary);
+      text-align: center;
+      margin: 0 0 var(--space-8);
+    }
+
+    /* 磨砂玻璃卡片 */
+    .sniper-panel {
+      background: rgba(18, 8, 8, 0.6);
+      backdrop-filter: blur(20px) saturate(180%);
+      -webkit-backdrop-filter: blur(20px) saturate(180%);
+      border: 1px solid rgba(230, 0, 0, 0.18);
+      border-radius: 16px;
+      padding: 32px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4),
+                  inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    }
+
+    /* Input */
+    .sniper-input {
+      width: 100%;
+      padding: 18px 22px;
+      font-size: var(--font-size-lg);
+      color: var(--color-text-primary);
+      background: rgba(10, 5, 5, 0.7);
+      border: 1.5px solid var(--color-border);
+      border-radius: 12px;
+      outline: none;
+      transition: all 0.2s ease;
+      box-sizing: border-box;
+    }
+    .sniper-input::placeholder {
+      color: var(--color-text-muted);
+    }
+    .sniper-input:focus {
+      border-color: var(--color-accent);
+      background: rgba(10, 5, 5, 0.9);
+      box-shadow: 0 0 0 4px var(--color-accent-dim);
+    }
+
+    /* Button */
+    .sniper-btn {
+      width: 100%;
+      margin-top: var(--space-4);
+      padding: 18px;
+      font-size: var(--font-size-lg);
+      font-weight: var(--font-weight-semibold);
+      color: var(--color-text-primary);
+      background: linear-gradient(135deg, var(--color-accent) 0%, #b30000 100%);
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      letter-spacing: 2px;
+      box-shadow: 0 4px 16px rgba(230, 0, 0, 0.25);
+    }
+    .sniper-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 24px rgba(230, 0, 0, 0.4);
+      background: linear-gradient(135deg, var(--color-accent-hover) 0%, #c20000 100%);
+    }
+    .sniper-btn:active {
+      transform: translateY(0);
+    }
+    .sniper-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    /* 结果看板 */
+    .result-board {
+      margin-top: var(--space-6);
+      opacity: 0;
+      transform: translateY(12px);
+      max-height: 0;
+      overflow: hidden;
+      transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .result-board.visible {
+      opacity: 1;
+      transform: translateY(0);
+      max-height: 800px;
+    }
+
+    .result-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--space-3);
+    }
+    .result-cell {
+      padding: var(--space-4);
+      background: rgba(10, 5, 5, 0.5);
+      border: 1px solid var(--color-border-subtle);
+      border-radius: 10px;
+    }
+    .result-cell.full {
+      grid-column: 1 / -1;
+    }
+    .result-label {
+      font-size: var(--font-size-xs);
+      color: var(--color-text-muted);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: var(--space-1);
+    }
+    .result-value {
+      font-size: var(--font-size-2xl);
+      font-weight: var(--font-weight-bold);
+      color: var(--color-text-primary);
+      font-variant-numeric: tabular-nums;
+    }
+    .result-value.accent {
+      color: var(--color-accent);
+      text-shadow: 0 0 24px rgba(230, 0, 0, 0.3);
+    }
+    .result-meta {
+      font-size: var(--font-size-sm);
+      color: var(--color-text-secondary);
+      margin-top: var(--space-1);
+    }
+
+    /* 错误状态 */
+    .result-error {
+      color: var(--color-danger);
+      text-align: center;
+      padding: var(--space-4);
+    }
+
+    /* Loading spinner */
+    .sniper-loading {
+      display: none;
+      text-align: center;
+      margin-top: var(--space-4);
+      color: var(--color-text-secondary);
+      font-size: var(--font-size-sm);
+    }
+    .sniper-loading.active {
+      display: block;
+    }
+    .sniper-loading::after {
+      content: '⏳';
+      margin-right: var(--space-2);
+    }
+  </style>
+</head>
+<body>
+  <main class="sniper-shell">
+    <h1 class="sniper-title">{title}</h1>
+    <p class="sniper-subtitle">{description}</p>
+
+    <section class="sniper-panel">
+      <form id="sniper-form" autocomplete="off">
+        <input
+          id="sniper-code"
+          class="sniper-input"
+          type="text"
+          name="code"
+          placeholder="请输入股票代码或简称，如 600015"
+          maxlength="20"
+        />
+        <button id="sniper-btn" class="sniper-btn" type="submit">
+          狙击股息率
+        </button>
+        <div id="sniper-loading" class="sniper-loading">
+          正在调度预测引擎...
+        </div>
+      </form>
+
+      <div id="sniper-result" class="result-board" aria-live="polite">
+        <div class="result-grid">
+          <div class="result-cell full">
+            <div class="result-label">股票</div>
+            <div class="result-value" data-field="name">—</div>
+            <div class="result-meta">
+              <span data-field="code">—</span>
+              ·
+              <span data-field="industry">—</span>
+            </div>
+          </div>
+          <div class="result-cell">
+            <div class="result-label">现价 (元)</div>
+            <div class="result-value" data-field="current_price">—</div>
+          </div>
+          <div class="result-cell">
+            <div class="result-label">前瞻 EPS (元)</div>
+            <div class="result-value" data-field="estimated_eps">—</div>
+          </div>
+          <div class="result-cell full">
+            <div class="result-label">前瞻股息率 TTM</div>
+            <div class="result-value accent" data-field="predicted_dividend_yield">—</div>
+            <div class="result-meta" data-field="qualitative_adjustment">—</div>
+          </div>
+        </div>
+        <div id="sniper-error" class="result-error" style="display:none"></div>
+      </div>
+    </section>
+
+    <p style="text-align:center; margin-top:32px; color: var(--color-text-muted); font-size: 12px;">
+      ⚠️ 当前为 Mock 模式 (feature/dividend-web-ui)，未对接 dividend_calculator.py
+    </p>
+  </main>
+
+  <script>
+    const form = document.getElementById('sniper-form') as HTMLFormElement;
+    const codeInput = document.getElementById('sniper-code') as HTMLInputElement;
+    const submitBtn = document.getElementById('sniper-btn') as HTMLButtonElement;
+    const loadingEl = document.getElementById('sniper-loading') as HTMLDivElement;
+    const resultBoard = document.getElementById('sniper-result') as HTMLDivElement;
+    const errorEl = document.getElementById('sniper-error') as HTMLDivElement;
+
+    function setField(name: string, value: string) {
+      const el = resultBoard.querySelector<HTMLElement>(`[data-field="${name}"]`);
+      if (el) el.textContent = value;
+    }
+
+    function showError(msg: string) {
+      resultBoard.classList.add('visible');
+      errorEl.textContent = msg;
+      errorEl.style.display = 'block';
+    }
+
+    function clearError() {
+      errorEl.textContent = '';
+      errorEl.style.display = 'none';
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const code = codeInput.value.trim();
+      if (!code) {
+        showError('请输入股票代码或简称');
+        return;
+      }
+
+      submitBtn.disabled = true;
+      loadingEl.classList.add('active');
+      resultBoard.classList.remove('visible');
+      clearError();
+
+      try {
+        const res = await fetch(`/api/dividend?code=${encodeURIComponent(code)}`);
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data?.error || `HTTP ${res.status}`);
+        }
+
+        setField('code', data.code ?? '—');
+        setField('name', data.name ?? '—');
+        setField('industry', data.industry ?? '—');
+        setField('current_price', typeof data.current_price === 'number'
+          ? data.current_price.toFixed(2) : '—');
+        setField('estimated_eps', typeof data.estimated_eps === 'number'
+          ? data.estimated_eps.toFixed(2) : '—');
+        setField('predicted_dividend_yield', data.predicted_dividend_yield ?? '—');
+        setField('qualitative_adjustment', data.qualitative_adjustment ?? '—');
+
+        resultBoard.classList.add('visible');
+      } catch (err: any) {
+        showError(`⚠️ ${err?.message || '请求失败'} (确认 Vercel api/dividend.py 已部署)`);
+      } finally {
+        submitBtn.disabled = false;
+        loadingEl.classList.remove('active');
+      }
+    });
+  </script>
+</body>
+</html>
