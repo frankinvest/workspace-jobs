@@ -201,8 +201,7 @@ def _mock_quant(code: str, name: str, realtime_price: float = 0.0) -> dict:
         "predicted_dividend_yield": "6.85%",  # 静态 Mock (阶段 3 才接真实计算)
         "industry": industry,
         "qualitative_adjustment": (
-            f"现价从 public/data/stock_index.json 静态字典直读 "
-            f"(generate_stock_index.py 离线落库, 后端零网络依赖); "
+            f"现价 + 行业 均从 public/data/stock_index.json 静态字典直读 (v2 升级); "
             f"EPS 动态年化 (Stage 3 已对接 FinancialDataHub); "
             f"股息率仍 Mock (阶段 4 才接 dividend_calculator.py)"
         ),
@@ -277,17 +276,23 @@ class handler(BaseHTTPRequestHandler):
             ))
             return
 
-        # 命中: 拼装响应 (实时现价 → 腾讯 qt.gtimg.cn 闪电快照)
+        # 命中: 拼装响应 (实时现价 → 静态字典 stock_index.json 直读)
         realtime_price = _fetch_realtime_price(stock["code"])
 
         # Stage 3: 动态年化 EPS (从 FinancialDataHub 真数据拉)
         eps_info = _fetch_dynamic_eps(stock["code"])
 
-        # 股价 + 动态 EPS 组成 quant; 股价/industry 仍按代码前缀
+        # 股价 + 动态 EPS 组成 quant; industry 改从 stock_index.json 直读 (v2 升级)
         quant = _mock_quant(stock["code"], stock["name"], realtime_price)
         quant["estimated_eps"] = eps_info["estimated_eps"]  # 覆盖 Mock
         quant["report_period"] = eps_info["report_period"]  # 新增字段
         quant["eps_source"] = eps_info["source"]            # live / fallback
+
+        # 行业: 从 stock_index.json 真实读取, 覆盖 _mock_quant 的代码前缀推断
+        # (EM 接口撞墙时行业为粗粒度映射, 如"沪市主板"/"深市创业板"等)
+        real_industry = stock.get("industry", quant.get("industry", "未分类"))
+        if real_industry and real_industry != "未分类":
+            quant["industry"] = real_industry
 
         result = {
             "code": stock["code"],
