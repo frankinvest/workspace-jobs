@@ -35,6 +35,19 @@ import os
 import sys
 from pathlib import Path
 
+# ── 接入金融数据中心 (Stage 3 攻坚) ───────────────────────────────────────────
+# 注: Vercel Python runtime 部署时会扫 api/ 目录，但 tools/ 不会被打包。
+#     为避免跨目录 import 风险，FinancialDataHub 的核心逻辑 here 调 stock_index 检索
+#     后在线程内复用 tools 模块。Vercel 实际仓库下应改为同一仓根.
+try:
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+    from tools.financial_data_hub import FinancialDataHub
+    _HUB_AVAILABLE = True
+except Exception as _e:
+    print(f"[dividend] WARN: FinancialDataHub 不可用: {type(_e).__name__}: {_e}", file=sys.stderr)
+    FinancialDataHub = None
+    _HUB_AVAILABLE = False
+
 
 # ── 加载 stock_index.json (启动时一次, Vercel runtime 内存缓存) ──────────────
 def _load_stock_index():
@@ -65,6 +78,78 @@ def _load_stock_index():
 STOCK_INDEX, STOCK_INDEX_PATH = _load_stock_index()
 STOCK_BY_CODE = {s["code"]: s for s in STOCK_INDEX}
 STOCK_BY_NAME = {s["name"]: s for s in STOCK_INDEX}
+
+
+# ── FinancialDataHub 启动时实例化 (Stage 3) ──────────────────────────────────
+_HUB_INSTANCE = None
+if _HUB_AVAILABLE:
+    try:
+        _HUB_INSTANCE = FinancialDataHub(verbose=False)
+        print(f"[dividend] FinancialDataHub ready (Stage 3 EPS live)", file=sys.stderr)
+    except Exception as _e:
+        print(f"[dividend] WARN: FinancialDataHub init failed: {type(_e).__name__}: {_e}", file=sys.stderr)
+        _HUB_INSTANCE = None
+
+
+# ── Stage 3: 前瞻年化 EPS 动态估算 ────────────────────────────────────────────
+INDUSTRY_BASE_EPS_FALLBACK = 0.5  # 行业基准兜底 (亿元/年化)
+
+
+def _annualize_factor(report_period: str) -> float:
+    """根据报告期 (YYYYMMDD) 判断季报位置, 返回年化系数
+
+      - 0331 (Q1):   ×4
+      - 0630 (H1):   ×2
+      - 0930 (Q3):   ×4/3
+      - 1231 (全年):  ×1
+      - 其他/解析失败:  ×4 (默认按一季报外推)
+    """
+    s = str(report_period or "").strip()
+    if len(s) == 8 and s.isdigit():
+        mmdd = s[4:]
+        if mmdd == "0331":
+            return 4.0
+        if mmdd == "0630":
+            return 2.0
+        if mmdd == "0930":
+            return 4.0 / 3.0
+        if mmdd == "1231":
+            return 1.0
+    return 4.0  # 解析失败默认按 Q1 外推
+
+
+def _fetch_dynamic_eps(code: str) -> dict:
+    """从 FinancialDataHub 拉取最新季报, 年化计算 estimated_eps (单位: 亿元)
+
+    返回 dict: {
+      'estimated_eps': float,          # 年化盈利 (亿元), fallback 0.5
+      'report_period': str,            # 最新报告期
+      'source': 'live' | 'fallback'   # 是否真数据
+    }
+    任何异常都走 fallback, 接口不崩
+    """
+    if _HUB_INSTANCE is None:
+        return {"estimated_eps": INDUSTRY_BASE_EPS_FALLBACK, "report_period": "n/a", "source": "fallback"}
+
+    try:
+        q = _HUB_INSTANCE.get_latest_quarterly_profit(code)
+        if not q or q.get("net_profit_billion") is None or q.get("net_profit_billion", 0) == 0:
+            return {
+                "estimated_eps": INDUSTRY_BASE_EPS_FALLBACK,
+                "report_period": q.get("report_period", "n/a") if q else "n/a",
+                "source": "fallback",
+            }
+        net_profit_billion = float(q["net_profit_billion"])
+        factor = _annualize_factor(q.get("report_period", ""))
+        annualized = round(net_profit_billion * factor, 2)
+        return {
+            "estimated_eps": annualized,
+            "report_period": q.get("report_period", "n/a"),
+            "source": "live",
+        }
+    except Exception as e:
+        print(f"[dividend] EPS fetch fail for {code}: {type(e).__name__}: {e}", file=sys.stderr)
+        return {"estimated_eps": INDUSTRY_BASE_EPS_FALLBACK, "report_period": "n/a", "source": "fallback"}
 
 
 # ── 实时现价拉取 (腾讯 qt.gtimg.cn, 闪电快照, <50ms) ──────────────────────
@@ -146,12 +231,13 @@ def _mock_quant(code: str, name: str, realtime_price: float = 0.0) -> dict:
 
     return {
         "current_price": realtime_price,  # 真实盘中价, 失败 fallback 0.0
-        "estimated_eps": round(1.95 - (hash(code + "eps") % 100) / 100.0, 2),  # 静态 Mock
+        "estimated_eps": INDUSTRY_BASE_EPS_FALLBACK,  # 动态 EPS 在 handler 中覆盖
         "predicted_dividend_yield": "6.85%",  # 静态 Mock (阶段 3 才接真实计算)
         "industry": industry,
         "qualitative_adjustment": (
             f"实时现价已对接腾讯 qt.gtimg.cn (闪电快照 <50ms); "
-            f"EPS/股息率仍 Mock (阶段 3 才接 dividend_calculator.py)"
+            f"EPS 动态年化 (Stage 3 已对接 FinancialDataHub); "
+            f"股息率仍 Mock (阶段 4 才接 dividend_calculator.py)"
         ),
     }
 
@@ -226,7 +312,16 @@ class handler(BaseHTTPRequestHandler):
 
         # 命中: 拼装响应 (实时现价 → 腾讯 qt.gtimg.cn 闪电快照)
         realtime_price = _fetch_realtime_price(stock["code"])
+
+        # Stage 3: 动态年化 EPS (从 FinancialDataHub 真数据拉)
+        eps_info = _fetch_dynamic_eps(stock["code"])
+
+        # 股价 + 动态 EPS 组成 quant; 股价/industry 仍按代码前缀
         quant = _mock_quant(stock["code"], stock["name"], realtime_price)
+        quant["estimated_eps"] = eps_info["estimated_eps"]  # 覆盖 Mock
+        quant["report_period"] = eps_info["report_period"]  # 新增字段
+        quant["eps_source"] = eps_info["source"]            # live / fallback
+
         result = {
             "code": stock["code"],
             "name": stock["name"],
