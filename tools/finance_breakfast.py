@@ -242,17 +242,26 @@ def extract_comments_from_html(html):
         return []
 
 
-def render_comments_md(comments):
-    """把评论列表渲染为 markdown
+def render_comments_md(comments, depth=0):
+    """递归渲染评论树为 markdown (支持任意层级嵌套)
+
+    【2026-06-09 升级】配合 build_comments.py 00c9d5d 版 (opt_comment_and_reply) 支持 3 级回复嵌套
+    - 顶级评论 (depth=0): 无缩进
+    - 1 级回复 (depth=1): 2 空格缩进 + ↳
+    - 2 级回复 (depth=2): 4 空格缩进 + ↳↳
+    - 时间字段: 顶级评论带 (时间), 回复不重复时间
     """
     if not comments:
-        return "*暂无评论*"
+        return ""
     lines = []
+    indent = "  " * depth
+    arrow = "↳" * depth + " " if depth > 0 else ""
     for c in comments:
-        time_str = f" *({c['time']})*" if c['time'] else ""
-        lines.append(f"- **{c['user']}**{time_str}: {c['content']}")
-        for r in c['replies']:
-            lines.append(f"  - ↳ **{r['user']}**: {r['content']}")
+        time_str = f" *({c['time']})*" if c.get('time') and depth == 0 else ""
+        lines.append(f"{indent}- {arrow}**{c['user']}**{time_str}: {c['content']}")
+        sub = render_comments_md(c.get('replies', []), depth + 1)
+        if sub:
+            lines.append(sub)
     return "\n".join(lines)
 
 
