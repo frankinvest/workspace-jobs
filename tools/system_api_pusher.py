@@ -147,11 +147,18 @@ DEFAULT_FILES = [
 def main():
     ap = argparse.ArgumentParser(description="GitHub Contents API 推送工具 (绕开 github.com:443)")
     ap.add_argument("--file", help="单文件推送模式 (相对仓根路径)")
+    ap.add_argument("--branch", help="覆盖默认分支 (默认 main), 推 feature/* 用")
     ap.add_argument("--local", help="单文件模式下的本地路径 (默认: <file>)")
     ap.add_argument("--commit-msg", help="单文件模式的 commit message")
     ap.add_argument("--dry-run", action="store_true", help="不实际推送")
     args = ap.parse_args()
-    
+
+    # 允许命令行覆盖 BRANCH (推 feature/* 时用)
+    global BRANCH
+    if args.branch:
+        BRANCH = args.branch
+        print(f"[api_pusher] ⚠️ 覆盖默认分支 → {BRANCH}")
+
     global TOKEN
     TOKEN = load_token()
     masked = TOKEN[:8] + "..." + TOKEN[-4:] if len(TOKEN) > 12 else "***"
