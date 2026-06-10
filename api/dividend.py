@@ -151,18 +151,21 @@ def _fetch_realtime_price_from_hub(code: str) -> float:
     return 0.0
 
 
-# ── 6. EPS 静态兜底 (Vercel runtime 拒收 akshare 70MB, 改静态映射) ────────────
-_EPS_FALLBACK = {
-    "600036": 1.30,   # 招商银行
-    "600519": 108.97, # 贵州茅台
-    "601318": 2.85,   # 中国平安
-}
+# ── 6. EPS 直读加固后的 stock_index.json (Stage 3 临门一脚 v3) ──────────────
+# 原: 静态映射 _EPS_FALLBACK (11.30 for 600036 等), 推测估值不准确
+# 改: 直接从 stock 字典读 estimated_eps, 取 Stage 3 EPSEstimator 外推真值
 _DEFAULT_EPS = 1.20
 
 
-def _estimate_eps(code: str) -> float:
-    """Stage 3 动态 EPS 降级为静态映射 (Vercel 拒收 70MB akshare)"""
-    return _EPS_FALLBACK.get(code, _DEFAULT_EPS)
+def _estimate_eps(stock: dict) -> float:
+    """从 stock 字典直读真前瞻 EPS, fallback 1.20 (Vercel 拒收 70MB akshare)"""
+    try:
+        eps = float(stock.get("estimated_eps", 0.0))
+        if eps > 0:
+            return round(eps, 2)
+    except (TypeError, ValueError, Exception):
+        pass
+    return _DEFAULT_EPS
 
 
 # ── 7. Vercel Python Serverless Handler ──────────────────────────────────────
@@ -227,7 +230,7 @@ class handler(BaseHTTPRequestHandler):
             kv_ok = _kv_set_price(code, new_price, ttl_seconds=86400)
             _PRICE_CACHE[code] = new_price
 
-            eps = _estimate_eps(code)
+            eps = _estimate_eps(stock)
             self._respond(200, {
                 "code": code,
                 "name": name,
@@ -260,7 +263,7 @@ class handler(BaseHTTPRequestHandler):
         if current_price is None:
             current_price = base_price if base_price > 0 else 0.0
 
-        eps = _estimate_eps(code)
+        eps = _estimate_eps(stock)
         self._respond(200, {
             "code": code,
             "name": name,
