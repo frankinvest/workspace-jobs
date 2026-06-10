@@ -33,7 +33,10 @@ from urllib.parse import urlparse, parse_qs
 import json
 import os
 import sys
+import time
 from pathlib import Path
+
+import requests
 
 # ── 接入金融数据中心 (Stage 3 攻坚) ───────────────────────────────────────────
 # 注: Vercel Python runtime 部署时会扫 api/ 目录，但 tools/ 不会被打包。
@@ -78,6 +81,91 @@ def _load_stock_index():
 STOCK_INDEX, STOCK_INDEX_PATH = _load_stock_index()
 STOCK_BY_CODE = {s["code"]: s for s in STOCK_INDEX}
 STOCK_BY_NAME = {s["name"]: s for s in STOCK_INDEX}
+
+
+# ── 方案B: Upstash Redis 云端 KV 双轨 (2026-06-10) ──────────────────────────
+# Vercel KV 已在 2024-11 迁移到 Marketplace 上的 Upstash for Redis 集成
+# 环境变量名: UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN
+# (Frank v3 提示的 KV_REST_API_URL/TOKEN 是旧名, 已弃用)
+KV_REST_URL = os.environ.get("UPSTASH_REDIS_REST_URL")
+KV_REST_TOKEN = os.environ.get("UPSTASH_REDIS_REST_TOKEN")
+KV_AVAILABLE = bool(KV_REST_URL and KV_REST_TOKEN)
+
+# ── 方案B: 内存沙盒 fallback (2026-06-10) ──────────────────────────────────
+# Upstash 未装时, 用模块级 dict 作为临时价帊
+# Vercel serverless 冷启动后会重置 (预览环境) / 预热后保持 (production)
+# Frank 预览场景足够演示 UI 交互, 真 KV 装好后会自动切上
+_PRICE_CACHE: dict = {}
+
+
+def _kv_get_price(code: str):
+    """Upstash Redis REST: GET {url}/get/stock_price:{code}
+    返回 (price, source) 或 (None, None) 表示未命中/不可用
+    """
+    if not KV_AVAILABLE:
+        return None, None
+    try:
+        r = requests.get(
+            f"{KV_REST_URL}/get/stock_price:{code}",
+            headers={"Authorization": f"Bearer {KV_REST_TOKEN}"},
+            timeout=5,
+        )
+        if r.status_code == 200:
+            data = r.json()
+            result = data.get("result")
+            if result is not None and str(result).strip():
+                return float(result), "upstash_kv"
+        return None, None
+    except Exception as e:
+        print(f"[dividend][kv] GET 异常 {code}: {type(e).__name__}: {str(e)[:100]}", file=sys.stderr)
+        return None, None
+
+
+def _kv_set_price(code: str, price: float, ttl_seconds: int = 86400) -> bool:
+    """Upstash Redis REST: POST {url}/set/stock_price:{code}/{price}?ex={ttl}
+    24h TTL 足够盘中周期重刷
+    """
+    if not KV_AVAILABLE:
+        return False
+    try:
+        r = requests.post(
+            f"{KV_REST_URL}/set/stock_price:{code}/{price}",
+            headers={"Authorization": f"Bearer {KV_REST_TOKEN}"},
+            params={"ex": str(ttl_seconds)},
+            timeout=5,
+        )
+        return r.status_code == 200
+    except Exception as e:
+        print(f"[dividend][kv] SET 异常 {code}: {type(e).__name__}: {str(e)[:100]}", file=sys.stderr)
+        return False
+
+
+def _memory_set_price(code: str, price: float) -> None:
+    """内存沙盒写入 (Upstash 未装时的 fallback)"""
+    _PRICE_CACHE[code] = price
+
+
+def _fetch_real_price_via_hub(code: str):
+    """FinancialDataHub.fetch_fast_snapshot 闪电拦截真现价 (hq.sinajs.cn 0.06s)
+    返回 float 或 None
+    """
+    if _HUB_INSTANCE is None:
+        return None
+    # 补全 sina hq 需要的 sh/sz/bj 前缀
+    if code.startswith("6") or code.startswith("5"):
+        market = "sh"
+    elif code.startswith(("0", "3")):
+        market = "sz"
+    elif code.startswith(("8", "4", "9")):
+        market = "bj"
+    else:
+        market = "sh"
+    # fetch_fast_snapshot 返回的 key 形如 "sh600036" (带 sh/sz/bj 前缀)
+    market_code = f"{market}{code}"
+    snap = _HUB_INSTANCE.fetch_fast_snapshot([market_code])
+    if isinstance(snap, dict) and market_code in snap:
+        return snap[market_code].get("price")
+    return None
 
 
 # ── FinancialDataHub 启动时实例化 (Stage 3) ──────────────────────────────────
@@ -259,6 +347,7 @@ class handler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         qs = parse_qs(parsed.query)
         query = (qs.get("code") or qs.get("name") or [""])[0]
+        action = (qs.get("action") or [""])[0].lower()
 
         if not query:
             self._respond_json(400, _error_response(
@@ -267,6 +356,14 @@ class handler(BaseHTTPRequestHandler):
             ))
             return
 
+        # 方案B 路由分流: action=update 走重刷; 其余走查询
+        if action == "update":
+            self._handle_update_price(query)
+        else:
+            self._handle_query_price(query)
+
+    def _handle_query_price(self, query: str):
+        """查询: 基础名/行业从 stock_index.json, 价若从 Upstash KV/内存沙盒, EPS 从 FinancialDataHub"""
         stock, match_type = _lookup(query)
         if stock is None:
             self._respond_json(404, _error_response(
@@ -276,29 +373,100 @@ class handler(BaseHTTPRequestHandler):
             ))
             return
 
-        # 命中: 拼装响应 (实时现价 → 静态字典 stock_index.json 直读)
-        realtime_price = _fetch_realtime_price(stock["code"])
+        # 双轨价格: Upstash KV → 内存沙盒 → 静态 JSON
+        kv_price, kv_src = _kv_get_price(stock["code"])
+        static_price = _fetch_realtime_price(stock["code"])
+        if kv_price is not None and kv_price > 0:
+            realtime_price, price_source = kv_price, kv_src
+        elif stock["code"] in _PRICE_CACHE and _PRICE_CACHE[stock["code"]] > 0:
+            realtime_price, price_source = _PRICE_CACHE[stock["code"]], "memory_sandbox"
+        else:
+            realtime_price, price_source = static_price, "static_json"
 
-        # Stage 3: 动态年化 EPS (从 FinancialDataHub 真数据拉)
+        # Stage 3: 动态年化 EPS
         eps_info = _fetch_dynamic_eps(stock["code"])
 
-        # 股价 + 动态 EPS 组成 quant; industry 改从 stock_index.json 直读 (v2 升级)
         quant = _mock_quant(stock["code"], stock["name"], realtime_price)
-        quant["estimated_eps"] = eps_info["estimated_eps"]  # 覆盖 Mock
-        quant["report_period"] = eps_info["report_period"]  # 新增字段
-        quant["eps_source"] = eps_info["source"]            # live / fallback
+        quant["estimated_eps"] = eps_info["estimated_eps"]
+        quant["report_period"] = eps_info["report_period"]
+        quant["eps_source"] = eps_info["source"]
+        quant["price_source"] = price_source  # 方案B 新增: 价帊来源 (upstash_kv/memory_sandbox/static_json)
 
-        # 行业: 从 stock_index.json 真实读取, 覆盖 _mock_quant 的代码前缀推断
-        # (EM 接口撞墙时行业为粗粒度映射, 如"沪市主板"/"深市创业板"等)
+        # 行业从 stock_index.json 读取
         real_industry = stock.get("industry", quant.get("industry", "未分类"))
         if real_industry and real_industry != "未分类":
             quant["industry"] = real_industry
+
+        # 方案B: 价若从 KV 来, 标个动态股息率重算 hint
+        if price_source == "upstash_kv":
+            quant["qualitative_adjustment"] = (
+                f"现价 从 Upstash Redis 云端动态取 (上一次交易重刷保留); "
+                f"EPS 动态年化 (FinancialDataHub 拉取); "
+                f"点击【更新现价】按钮可实时重刷"
+            )
+        elif price_source == "memory_sandbox":
+            quant["qualitative_adjustment"] = (
+                f"现价 从运行时内存沙盒取 (Upstash 未装时降级); "
+                f"冷启动后丢失, 建议在 Vercel Dashboard 装 Upstash for Redis 集成以启用云端持久"
+            )
 
         result = {
             "code": stock["code"],
             "name": stock["name"],
             "match_type": match_type,
             **quant,
+        }
+        self._respond_json(200, result)
+
+    def _handle_update_price(self, query: str):
+        """方案B: 更新现价 - 闪电拦截真价 → 写 Upstash KV/内存沙盒 → 回传"""
+        stock, match_type = _lookup(query)
+        if stock is None:
+            self._respond_json(404, _error_response(
+                404, "NOT_FOUND",
+                f"未在 stock_index.json 找到匹配项 (库内 {len(STOCK_INDEX)} 只股票)",
+                query=query,
+            ))
+            return
+
+        code = stock["code"]
+        # old_price 优先从内存沙盒/KV 取 (体现上一次重刷结果), fallback 静态 JSON
+        kv_old, _ = _kv_get_price(code)
+        if kv_old is not None and kv_old > 0:
+            old_price = kv_old
+        elif code in _PRICE_CACHE and _PRICE_CACHE[code] > 0:
+            old_price = _PRICE_CACHE[code]
+        else:
+            old_price = _fetch_realtime_price(code)
+
+        # 1. 闪电拦截真现价 (FinancialDataHub.fetch_fast_snapshot 走 hq.sinajs.cn)
+        new_price = _fetch_real_price_via_hub(code)
+        if new_price is None or new_price <= 0:
+            # Hub 不可用或拦截失败, 保持原状但记录错误
+            self._respond_json(503, {
+                "error": f"闪电拦截真价失败 (code={code}), Hub 不可用或网络异常",
+                "code": "HUB_UNAVAILABLE",
+                "query": query,
+                "old_price": old_price,
+            })
+            return
+
+        # 2. 双轨写入: 优先 Upstash KV, 失败回退内存沙盒
+        kv_ok = _kv_set_price(code, new_price, ttl_seconds=86400)
+        _memory_set_price(code, new_price)  # 同步写入内存 (保证 fallback 一致性)
+
+        # 3. 重组响应
+        result = {
+            "code": code,
+            "name": stock["name"],
+            "match_type": match_type,
+            "old_price": round(old_price, 2) if old_price else None,
+            "new_price": round(new_price, 2),
+            "price_source": "upstash_kv" if kv_ok else "memory_sandbox",
+            "kv_written": kv_ok,
+            "industry": stock.get("industry", "未分类"),
+            "update_time": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "message": "真价闪电拦截 + 云端持久成功" if kv_ok else "真价闪电拦截成功, 云端写入失败, 回退内存沙盒 (建议装 Upstash 集成)",
         }
         self._respond_json(200, result)
 
