@@ -36,7 +36,13 @@ import sys
 import time
 from pathlib import Path
 
-import requests
+# 防御性 import: Vercel runtime 需 requirements.txt 安装 requests;
+# 阘要起起不起则 KV 层脟退, 后端不崩
+try:
+    import requests
+    _REQUESTS_OK = True
+except ImportError:
+    _REQUESTS_OK = False
 
 # ── 接入金融数据中心 (Stage 3 攻坚) ───────────────────────────────────────────
 # 注: Vercel Python runtime 部署时会扫 api/ 目录，但 tools/ 不会被打包。
@@ -102,7 +108,7 @@ def _kv_get_price(code: str):
     """Upstash Redis REST: GET {url}/get/stock_price:{code}
     返回 (price, source) 或 (None, None) 表示未命中/不可用
     """
-    if not KV_AVAILABLE:
+    if not KV_AVAILABLE or not _REQUESTS_OK:
         return None, None
     try:
         r = requests.get(
@@ -125,7 +131,7 @@ def _kv_set_price(code: str, price: float, ttl_seconds: int = 86400) -> bool:
     """Upstash Redis REST: POST {url}/set/stock_price:{code}/{price}?ex={ttl}
     24h TTL 足够盘中周期重刷
     """
-    if not KV_AVAILABLE:
+    if not KV_AVAILABLE or not _REQUESTS_OK:
         return False
     try:
         r = requests.post(
