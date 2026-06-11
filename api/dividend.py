@@ -231,6 +231,8 @@ class handler(BaseHTTPRequestHandler):
             _PRICE_CACHE[code] = new_price
 
             eps = _estimate_eps(stock)
+            # Frank 2026-06-11 v10 修复: 严格读 base_payout_rate 真字段, 拒绝写死 0.35 Mock
+            payout_rate = float(stock.get("base_payout_rate", 0.35))
             self._respond(200, {
                 "code": code,
                 "name": name,
@@ -239,11 +241,12 @@ class handler(BaseHTTPRequestHandler):
                 "new_price": round(new_price, 2),
                 "current_price": round(new_price, 2),
                 "estimated_eps": eps,
+                "base_payout_rate": payout_rate,
                 "industry": industry,
                 "price_source": "upstash_kv_updated" if kv_ok else "memory_sandbox_updated",
                 "kv_written": kv_ok,
                 "report_period": "2026Q1",
-                "predicted_dividend_yield": f"{round((eps * 0.35 / new_price) * 100, 2)}%",
+                "predicted_dividend_yield": f"{round((eps * payout_rate / new_price) * 100, 2)}%",
                 "update_time": time.strftime("%Y-%m-%d %H:%M:%S"),
                 "message": "真价闪电拦截 + 云端持久成功" if kv_ok else "真价闪电拦截成功, 云端写入失败, 回退内存沙盒 (建议装 Upstash 集成)",
             })
@@ -264,6 +267,8 @@ class handler(BaseHTTPRequestHandler):
             current_price = base_price if base_price > 0 else 0.0
 
         eps = _estimate_eps(stock)
+        # Frank 2026-06-11 v10 修复: 严格读 base_payout_rate 真字段, 拒绝写死 0.35 Mock
+        payout_rate = float(stock.get("base_payout_rate", 0.35))
         self._respond(200, {
             "code": code,
             "name": name,
@@ -271,10 +276,11 @@ class handler(BaseHTTPRequestHandler):
             "current_price": round(current_price, 2),
             "new_price": round(current_price, 2),
             "estimated_eps": eps,
+            "base_payout_rate": payout_rate,
             "industry": industry,
             "price_source": price_src,
             "report_period": "2026Q1",
-            "predicted_dividend_yield": f"{round((eps * 0.35 / current_price) * 100, 2)}%",
+            "predicted_dividend_yield": f"{round((eps * payout_rate / current_price) * 100, 2)}%",
             "qualitative_adjustment": (
                 f"现价 三级 fallback (Upstash KV → 内存沙盒 → stock_index.json 静态库); "
                 f"价帊源: {price_src}; "
