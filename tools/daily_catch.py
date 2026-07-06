@@ -480,6 +480,20 @@ def main():
     if is_bf:
         rc = route_to_finance_breakfast(date_str)
         log(f"[summary] type=财经早餐, route=finance_breakfast.py, rc={rc}")
+        # ⚠️ 2026-07-06 修: finance_breakfast.py 的 push 走 system_git_pusher.py (git push),
+        #    远端领先本地时 ('fetch first' 错误) 会撞墙. 这里加 Contents API fallback,
+        #    避免 8AM cron 死在这个环节。
+        if rc != 0:
+            md_relpath = f"docs/JJC-{date_str}-001-原文.md"
+            md_abs = WORKSPACE_JOBS / md_relpath
+            if md_abs.exists():
+                log(f"[fallback] finance_breakfast.py rc={rc}, 走 Contents API 兑底推 {md_relpath}")
+                commit_msg = f"feat: {date_str[:4]}年{date_str[4:6]}月{date_str[6:8]}日财经早餐 (Contents API fallback)"
+                fb_rc = push_to_github(md_relpath, commit_msg)
+                log(f"[fallback] Contents API push rc={fb_rc}")
+                rc = fb_rc  # 覆盖返回码
+            else:
+                log(f"[fallback] ⚠️ {md_relpath} 不存在, 无法兑底推送")
     else:
         rc = route_to_publish_mr_dang(post_url, date_str, title)
         log(f"[summary] type=非早餐, route=publish_mr_dang_post.py, rc={rc}")
