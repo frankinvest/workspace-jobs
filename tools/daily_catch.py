@@ -96,29 +96,55 @@ LIST_JS = r"""
     if (!main) return JSON.stringify({posts: [], err: 'no main'});
     var seen = {};
     var results = [];
+    // ⚠️ 红圈 list 页 DOM 坑: 真正的标题 div 是 <div onClick> 而不是 <a>,
+    //    只有 "查看所有评论" 链接才是 <a href="/post/...">.
+    //    策略: 从 "查看所有评论" 链接往父级找到帖子卡片 div, 然后从卡片文本中拆出标题.
     main.querySelectorAll('a[href*="/post/"]').forEach(function(a){
         var href = a.href;
         if (seen[href]) return;
+        var txt = (a.innerText || a.textContent || '').trim();
+        // 只从 "查看所有评论" / "查看 N 条评论" 链接入手
+        if (!txt.startsWith('查看')) return;
         seen[href] = 1;
-        var el = a.parentElement;
-        var timeText = '';
-        for (var i = 0; i < 8; i++) {
-            if (!el) break;
-            var lines = (el.innerText || '').split('\n');
-            for (var j = 0; j < lines.length; j++) {
-                var t = lines[j].trim();
-                if ((t.match(/^\d{2}:\d{2}$/) && t.length == 5) ||
-                    (t.includes('今天') || t.includes('昨天')) ||
-                    t.includes('小时前') || t.includes('分钟前') || t.includes('刚刚') ||
-                    t.match(/^\d{4}-\d{2}-\d{2}/) ||
-                    t.match(/^\d{2}-\d{2}/)) {
-                    if (t.length < 30) { timeText = t; break; }
-                }
+        // 向上找帖子卡片: 包含 "MR Dang" + 时间字样的 div
+        var card = a;
+        for (var i = 0; i < 10; i++) {
+            if (!card.parentElement) break;
+            card = card.parentElement;
+            var ct = (card.innerText || '');
+            if (ct.indexOf('MR Dang') >= 0 &&
+                (ct.indexOf('今天') >= 0 || ct.indexOf('昨天') >= 0 ||
+                 ct.indexOf('小时前') >= 0 || ct.indexOf('分钟前') >= 0 ||
+                 /\d{2}\/\d{2}/.test(ct))) {
+                break;
             }
-            if (timeText) break;
-            el = el.parentElement;
         }
-        results.push({time: timeText, title: '', href: href});
+        // 从卡片文本行里解析: 跳过作者/时间/点赞/评论/查看 等行, 找到标题行
+        var lines = (card.innerText || '').split('\n').map(function(s){return s.trim();}).filter(function(s){return s.length > 0;});
+        var title = '';
+        var timeText = '';
+        for (var i = 0; i < lines.length; i++) {
+            var line = lines[i];
+            // 时间行
+            if (/^(今天|昨天)(\s+\d{2}:\d{2})?$/.test(line) ||
+                /^\d{1,2}\/\d{1,2}(\s+\d{2}:\d{2})?$/.test(line) ||
+                /^\d{2}:\d{2}$/.test(line) ||
+                /^\d{4}-\d{1,2}-\d{1,2}/.test(line) ||
+                /(分钟前|小时前|刚刚)$/.test(line)) {
+                if (!timeText) timeText = line;
+                continue;
+            }
+            // 作者行
+            if (line === 'MR Dang' || line.indexOf('MR Dang') === 0) continue;
+            // 杂项
+            if (line === '置顶' || line === '精华' || line === '回复' || line.indexOf('查看') === 0 ||
+                /^\d+$/.test(line) || /^\d+ 分钟前/.test(line) ||
+                line.indexOf('赞') === 0 || /^\d+$/.test(line)) continue;
+            // 找到标题 (默认第一条满足条件的行)
+            title = line.slice(0, 80);
+            break;
+        }
+        results.push({time: timeText, title: title, href: href});
     });
     return JSON.stringify({posts: results.slice(0, 30)});
 })()
@@ -167,9 +193,23 @@ def fetch_list_latest_post():
             log("[list] 过滤置顶帖后无候选")
             return None
 
-        # 取第一条 (最新一条, 红圈按时间倒序)
-        latest = candidates[0]
-        log(f"[list] 最新帖子: time={latest.get('time','')!r} href={latest.get('href','')}")
+        # 调试: 列出所有候选 (title + time + href)
+        for i, c in enumerate(candidates[:6]):
+            log(f"[list]   候选 {i}: title={c.get('title','')!r} time={c.get('time','')!r} href={c.get('href','')}")
+
+        # ⚠️ 同分钟双帖坑: 红圈偶尔会在同一分钟同时发"财经早餐"和"有声版"音频版
+        # (如 2026-07-06 06:59 同时有 post 2449788 早餐 + 2449789 有声版),
+        # DOM 顺序不可靠, audio 版有时排在 breakfast 前面。
+        # ✅ 修复: 候选中**优先选 title 含"财经早餐"** 的 post; 找不到才退到第一条。
+        bf_candidates = [c for c in candidates if '财经早餐' in (c.get('title', '') or '')]
+        if bf_candidates:
+            if len(bf_candidates) > 1:
+                log(f"[list] ⚠️ 多个候选含'财经早餐' ({len(bf_candidates)} 条), 取第一条")
+            latest = bf_candidates[0]
+            log(f"[list] 选中财经早餐候选: title={latest.get('title','')!r} href={latest.get('href','')}")
+        else:
+            latest = candidates[0]
+            log(f"[list] 无财经早餐候选, 退回到第一条: time={latest.get('time','')!r} href={latest.get('href','')}")
         return latest.get('href'), latest.get('time', '')
     finally:
         ws.close()
@@ -260,7 +300,17 @@ def detect_post_type(html):
     h1 = soup.find('h1')
     title = h1.get_text(strip=True) if h1 else ''
 
-    # 2) h1 没拿到, fallback 找 class="fz-lg" 的 div (财经早餐专属标题样式)
+    # 1.5) 找 og:title (Mr Dang 精华贴常无 h1, 但有 og:title, 例 6/26 地阶功法卷六)
+    if not title:
+        og = soup.find('meta', attrs={'property': 'og:title'})
+        if og and og.get('content'):
+            og_title = og['content'].strip()
+            # 去掉" - 红运Dang投" 等站点后缀
+            og_title = re.sub(r'\s*[-—|]\s*红运Dang投.*$', '', og_title).strip()
+            if og_title and 4 < len(og_title) < 80:
+                title = og_title
+
+    # 2) h1/og 都没拿到, fallback 找 class="fz-lg" 的 div (财经早餐专属标题样式)
     #    7/3 早餐验证: div.fz-lg "2026年7月3日财经早餐" (长度 13)
     #    非早餐: 6/18 收盘复盘没有这个 div
     if not title:
@@ -278,11 +328,29 @@ def detect_post_type(html):
     pb = soup.find('div', class_='post-body')
     if pb:
         pb_text = pb.get_text()[:2000]
-        import re
         if re.search(r'\d{1,2}月\d{1,2}日.*财经早餐|财经早餐.*\d{1,2}月\d{1,2}日', pb_text):
             return True, title or '财经早餐', 'body'
 
-    return False, title or 'MR Dang 文章', 'no_match'
+    # 5) 终极 fallback: 取 post-body 首段作为标题 (7/4 精华贴 "打新招股说明书怎么看" 验证)
+    #    截前 60 字符, 跳过空行/MR Dang 介绍段
+    if not title and pb:
+        for p in pb.find_all(['p', 'div']):
+            txt = p.get_text(strip=True)
+            # 跳过空 / 链接 / 短段
+            if not txt or len(txt) < 6:
+                continue
+            # 跳过页脚介绍 (含特定关键词)
+            if any(kw in txt for kw in ['知乎人气答主', '后花园', '财经作家', '价值投资功法', '喜欢保护韭菜']):
+                continue
+            # 截到第一个句号/问号
+            m = re.match(r'^(.{4,60}?[。！？?!])', txt)
+            if m:
+                title = m.group(1).strip()
+            else:
+                title = txt[:60]
+            break
+
+    return False, title or 'MR Dang 文章', 'first_para' if (not h1 and title and title != 'MR Dang 文章') else 'no_match'
 
 
 # ── 路由 ─────────────────────────────────────────────────────
