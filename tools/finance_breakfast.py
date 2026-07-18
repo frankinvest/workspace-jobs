@@ -200,68 +200,74 @@ def extract_title(html):
 
 
 def extract_comments_from_html(html):
-    """从 innerHTML 提取评论 (调用 build_comments.py BS4 重构版)
+    """从 innerHTML 提取评论 (用 build_comments.py 的 regex 逻辑)
     返回 list[dict] {user, time, content, replies}
-
-    【2026-06-09 修复】原版内嵌脆弱正则，已替换为 subprocess 调新版 build_comments.py
-    (e2ad95e 提交: replace regex with BeautifulSoup and fix path bugs)
     """
-    import subprocess
-    import os
-    import json
-
-    # 评论区起点 (BS4 重构后 build_comments.py 内部锁定, 这里只做短路保护)
-    if 'class="por px-15"' not in html and 'por px-15' not in html:
+    # 评论区起点
+    cmt_start = html.find('class="por px-15"')
+    if cmt_start == -1:
         return []
+    cmt_html = html[cmt_start:]
+    
+    # 顶级评论: <div class="py-12 flex bt">
+    top_cmt_pat = re.compile(
+        r'<div class="py-12 flex bt">(.*?)(?=<div class="py-12 flex bt"|</div>\s*</div>\s*</div>\s*<div class="por px-15"|\Z)',
+        re.DOTALL
+    )
+    # 回复 (在 bgc-body 容器内): <span class="c-primary cup">...</span>...<span class="wpw">...</span>
+    reply_pat = re.compile(
+        r'<span class="c-primary cup">([^<]+)</span>.*?<span class="wpw">([^<]*(?:<[^>]+>[^<]*</[^>]+>)*[^<]*)</span>',
+        re.DOTALL
+    )
+    # 顶级用户/时间/正文
+    top_user_pat = re.compile(r'<span class="cup mr-5">([^<]+)</span>')
+    top_time_pat = re.compile(r'<span class="dark-9 fz-sm">([^<]+)</span>')
+    top_text_pat = re.compile(r'<span class="wpw">([^<]*(?:<[^>]+>[^<]*</[^>]+>)*[^<]*)</span>', re.DOTALL)
+    
+    comments = []
+    for m in top_cmt_pat.finditer(cmt_html):
+        block = m.group(1)
+        u_m = top_user_pat.search(block)
+        t_m = top_time_pat.search(block)
+        w_m = re.search(r'<span class="wpw">(.+?)</span>', block, re.DOTALL)
+        if not u_m or not w_m:
+            continue
+        u = u_m.group(1).strip()
+        t = t_m.group(1).strip() if t_m else ""
+        txt = re.sub(r'<[^>]+>', '', w_m.group(1)).strip()
+        txt = txt.replace('&nbsp;', ' ').replace('&lt;', '<').replace('&gt;', '>')
+        if not txt:
+            # 可能是图片评论
+            if '查看图片' in block:
+                txt = '[图片评论]'
+            else:
+                continue
+        item = {'user': u, 'time': t, 'content': txt, 'replies': []}
+        # 回复
+        reply_section = re.search(r'<div class="bgc-body px-9 py-5">(.*?)</div>\s*</div>\s*</div>\s*</div>', block, re.DOTALL)
+        if reply_section:
+            reply_block = reply_section.group(1)
+            for rm in reply_pat.finditer(reply_block):
+                ru = rm.group(1).strip()
+                rt = re.sub(r'<[^>]+>', '', rm.group(2)).strip()
+                rt = rt.replace('&nbsp;', ' ').replace('&lt;', '<').replace('&gt;', '>')
+                if ru and rt:
+                    item['replies'].append({'user': ru, 'content': rt})
+        comments.append(item)
+    return comments
 
-    try:
-        cp = subprocess.run(
-            [sys.executable, str(BUILD_COMMENTS_SCRIPT)],
-            input=html,
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-        if cp.returncode != 0:
-            log(f"  [comments] build_comments.py 失败 rc={cp.returncode}: {cp.stderr[:200]}")
-            return []
 
-        # build_comments.py 硬编码输出到 ~/.openclaw/workspace-jobs/comments.json
-        output_path = os.path.expanduser('~/.openclaw/workspace-jobs/comments.json')
-        if not os.path.exists(output_path):
-            log(f"  [comments] build_comments.py 未生成 {output_path}")
-            return []
-
-        with open(output_path, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except subprocess.TimeoutExpired:
-        log(f"  [comments] build_comments.py 超时 (>30s)")
-        return []
-    except Exception as e:
-        log(f"  [comments] extract 异常: {type(e).__name__}: {e}")
-        return []
-
-
-def render_comments_md(comments, depth=0):
-    """递归渲染评论树为 markdown (支持任意层级嵌套)
-
-    【2026-06-09 升级】配合 build_comments.py 00c9d5d 版 (opt_comment_and_reply) 支持 3 级回复嵌套
-    - 顶级评论 (depth=0): 无缩进
-    - 1 级回复 (depth=1): 2 空格缩进 + ↳
-    - 2 级回复 (depth=2): 4 空格缩进 + ↳↳
-    - 时间字段: 顶级评论带 (时间), 回复不重复时间
+def render_comments_md(comments):
+    """把评论列表渲染为 markdown
     """
     if not comments:
-        return ""
+        return "*暂无评论*"
     lines = []
-    indent = "  " * depth
-    arrow = "↳" * depth + " " if depth > 0 else ""
     for c in comments:
-        time_str = f" *({c['time']})*" if c.get('time') and depth == 0 else ""
-        lines.append(f"{indent}- {arrow}**{c['user']}**{time_str}: {c['content']}")
-        sub = render_comments_md(c.get('replies', []), depth + 1)
-        if sub:
-            lines.append(sub)
+        time_str = f" *({c['time']})*" if c['time'] else ""
+        lines.append(f"- **{c['user']}**{time_str}: {c['content']}")
+        for r in c['replies']:
+            lines.append(f"  - ↳ **{r['user']}**: {r['content']}")
     return "\n".join(lines)
 
 
@@ -295,10 +301,23 @@ def step_format(date_str, dry_run=False):
         if s != -1 and e != -1:
             html = html[s+10:e]
         html = html_mod.unescape(html)
-        
+
         # 提取标题
         title = extract_title(html) or f"财经早餐 {date_str[:4]}-{date_str[4:6]}-{date_str[6:]}"
-        
+
+        # ⚠️ race condition 兑底: 即使 daily_catch.py 抓错 post, 这里也要校验
+        # raw 标题里的日期必须等于 date_str, 否则拒绝写入 (2026-07-18 8AM cron 错抓 7/17 早餐事故)
+        display_date = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:]}"
+        if title and '财经早餐' in title and re.search(r'\d', title):
+            m = re.search(r'(\d{4})[-/年](\d{1,2})[-/月](\d{1,2})', title)
+            if m:
+                actual_date = f"{m.group(1)}-{int(m.group(2)):02d}-{int(m.group(3)):02d}"
+                if actual_date != display_date:
+                    log(f"  ❌ date 校验失败: raw 标题={title!r}, 日期={actual_date}, 但 --date={display_date}")
+                    log(f"     可能是 daily_catch.py race condition 抓到了别天的 post")
+                    log(f"     拒绝写入文件, 避免污染 {md_file}")
+                    return 2  # 特殊退出码: race condition, 调用方可识别
+
         # 提取正文
         body_html = extract_post_body(html)
         if not body_html.strip():
@@ -314,9 +333,8 @@ def step_format(date_str, dry_run=False):
         # 渲染为 markdown
         post_md = mf.markdownify(body_html, heading_style="atx", link_style="inlined")
         comments_md = render_comments_md(comments)
-        
-        # 输出 .md
-        display_date = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:]}"
+
+        # 输出 .md (display_date 已在 date 校验时赋值)
         normalized_title = f"财经早餐 {display_date}"  # Frank 拍板的标题格式 (Vercel 首页列靠这个识别)
         # ⚠️ 重要: 顶部必须严格 YAML frontmatter (Astro 首页靠 title 字段识别，不能出现"原文"等文件后缀)
         full_md = "---\n"
