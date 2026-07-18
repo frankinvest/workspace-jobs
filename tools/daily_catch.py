@@ -197,6 +197,22 @@ def fetch_list_latest_post():
         for i, c in enumerate(candidates[:6]):
             log(f"[list]   候选 {i}: title={c.get('title','')!r} time={c.get('time','')!r} href={c.get('href','')}")
 
+        # ⚠️ race condition 防护: cron 8AM 准点跑时, Mr Dang 当天新帖可能刚发未及时进 list,
+        #    此时 list 里第一条仍是昨天的"财经早餐" (如 2026-07-18 8AM cron 抓到 7/17 早餐 post 2468150,
+        #    finance_breakfast.py 强制用 7/18 日期写错文件 JJC-20260718-001-原文.md 事故)
+        # ✅ 修复: candidates 先**只保留 "今天" 发布的帖子**, "昨天"/"前天"/具体日期 都不算今天
+        #    如果 today_only 为空, 直接返回 None, 跳过整个任务 (避免误抓昨天)
+        today_only = [c for c in candidates if (c.get('time', '') or '').startswith('今天')]
+        if not today_only:
+            sample_times = [c.get('time', '') for c in candidates[:3]]
+            log(f"[list] ⚠️ 今日暂无帖子 (候选时间样例: {sample_times})")
+            log(f"[list] 可能是 race condition (Mr Dang 准点 8AM 发帖, list 还未刷新) 或今天真的没发")
+            log(f"[list] 跳过任务, 不抓任何 post")
+            return None
+        if len(today_only) < len(candidates):
+            log(f"[list] today_only 过滤: {len(candidates)} → {len(today_only)} (剔除昨天/前天)")
+        candidates = today_only
+
         # ⚠️ 同分钟双帖坑: 红圈偶尔会在同一分钟同时发"财经早餐"和"有声版"音频版
         # (如 2026-07-06 06:59 同时有 post 2449788 早餐 + 2449789 有声版),
         # DOM 顺序不可靠, audio 版有时排在 breakfast 前面。
