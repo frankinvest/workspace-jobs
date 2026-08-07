@@ -61,14 +61,20 @@ API_BASE = "https://api.github.com"
 SESSION = None
 
 def get_session(token):
+    """每次新建 Session (避免连续 PUT 时复用导致 409)
+    
+    背景: 2026-08-07 推送 8/6 (success) + 8/7 (409 "is at b87f1633 but expected 0bfba9c")
+    根因: Contents API server 端对同一 client IP 维护 last-seen main HEAD 乐观锁,
+          SESSION 复用时 TCP 连接 keep-alive 让 server 用 stale HEAD SHA 校验第二个 PUT.
+    修复: 每个 put_file 调用前都重新建 Session (header 一致, 但 server 视为新 client).
+    """
     global SESSION
-    if SESSION is None:
-        SESSION = requests.Session()
-        SESSION.headers.update({
-            "Authorization": f"token {token}",
-            "Accept": "application/vnd.github+json",
-            "User-Agent": "openclaw-system-api-pusher/1.0",
-        })
+    SESSION = requests.Session()
+    SESSION.headers.update({
+        "Authorization": f"token {token}",
+        "Accept": "application/vnd.github+json",
+        "User-Agent": "openclaw-system-api-pusher/1.0",
+    })
     return SESSION
 
 
@@ -89,7 +95,10 @@ def put_file(repo_path, local_path, commit_msg, dry_run=False):
     """
     content_bytes = local_path.read_bytes()
     content_b64 = base64.b64encode(content_bytes).decode("ascii")
-    
+
+    # 每个 PUT 前重建 Session, 避免 server 端 stale HEAD 校验冲突 (2026-08-07 修复)
+    get_session(TOKEN)
+
     existing_sha = get_existing_sha(repo_path)
     if existing_sha:
         action = "updated"
@@ -161,8 +170,7 @@ def main():
     print(f"[api_pusher] Token: {masked} (前 8 / 后 4)")
     print(f"[api_pusher] Dry-run: {args.dry_run}")
     print()
-    
-    get_session(TOKEN)
+    # NOTE: 不在 main 里 pre-build SESSION — 每次 put_file 入口重建避免 409 复用
     
     if args.file:
         repo_path = args.file
