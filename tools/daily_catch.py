@@ -202,7 +202,17 @@ def fetch_list_latest_post():
         #    finance_breakfast.py 强制用 7/18 日期写错文件 JJC-20260718-001-原文.md 事故)
         # ✅ 修复: candidates 先**只保留 "今天" 发布的帖子**, "昨天"/"前天"/具体日期 都不算今天
         #    如果 today_only 为空, 直接返回 None, 跳过整个任务 (避免误抓昨天)
-        today_only = [c for c in candidates if (c.get('time', '') or '').startswith('今天')]
+        # "今天" 前缀 或 相对时间("X 分钟前"/"X 小时前") 都视为今天的帖子
+        def is_today_time(time_str):
+            ts = time_str or ''
+            if ts.startswith('今天'):
+                return True
+            # "51 分钟前" / "2 小时前" 等相对时间, 发生在几分钟~几小时内, 必然是今天
+            if re.match(r'^\d+ ?[时分]钟?前$', ts):
+                return True
+            return False
+
+        today_only = [c for c in candidates if is_today_time(c.get('time', ''))]
         if not today_only:
             sample_times = [c.get('time', '') for c in candidates[:3]]
             log(f"[list] ⚠️ 今日暂无帖子 (候选时间样例: {sample_times})")
@@ -224,9 +234,15 @@ def fetch_list_latest_post():
             latest = bf_candidates[0]
             log(f"[list] 选中财经早餐候选: title={latest.get('title','')!r} href={latest.get('href','')}")
         else:
+            # 🔴 Frank 要求: 永远不抓"有声版", 没有文字版就跳过
+            audio_only = all('有声版' in (c.get('title', '') or '') for c in candidates)
+            if audio_only:
+                log(f"[list] 🔴 今天只有有声版, 无财经早餐文字版, 按 Frank 要求跳过任务")
+                return None
             latest = candidates[0]
             log(f"[list] 无财经早餐候选, 退回到第一条: time={latest.get('time','')!r} href={latest.get('href','')}")
         return latest.get('href'), latest.get('time', '')
+
     finally:
         ws.close()
 
