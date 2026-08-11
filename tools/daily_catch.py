@@ -214,11 +214,21 @@ def fetch_list_latest_post():
 
         today_only = [c for c in candidates if is_today_time(c.get('time', ''))]
         if not today_only:
-            sample_times = [c.get('time', '') for c in candidates[:3]]
-            log(f"[list] ⚠️ 今日暂无帖子 (候选时间样例: {sample_times})")
-            log(f"[list] 可能是 race condition (Mr Dang 准点 8AM 发帖, list 还未刷新) 或今天真的没发")
-            log(f"[list] 跳过任务, 不抓任何 post")
-            return None
+            # ⚠️ Fallback: candidates[0].time='' (懒加载 race condition)
+            #    2026-08-11 8AM 抓 list 时, 今天的新帖时间标签未渲染 (time=''),
+            #    其他候选都有时间标签 ("昨天"/具体日期).
+            #    列表第一条按倒序 = 最新帖子, 兜底视为今天候选继续流程.
+            #    双保险: finance_breakfast.py 的 date 校验 (commit 95001d70) 拒绝日期不匹配的写入.
+            if candidates and not candidates[0].get('time', ''):
+                log(f"[list] ⚠️ today_only 空, 但 candidates[0].time='' (懒加载 race condition)")
+                log(f"[list] 取 candidates[0] 作兜底: {candidates[0].get('title', '')[:60]!r}")
+                today_only = [candidates[0]]
+            else:
+                sample_times = [c.get('time', '') for c in candidates[:3]]
+                log(f"[list] ⚠️ 今日暂无帖子 (候选时间样例: {sample_times})")
+                log(f"[list] 可能是 race condition (Mr Dang 准点 8AM 发帖, list 还未刷新) 或今天真的没发")
+                log(f"[list] 跳过任务, 不抓任何 post")
+                return None
         if len(today_only) < len(candidates):
             log(f"[list] today_only 过滤: {len(candidates)} → {len(today_only)} (剔除昨天/前天)")
         candidates = today_only
