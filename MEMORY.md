@@ -106,3 +106,55 @@
 1. 走 `publish_mr_dang_post.py --url <post_url> --title "<真标题>" --date <YYYYMMDD> --slug <slug>`
 2. Slug 沿用 `JJC-YYYYMMDD-NNN-<主题>-原文.md` 命中 frankofswing.com 首页 filter
 3. 精华贴（如《地阶功法卷X》）真标题需手动传 `--title`，因为页面上常常只有正文首段
+
+## 【2026-08-10 daily_catch.py 永不抓有声版】周日 breakfast race condition 修复
+
+### 事故
+- 2026-08-10 周日 8AM Mr Dang 只发了"有声版"（post 27593-2499301 + 2498515），**没发文字版财经早餐**（评论里都在喊"审核中""文章被删了""7:42 了早报还没放出来"）
+- daily_catch.py 8AM 抓 list 候选只有 2 条"有声版"，**退化到 candidates[0]** 抓了 2499301 有声版推送
+- 9AM Mr Dang **补发了文字版**（post 27593-2499300）—— 但 8AM cron 已错过
+
+### Frank 反馈（11:19 GMT+8）
+"今天的财经早餐怎么回事，怎么收集了有声版？每天都会有两条，一条是原文也就是文字版，一条是有声版，你需要同步的是原文，不需要同步有声版"
+
+### Frank 实际认知有误（需要沉淀）
+- Frank 说"每天都会有两条"→ 实际**不每天都有**，有时 Mr Dang 只发音频版（8/10 周日）有时只发文字版
+- 真正规律：**"财经早餐"文字版是主要同步目标**，有声版是音频附件不抓
+- 之前代码把"无早餐候选时退化到第一条"是错的，应该**直接跳过**
+
+### 修复（commit 7a6fa9158f3c）
+- daily_catch.py 第 237 行 else 分支加 `audio_only = all('有声版' in title for c in candidates)`
+- 如果 audio_only=True → 返回 None 跳过整个任务（不发任何东西）
+- 配合 today_only 防护：今天只有有声版 → 跳过；今天只有文字版 → 抓；两个都有 → 抓文字版
+
+### 顺手修复
+- is_today_time 函数扩展支持"X 分钟前"/"X 小时前"相对时间（之前只认"今天 XX:XX"硬前缀，导致 8AM 第一次跑报"今日暂无帖子"）
+- 7/18 race condition 跟今天同根因——list 加载时机跟发帖时点冲突
+
+### 9AM backup cron 新增（ad966ba6-66a8-4e7a-b86f-38c19f35d70d）
+- `daily_catch_9am_backup`: `0 9 * * *` Asia/Shanghai
+- 适用场景：Mr Dang 8AM 时只发有声版, 9AM 才补文字版
+- 先检查 docs/JJC-<today>-001-原文.md 是否已存在 → 已存在则 exit 0
+- 不存在则走完整 daily_catch.py 流程
+- delivery: announce → feishu:ou_8fab5d81798938a771ad4be7bb04593c
+
+### 手动补跑今天 8/10 流程
+1. cdp 抓 post 27593-2499300 全文（29736 chars，含就业数据 + CPI 数据 + 评论 19 条）
+2. 写 raw cache 到 /tmp/finance_breakfast_raw_20260810.html
+3. finance_breakfast.py --date 20260810 --step all 跑通 fetch/format/images/guard
+4. push 步骤 system_git_pusher.py 超时（git push 撞墙老问题）
+5. Contents API 兜底推 docs/JJC-20260810-001-原文.md → commit 2a44ca6843c9
+6. Contents API 删错的 JJC-20260810-001-2026年8月10日有声版-原文.md → commit b320985549c8
+7. Contents API 推更新的 daily_catch.py → commit 7a6fa9158f3c
+
+### ⚠️ .git-credentials token 过期 (重要隐患)
+- .git-credentials 一直存的是 8/7 Frank revoke 的旧 token `ghp_s9yB...aJej`
+- 8/7 补推 8/6+8/7 时 Frank 给的新 token `ghp_Oyx4...8PiF` 我只写在内存里，没回写 .git-credentials
+- 今天 9:19 用 Contents API 第一次发现 401 Bad credentials 才暴露
+- **已更新**: `sed -i '' "s|ghp_s9y…aJej|ghp_Oyx4…8PiF|" ~/.git-credentials && chmod 600`
+- **以后新 token 必须同步写 .git-credentials**, 不只是 sed 即时替换
+
+### finance_breakfast.py git push 超时老问题（再次发生）
+- 9:22 finance_breakfast.py push 步骤 system_git_pusher.py 超时 120s
+- Contents API fallback 救场成功
+- 建议: finance_breakfast.py step_push 默认改成 Contents API, 不要 git push 失败才 fallback
