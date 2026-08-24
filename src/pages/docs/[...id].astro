@@ -1,6 +1,7 @@
 ---
 import { getCollection, render } from 'astro:content';
 import ArticleLayout from '../../layouts/ArticleLayout.astro';
+import { estimateReadingTime } from '../../utils/reading-time';
 
 export const prerender = true;
 
@@ -43,11 +44,15 @@ let date = '';
 let tag = '财经早餐';
 let title = '';
 let Content: any = null;
+let readingTime: number | undefined;
 
 if (isRawHtml) {
   const filename = Astro.params.id || '';
   date = filename.match(/(\d{8})/)?.[1] || '';
   title = '财经早餐 ' + date.slice(0, 4) + '-' + date.slice(4, 6) + '-' + date.slice(6, 8);
+  // Raw HTML articles: estimate from raw HTML length (strip tags for accuracy)
+  const text = rawHtmlContent.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  readingTime = estimateReadingTime(text);
 } else {
   const filename = entry.id;
   date = filename.match(/(\d{8})/)?.[1] || '';
@@ -65,12 +70,15 @@ if (isRawHtml) {
     title = title.replace(/-/g, ' ');
   }
 
+  // Compute reading time from raw markdown body
+  readingTime = estimateReadingTime(entry.body || '');
+
   const result = await render(entry);
   Content = result.Content;
 }
 ---
 
-<ArticleLayout title={title} date={date} tag={tag}>
+<ArticleLayout title={title} date={date} tag={tag} readingTime={readingTime}>
   {isRawHtml ? (
     <div class="raw-html-content" set:html={rawHtmlContent} />
   ) : (
