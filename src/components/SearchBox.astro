@@ -159,10 +159,16 @@ const articlesJson = JSON.stringify(articles);
     empty.setAttribute('hidden', '');
     const top = matches.slice(0, MAX_RESULTS);
     list.innerHTML = top
-      .map(
-        (a) =>
-          `<li role="option"><a href="/docs/${escapeHtml(a.slug)}/" class="search-result-link"><div class="search-result-title">${highlight(a.title || '', q)}</div><div class="search-result-snippet">${highlight((a.body || '').slice(0, 100), q)}${((a.body || '').length > 100 ? '...' : '')}</div><div class="search-result-date">${escapeHtml(a.date || '')}</div></a></li>`
-      )
+      .map((a) => {
+        const body = a.body || '';
+        // Extract up to 2 meaningful snippets: split by Chinese sentence boundaries
+        const parts = body.split(/(?<=[。！？；])/).filter(s => s.trim().length > 0);
+        const rawSnippets = parts.length > 0
+          ? parts.slice(0, 2).map(s => s.trim())
+          : [body.slice(0, 100)];
+        const snippetsHtml = rawSnippets.map(s => highlight(s, q));
+        return `<li role="option"><a href="/docs/${escapeHtml(a.slug)}/" class="search-result-link"><div class="search-result-title">${highlight(a.title || '', q)}</div><div class="search-result-snippets">${snippetsHtml.map(s => `<div class="snippet">${s}</div>`).join('')}${snippetsHtml.length > 2 ? `<div class="snippet-more">+${snippetsHtml.length - 2} more</div>` : ''}</div><div class="search-result-date">${escapeHtml(a.date || '')}</div></a></li>`;
+      })
       .join('');
     results.removeAttribute('hidden');
     input.setAttribute('aria-expanded', 'true');
