@@ -42,18 +42,25 @@ const articlesJson = JSON.stringify(articles);
     <input
       type="search"
       class="search-input"
-      placeholder={`搜索 ${articles.length} 篇财经早餐...`}
+      placeholder={`输入关键词, 按 Enter 或点击搜索 (${articles.length} 篇财经早餐)`}
       aria-label="搜索文章"
       aria-describedby="search-hint"
       role="combobox"
       aria-expanded="false"
       aria-controls="search-results-list"
-      aria-autocomplete="list"
       autocomplete="off"
       data-search-input
     />
+    <button
+      type="button"
+      class="search-btn"
+      data-search-btn
+      aria-label="执行搜索"
+    >
+      搜索
+    </button>
   </div>
-  <span id="search-hint" class="search-hint" aria-hidden="true">按 Esc 关闭</span>
+  <span id="search-hint" class="search-hint" aria-hidden="true">按 Enter 搜索 · Esc 关闭</span>
 
   <div
     class="search-results"
@@ -74,23 +81,20 @@ const articlesJson = JSON.stringify(articles);
 <script type="application/json" data-search-data set:html={articlesJson}></script>
 
 <script>
-  // Client-side search filter
+  // Client-side search filter (button-trigger, not live)
   const dataEl = document.querySelector('[data-search-data]');
   const articles: Article[] = dataEl ? JSON.parse(dataEl.textContent || '[]') : [];
 
   const box = document.querySelector('[data-search-box]') as HTMLElement | null;
   const input = document.querySelector('[data-search-input]') as HTMLInputElement | null;
+  const btn = document.querySelector('[data-search-btn]') as HTMLButtonElement | null;
   const results = document.querySelector('[data-search-results]') as HTMLElement | null;
   const list = document.querySelector('[data-search-list]') as HTMLUListElement | null;
   const empty = document.querySelector('[data-search-empty]') as HTMLElement | null;
   const count = document.querySelector('[data-search-count]') as HTMLElement | null;
 
-  const MIN_LEN = 2;
   const MAX_LEN = 50;
-  const DEBOUNCE_MS = 200;
-  const MAX_RESULTS = 10;
-
-  let debounceTimer: number | undefined;
+  const MAX_RESULTS = 20;
 
   function escapeHtml(s: string): string {
     return s
@@ -123,11 +127,17 @@ const articlesJson = JSON.stringify(articles);
   function render(query: string): void {
     if (!input || !results || !list || !empty || !count) return;
     const q = query.trim().slice(0, MAX_LEN);
-    if (q.length < MIN_LEN) {
-      results.setAttribute('hidden', '');
-      input.setAttribute('aria-expanded', 'false');
+
+    if (q.length === 0) {
+      empty.textContent = '请输入关键词, 然后点击搜索';
+      empty.removeAttribute('hidden');
+      count.textContent = '';
+      list.innerHTML = '';
+      results.removeAttribute('hidden');
+      input.setAttribute('aria-expanded', 'true');
       return;
     }
+
     const qLower = q.toLowerCase();
     const matches = articles.filter((a) => {
       const titleLower = (a.title || '').toLowerCase();
@@ -139,6 +149,7 @@ const articlesJson = JSON.stringify(articles);
 
     if (matches.length === 0) {
       list.innerHTML = '';
+      empty.textContent = `没找到包含 "${q}" 的文章, 试试别的关键词`;
       empty.removeAttribute('hidden');
       results.removeAttribute('hidden');
       input.setAttribute('aria-expanded', 'true');
@@ -150,28 +161,32 @@ const articlesJson = JSON.stringify(articles);
     list.innerHTML = top
       .map(
         (a) =>
-          `<li role="option"><a href="/docs/${escapeHtml(a.slug)}/" class="search-result-link"><div class="search-result-title">${highlight(a.title || '', q)}</div><div class="search-result-date">${escapeHtml(a.date || '')}</div></a></li>`
+          `<li role="option"><a href="/docs/${escapeHtml(a.slug)}/" class="search-result-link"><div class="search-result-title">${highlight(a.title || '', q)}</div><div class="search-result-snippet">${highlight((a.body || '').slice(0, 100), q)}${((a.body || '').length > 100 ? '...' : '')}</div><div class="search-result-date">${escapeHtml(a.date || '')}</div></a></li>`
       )
       .join('');
     results.removeAttribute('hidden');
     input.setAttribute('aria-expanded', 'true');
   }
 
-  if (input) {
-    input.addEventListener('input', (e) => {
-      const value = (e.target as HTMLInputElement).value;
-      clearTimeout(debounceTimer);
-      debounceTimer = window.setTimeout(() => render(value), DEBOUNCE_MS);
-    });
-
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') {
-        results?.setAttribute('hidden', '');
-        input.setAttribute('aria-expanded', 'false');
-        input.blur();
-      }
-    });
+  function doSearch(): void {
+    if (!input) return;
+    render(input.value);
   }
+
+  // 搜索按钮触发
+  btn?.addEventListener('click', () => doSearch());
+
+  // Enter 键触发
+  input?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      doSearch();
+    } else if (e.key === 'Escape') {
+      results?.setAttribute('hidden', '');
+      input.setAttribute('aria-expanded', 'false');
+      input.blur();
+    }
+  });
 
   // Click outside closes
   document.addEventListener('click', (e) => {
