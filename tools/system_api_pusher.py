@@ -30,10 +30,26 @@ from pathlib import Path
 import requests
 
 # ── 凭据 + 仓库 ──────────────────────────────────────────────────
-TOKEN_PATH = Path.home() / ".git-credentials"
-
 def load_token():
-    """从 ~/.git-credentials 读 token (system_git_pusher 写入的格式)"""
+    """从 git remote origin URL 解析 token (比 ~/.git-credentials 更可靠)"""
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["git", "remote", "get-url", "origin"],
+            capture_output=True, text=True, timeout=10,
+            cwd=Path(__file__).parent.parent
+        )
+        url = result.stdout.strip()
+        # URL format: https://frank-bot:<TOKEN>@github.com/owner/repo.git
+        if "@github.com" in url:
+            token = url.split("://")[1].split("@")[0].split(":")[-1]
+            if token.startswith("ghp_") or token.startswith("ghs_") or token.startswith("github_pat_"):
+                return token
+    except Exception as e:
+        print(f"[WARN] git remote get-url failed: {e}", flush=True)
+    
+    # Fallback: ~/.git-credentials (可能含过期 token)
+    TOKEN_PATH = Path.home() / ".git-credentials"
     if not TOKEN_PATH.exists():
         raise ValueError(f"[AUTH] FAIL: {TOKEN_PATH} 不存在")
     content = TOKEN_PATH.read_text()
