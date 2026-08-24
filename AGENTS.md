@@ -2,6 +2,40 @@
 
 This folder is home. Treat it that way.
 
+## 🛠️ Feature Development — MUST USE `dev_loop.py`
+
+**任何** Frank 提的功能开发 / 重构 / 修复, **必须** 走 `tools/dev_loop.py` 的 7-phase 流程。**不**允许直接写代码 + git push。
+
+完整流程定义: **`docs/dev/PROCESS.md`** (权威文档, 任何 session / 任何 LLM 接手都按这个走)
+
+7 phase:
+- Phase 0 PLAN: mkdir docs/dev/<feature>/ + 写 plan.md 骨架
+- Phase 0b FINALIZE-PLAN: 读 questions.md → 生成 plan.md (Q/A 格式 `### Q1.` / `**A1.**`)
+- Phase 1 TEST: 装 vitest + 写失败测试
+- Phase 2 CODE: 实现功能
+- Phase 3 VERIFY: astro check + npm run build + npm test
+- Phase 4 DEPLOY: Contents API push + 存 deploy-state.json
+- Phase 5 LIVE-VERIFY: curl + grep + auto-rollback
+
+**Frank 给 R&D 命令的推荐前缀**: `用 loop 实现 X` 或 `用 loop 修复 X` — 看到关键词立刻 trigger dev_loop.py
+
+**为什么这个规则不会被忘掉**:
+1. **AGENTS.md 是 workspace 启动必加载的文件** — 任何 session 启动自动 inject 这条规则
+2. **PROCESS.md 是文件层持久化** — 即使 AGENTS.md 被改坏了, PROCESS.md 还在
+3. **Frank 用 "用 loop" 前缀** — 显式触发信号
+
+**例外** (不需要走 loop):
+- 临时验证 (e.g. `git status`, 看一眼代码, 跑个 curl)
+- 配置文件微调 (e.g. 改 vite config 一个数字)
+- 一次性 feishu 通知 / 工具脚本
+
+**何时跑 --phase all vs 分 phase**:
+- Frank 给完整需求 + 答完问题 → 一次性跑完所有 phase
+- Frank 只要部分验证 (e.g. 只 verify 不 deploy) → `--phase verify`
+- 修复 bug (有明确问题) → 跳过 plan/finalize-plan, 直接 code → verify → deploy → live-verify
+
+
+
 ## First Run
 
 If `BOOTSTRAP.md` exists, that's your birth certificate. Follow it, figure out who you are, then delete it. You won't need it again.
