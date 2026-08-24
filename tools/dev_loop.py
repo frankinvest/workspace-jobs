@@ -167,49 +167,44 @@ PHASE_0_QUESTIONS_TEMPLATE = """\
 
 
 def phase_0_plan(feature: str, feature_desc: str = "") -> bool:
-    log_phase("0 PLAN — 需求对齐 questions.md 生成")
+    """Phase 0: LLM-driven, 脚本只 mkdir docs/dev/<feature>/
+
+    Frank 提需求 → Jobs LLM 在飞书问 8-12 个 context-specific 问题 → Frank 飞书答 →
+    Jobs LLM 用 write 工具直接写 questions.md (Q/A 格式) → 跑 --phase finalize-plan.
+
+    这个 phase 只是确保目录存在, 不再生成模板 (避免 Frank 粘贴).
+    LLM 直接用 write 工具写 questions.md 比脚本写模板更灵活.
+    """
+    log_phase("0 PLAN — LLM-driven (脚本只 mkdir)")
     DEV_DIR.mkdir(parents=True, exist_ok=True)
     feat_dir = feature_dirs(feature)
     feat_dir.mkdir(parents=True, exist_ok=True)
 
-    # 写 plan.md (TODO 模板, finalize-plan 阶段会再写具体的)
     plan_path = feat_dir / "plan.md"
     desc = feature_desc or feature
-    plan_content = f"""# {feature}
+    plan_skeleton = f"""# {feature}
 
-> 自动生成于 {time.strftime("%Y-%m-%d %H:%M:%S")} by dev_loop.py
-> 等 --phase finalize-plan 才会写具体 plan (从 questions.md 答案生成)
-
-## 需求描述
-{desc}
-
-## 实现方案 (TODO: 等 finalize-plan 填)
+> 自动生成于 {time.strftime("%Y-%m-%d %H:%M:%S")} by dev_loop.py phase 0
+> 需求描述: {desc}
+> 等 --phase finalize-plan 会从 questions.md 生成具体 plan
 
 ## 部署记录
 | 时间 | commit | 部署状态 |
 |---|---|---|
 """
-    plan_path.write_text(plan_content, encoding="utf-8")
-    log(f"✅ 写 plan.md (TODO 模板): {plan_path}")
-
-    # 写 questions.md (核心: 10 个对齐问题)
-    questions_path = feat_dir / "questions.md"
-    timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-    questions_path.write_text(
-        PHASE_0_QUESTIONS_TEMPLATE.format(feature=feature, timestamp=timestamp),
-        encoding="utf-8"
-    )
-    log(f"✅ 写 questions.md: {questions_path}")
+    plan_path.write_text(plan_skeleton, encoding="utf-8")
+    log(f"✅ mkdir docs/dev/{slugify(feature)}/ + 写 plan.md 骨架: {plan_path}")
     log("")
-    log("📋 **下一步: 在飞书和 Jobs LLM 对齐需求 (不是脚本生成)**")
-    log("   1. questions.md 是空模板, 没有固定问题")
-    log("   2. 在飞书告诉 Jobs 你的需求, Jobs LLM 会问 8-12 个 context-specific 问题")
-    log("   3. Frank 飞书回答")
-    log("   4. Jobs LLM 整理成 Q/A 格式 (### Q1./**A1.**) 发回")
-    log("   5. Frank 把那段粘到 questions.md")
-    log("   6. 跑: python3 tools/dev_loop.py --feature \"{feature}\" --phase finalize-plan")
-    log("      → 读 Q/A, 写具体 plan.md")
-    log("   7. plan.md 确认 OK 后跑 --phase test 装 vitest")
+    log("📋 **LLM (Jobs) 现在做这些事:**")
+    log("   1. 在飞书问 Frank 8-12 个 context-specific 问题 (基于 --desc)")
+    log("   2. Frank 飞书答")
+    log("   3. 用 write 工具把 Q/A 写到 docs/dev/" + slugify(feature) + "/questions.md (### Q1. + **A1.** 格式)")
+    log("   4. 跑: python3 tools/dev_loop.py --feature \"" + feature + "\" --phase finalize-plan")
+    log("   5. 跑后续 phase: test / code / verify / deploy / live-verify")
+    log("")
+    log("📋 **Frank 你只需要:**")
+    log("   1. 在飞书回答 Jobs 的 8-12 个问题 (一句话回答就行, 别粘贴 markdown)")
+    log("   2. 等 Jobs 跑完, 飞书会告诉你 PASS / 自动回滚")
     log("")
     return True
 
