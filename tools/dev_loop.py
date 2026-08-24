@@ -502,9 +502,19 @@ def phase_4_deploy(feature: str, files: list[str], commit_msg: str, auto_rollbac
     r = sh(["git", "status", "-s"])
     log(f"  working tree:\n{r.stdout}")
 
-    log("  fetch + rebase origin/main")
-    sh(["git", "fetch", "origin", "main"], timeout=30)
-    sh(["git", "pull", "--rebase", "origin", "main"], timeout=30)
+    log("  fetch + rebase origin/main (best-effort, 超时不 crash)")
+    try:
+        sh(["git", "fetch", "origin", "main"], timeout=60)
+    except subprocess.TimeoutExpired:
+        log("  ⚠ git fetch 超时 (60s), 跳过 (Contents API push 不依赖 git)", "WARN")
+    except Exception as e:
+        log(f"  ⚠ git fetch 失败 ({type(e).__name__}: {e}), 跳过", "WARN")
+    try:
+        sh(["git", "pull", "--rebase", "origin", "main"], timeout=30)
+    except subprocess.TimeoutExpired:
+        log("  ⚠ git pull --rebase 超时, 跳过", "WARN")
+    except Exception as e:
+        log(f"  ⚠ git pull --rebase 失败 ({type(e).__name__}: {e}), 跳过", "WARN")
 
     feat_dir = feature_dirs(feature)
     feat_dir.mkdir(parents=True, exist_ok=True)
