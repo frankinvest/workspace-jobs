@@ -52,6 +52,7 @@ RAW_DIR = Path("/tmp")
 PUSHER_API = TOOLS_DIR / "system_api_pusher.py"
 FB_SCRIPT = TOOLS_DIR / "finance_breakfast.py"
 PUB_SCRIPT = TOOLS_DIR / "publish_mr_dang_post.py"
+DEPLOY_PRO_SCRIPT = TOOLS_DIR / "site_deploy_pro.py"  # frankofswing.com deploy loop
 
 GROUP_URL = "https://www.red-ring.cn/group/27593"
 PINNED_POST_IDS = {'19492', '1949299', '27593-1949299'}
@@ -460,10 +461,12 @@ def main():
     ap.add_argument("--date", default=shanghai_today_str(), help="日期 YYYYMMDD (默认今天)")
     ap.add_argument("--url", default=None, help="直接指定 post URL (跳过 list 步骤, 便于测试非早餐路径)")
     ap.add_argument("--dry-run", action="store_true", help="不实际推送")
+    ap.add_argument("--skip-sync", action="store_true", help="跳过 frankofswing.com deploy 验证 (默认 push 成功后自动跑)")
     args = ap.parse_args()
     date_str = args.date
     dry_run = args.dry_run
     direct_url = args.url
+    skip_sync = args.skip_sync
 
     log("=" * 60)
     log(f"daily_catch.py v1 — date={date_str} dry_run={dry_run}")
@@ -539,6 +542,38 @@ def main():
     else:
         rc = route_to_publish_mr_dang(post_url, date_str, title)
         log(f"[summary] type=非早餐, route=publish_mr_dang_post.py, rc={rc}")
+
+    # ── Step 6: 同步到 frankofswing.com (Vercel deploy loop) ──
+    if rc != 0:
+        log(f"[sync] push rc={rc}, 跳过 sync")
+    elif dry_run:
+        log(f"[sync] dry-run, 跳过 sync")
+    elif skip_sync:
+        log(f"[sync] --skip-sync, 跳过 sync")
+    else:
+        # 算 sync 文件路径 (跟 route 同步)
+        if is_bf:
+            sync_md_relpath = f"docs/JJC-{date_str}-001-原文.md"
+        else:
+            safe_title = re.sub(r'[\\/:*?"<>|\s]+', '-', title)[:40].strip('-') or 'mr_dang_post'
+            sync_md_relpath = f"docs/JJC-{date_str}-001-{safe_title}-原文.md"
+        sync_abs = WORKSPACE_JOBS / sync_md_relpath
+        if not sync_abs.exists():
+            log(f"[sync] ⚠️ {sync_md_relpath} 不存在, 跳过")
+        elif not DEPLOY_PRO_SCRIPT.exists():
+            log(f"[sync] ⚠️ {DEPLOY_PRO_SCRIPT.name} 不存在, 跳过 (手动跑 deploy)", "WARN")
+        else:
+            log(f"[sync] 触发 site_deploy_pro.py {sync_md_relpath}")
+            sync_cp = sh(['python3', str(DEPLOY_PRO_SCRIPT),
+                          '--date', date_str,
+                          '--file', sync_md_relpath,
+                          '--max-seconds', '180',
+                          '--poll-interval', '25'],
+                         cwd=str(WORKSPACE_JOBS), timeout=240)
+            log(f"[sync] deploy_loop rc={sync_cp.returncode}")
+            for line in sync_cp.stdout.split('\n')[-15:]:
+                if line.strip():
+                    log(f"  sync: {line}")
 
     log("=" * 60)
     log(f"[done] rc={rc} | date={date_str} | is_breakfast={is_bf} | title={title}")
