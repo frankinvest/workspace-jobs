@@ -23,10 +23,13 @@ export interface SearchResult {
   snippetHtml: string; // 已 HTML escape + <mark> 高亮
 }
 
-export const MIN_QUERY_LENGTH = 2;
+export const MIN_QUERY_LENGTH = 1;
 export const MAX_QUERY_LENGTH = 50;
 export const SNIPPET_RADIUS = 40;
-export const BODY_EXCERPT_LENGTH = 200;
+// Body excerpt length for search index. Default 5000 chars covers most full articles
+// (after markdown stripping). Increase if some articles have body > 5000 chars and you
+// want to search the tail too. Note: larger = bigger client bundle.
+export const BODY_EXCERPT_LENGTH = 5000;
 
 /** 把 markdown body 简化: 移除 frontmatter, 移除 markdown 标记, 截断 */
 export function normalizeBody(rawBody: string): string {
