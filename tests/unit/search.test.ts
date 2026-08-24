@@ -82,11 +82,22 @@ describe('searchArticles', () => {
     { slug: 'doc-4', title: 'Empty Body', body: '' },
   ];
 
-  it('returns empty array for short query (< MIN_QUERY_LENGTH)', () => {
-    expect(searchArticles(sampleArticles, 'a')).toEqual([]);
+  it('returns empty array for empty / whitespace query', () => {
     expect(searchArticles(sampleArticles, '')).toEqual([]);
     expect(searchArticles(sampleArticles, '   ')).toEqual([]);
     expect(searchArticles(sampleArticles, '\n\t')).toEqual([]);
+  });
+
+  it('handles single-char queries (MIN_QUERY_LENGTH=1, no crash)', () => {
+    // 单字查询不再返回空, 而是真的搜 (Frank 反馈要求)
+    const results = searchArticles(sampleArticles, 'a');
+    expect(Array.isArray(results)).toBe(true);
+  });
+
+  it('handles 2-char query (was previous min, now works same)', () => {
+    const results = searchArticles(sampleArticles, 'ap');
+    // 'ap' 不在 sample 数据中
+    expect(results).toEqual([]);
   });
 
   it('returns empty array for too-long query (> MAX_QUERY_LENGTH)', () => {
@@ -163,8 +174,8 @@ describe('searchArticles', () => {
 
 describe('constants', () => {
   it('exposes expected constants', () => {
-    expect(MIN_QUERY_LENGTH).toBe(2);
+    expect(MIN_QUERY_LENGTH).toBe(1);
     expect(MAX_QUERY_LENGTH).toBe(50);
-    expect(BODY_EXCERPT_LENGTH).toBe(200);
+    expect(BODY_EXCERPT_LENGTH).toBe(5000);
   });
 });
