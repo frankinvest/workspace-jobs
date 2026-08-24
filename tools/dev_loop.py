@@ -133,81 +133,36 @@ def curl_with_text(url: str, expect_text: str = "", timeout: int = 15) -> tuple[
 # ── Phase 0: PLAN ───────────────────────────────────────────────────
 
 PHASE_0_QUESTIONS_TEMPLATE = """\
-# {feature} — 需求对齐 (请 Frank review 后批准)
+# {feature} — 需求对齐
 
-> 自动生成于 {timestamp} by dev_loop.py
-> Frank review 后直接编辑默认答案 (改 "Frank 改:" 那行), 跑:
->   python3 tools/dev_loop.py --feature "{feature}" --phase finalize-plan
+> 自动生成于 {timestamp} by dev_loop.py (空壳, 由 Jobs LLM 飞书对齐填内容)
 
-## 关键问题 (默认答案已填, 不对就改)
+## 流程
 
-### 1. 触发场景 / User Story
-- 默认: 用户访问 frankofswing.com 文章页时, 需要 X 功能
-- Frank 改: ...
+1. Frank 提需求 (CLI --feature + --desc)
+2. **Jobs LLM 在飞书问 8-12 个 context-specific 问题** (基于 --desc 关键词)
+3. Frank 飞书回答
+4. Jobs LLM 整理成 Q/A 格式, 发回飞书
+5. Frank 把 Q/A 复制粘到这份 questions.md
+6. 跑 `python3 tools/dev_loop.py --feature "{feature}" --phase finalize-plan`
+   → 读这份 Q/A, 自动生成具体 plan.md
 
-### 2. UI 显示位置 (UI feature 才需要)
-- 默认: article-meta 区块 (跟 tag + date 排在一起)
-- 备选: 文章 footer / sidebar / 标题上方
-- Frank 改: ...
+## 格式约定 (Frank 粘贴时遵守)
 
-### 3. 数据来源 / 计算输入
-- 默认: entry.body (markdown 原文) / entry.data.X (frontmatter 字段) / URL query
-- 备选: ...
-- Frank 改: ...
+```markdown
+### Q1. <问题>
+**A1.** <Frank 的答案>
 
-### 4. 业务规则 / 计算逻辑
-- 默认: 300 wpm, CJK 1 word = 1 char, 至少 1 分钟, 向上取整
-- 备选: 250 wpm, 中英文分开, ...
-- Frank 改: ...
+### Q2. <问题>
+**A2.** <Frank 的答案>
+...
+```
 
-### 5. 文案 / 视觉规范
-- 默认: "X 分钟阅读" (单行 + 时钟 icon, color = --color-text-muted)
-- 备选: "阅读约 X 分钟" / "X min read" / 无 icon
-- Frank 改: ...
-
-### 6. 边界条件
-- 空内容 → 至少显示 1 分钟
-- readingTime < 1 → 隐藏 / 显示 1 兜底
-- 超长内容 (>10000 字) → 上限 60 分钟 (防 "9999 分钟阅读")
-- Frank 改: ...
-
-### 7. Astro SSG / 构建时考虑 (关键!)
-- output: 'static' → 必须 build 时算 (不能客户端 JS)
-- 不能引入运行时依赖 (e.g., 第三方 API)
-- 必须能被 vitest 纯函数测
-- Frank 改: ...
-
-### 8. 测试覆盖
-- 单元测试 (vitest):
-  - 至少 6 case: 空 / 短 / 长 / CJK / 英文 / 混合
-  - 边界: readingTime = 1 / 超大
-- 集成验证 (live-verify):
-  - curl frankofswing.com 文章页
-  - grep HTML 含 "X 分钟阅读"
-- Frank 改: ...
-
-### 9. 部署影响 / 回退策略
-- 影响页面: 所有 /docs/* 文章 (174 页)
-- Vercel build 多久生效: 30-90s
-- 回退: 默认 --auto-rollback (live-verify 失败自动 git reset --hard + force-push)
-- 备选: 手动 (飞书通知 + rollback.md)
-- Frank 改: ...
-
-### 10. SEO / 性能 / 可访问性
-- SEO: 无影响 (静态文本)
-- 性能: bundle size 影响? (新增组件 < 1KB OK)
-- a11y: aria-label 含 "预估阅读时间 X 分钟" (屏幕阅读器友好)
-- Frank 改: ...
-
-## Frank review 状态
-
-- [ ] 已 review 完所有问题 (默认答案接受或修改)
-- [ ] 批准进 Phase 1 (test setup)
-- [ ] 可以进 --phase finalize-plan 生成 plan.md
+只要每对 `### Q<n>.` 后面紧跟 `**A<n>.**`, finalize-plan 就能解析.
 
 ## Frank 备注 (可选)
 
-(任何额外约束, 跨问题思考, 风险, 已知冲突, LLM 后续要问的问题等)
+(LLM 没问到的额外约束 / 风险 / 已知冲突等, 直接写在这里)
 """
 
 
@@ -246,12 +201,15 @@ def phase_0_plan(feature: str, feature_desc: str = "") -> bool:
     )
     log(f"✅ 写 questions.md: {questions_path}")
     log("")
-    log("📋 **请 Frank review questions.md:**")
-    log("   1. 打开 questions.md, 直接编辑 'Frank 改:' 那些行 (把答案填进去)")
-    log("   2. 也可以在底部 'Frank 备注' 加额外要求 / 风险 / LLM 后续要问的问题")
-    log("   3. 改完跑: python3 tools/dev_loop.py --feature \"{feature}\" --phase finalize-plan")
-    log("      → 这会读 questions.md 答案, 写具体的 plan.md")
-    log("   4. plan.md 确认 OK 后跑 --phase test 装 vitest")
+    log("📋 **下一步: 在飞书和 Jobs LLM 对齐需求 (不是脚本生成)**")
+    log("   1. questions.md 是空模板, 没有固定问题")
+    log("   2. 在飞书告诉 Jobs 你的需求, Jobs LLM 会问 8-12 个 context-specific 问题")
+    log("   3. Frank 飞书回答")
+    log("   4. Jobs LLM 整理成 Q/A 格式 (### Q1./**A1.**) 发回")
+    log("   5. Frank 把那段粘到 questions.md")
+    log("   6. 跑: python3 tools/dev_loop.py --feature \"{feature}\" --phase finalize-plan")
+    log("      → 读 Q/A, 写具体 plan.md")
+    log("   7. plan.md 确认 OK 后跑 --phase test 装 vitest")
     log("")
     return True
 
@@ -259,9 +217,11 @@ def phase_0_plan(feature: str, feature_desc: str = "") -> bool:
 # ── Phase 0b: FINALIZE-PLAN ─────────────────────────────────────────
 
 def parse_questions_answers(questions_path: Path) -> dict[str, str]:
-    """从 questions.md 提取每个问题的 Frank 改: 答案.
+    """从 questions.md 提取 Q/A 对.
 
-    简单解析: 每个 ### N. <question> 块下的 'Frank 改: ...' 行作为答案.
+    解析两种格式 (Frank 粘 LLM 对话):
+      格式 A (新, 推荐): ### Q1. xxx  →  **A1.** yyy
+      格式 B (旧):        ### 1. xxx   →  Frank 改: yyy
     """
     if not questions_path.exists():
         return {}
@@ -269,23 +229,45 @@ def parse_questions_answers(questions_path: Path) -> dict[str, str]:
     text = questions_path.read_text(encoding="utf-8")
     answers = {}
     current_q = None
+    answer_lines = []
 
     for line in text.split("\n"):
-        # 匹配问题标题: ### N. xxx
-        m = re.match(r"^###\s+(\d+)\.\s+(.+)", line)
-        if m:
-            q_num = m.group(1)
-            q_text = m.group(2).strip()
-            current_q = (q_num, q_text)
-            answers[f"q{q_num}"] = {"question": q_text, "answer": "(默认)"}
+        # 格式 A: ### Q1. xxx
+        m_a = re.match(r"^###\s+Q(\d+)\.\s+(.+)", line)
+        # 格式 B: ### 1. xxx
+        m_b = re.match(r"^###\s+(\d+)\.\s+(.+)", line)
+
+        if m_a:
+            q_num = m_a.group(1)
+            q_text = m_a.group(2).strip()
+            current_q = q_num
+            answers[f"q{q_num}"] = {"question": q_text, "answer": ""}
+            answer_lines = []
+            continue
+        if m_b:
+            q_num = m_b.group(1)
+            q_text = m_b.group(2).strip()
+            current_q = q_num
+            answers[f"q{q_num}"] = {"question": q_text, "answer": ""}
+            answer_lines = []
             continue
 
-        # 匹配 Frank 改: ...
+        # 格式 A 答案: **A1.** yyy
+        m_ans_a = re.match(r"^\*\*A(\d+)\.\*\*\s*(.*)", line)
+        if m_ans_a and current_q == m_ans_a.group(1):
+            answers[f"q{current_q}"]["answer"] = m_ans_a.group(2).strip()
+            continue
+
+        # 格式 B 答案: Frank 改: yyy
         if current_q and "Frank 改:" in line:
             answer = line.split("Frank 改:", 1)[1].strip()
             if answer and answer != "...":
-                q_num = current_q[0]
-                answers[f"q{q_num}"]["answer"] = answer
+                answers[f"q{current_q}"]["answer"] = answer
+
+    # 默认值兜底 (空答案标 "(未答)")
+    for k, v in answers.items():
+        if not v["answer"]:
+            v["answer"] = "(未答)"
 
     return answers
 
