@@ -1,0 +1,47 @@
+---
+/**
+ * ReadingTime.astro - 显示预估阅读时间
+ *
+ * Props:
+ *   minutes: number  阅读分钟数 (>=1)
+ *
+ * 用法:
+ *   <ReadingTime minutes={5} />
+ */
+interface Props {
+  minutes: number;
+}
+
+const { minutes } = Astro.props;
+---
+
+<span class="reading-time" aria-label={`预估阅读时间 ${minutes} 分钟`}>
+  <svg
+    aria-hidden="true"
+    width="14"
+    height="14"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="2"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  >
+    <circle cx="12" cy="12" r="10" />
+    <polyline points="12 6 12 12 16 14" />
+  </svg>
+  <span>{minutes} 分钟阅读</span>
+</span>
+
+<style>
+  .reading-time {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35em;
+    font-size: var(--font-size-sm, 0.875rem);
+    color: var(--color-text-muted, #8a8a8a);
+  }
+  .reading-time svg {
+    flex-shrink: 0;
+  }
+</style>
