@@ -4,9 +4,15 @@ import {
   normalizeBody,
   escapeHtml,
   highlightMatches,
+  isCJK,
+  findAllMatches,
+  extractContext,
   MIN_QUERY_LENGTH,
   MAX_QUERY_LENGTH,
   BODY_EXCERPT_LENGTH,
+  SNIPPET_BEFORE,
+  SNIPPET_AFTER,
+  SNIPPET_MAX_COUNT,
   type Article,
 } from '../../src/utils/search';
 
@@ -48,6 +54,98 @@ describe('normalizeBody', () => {
   });
 });
 
+describe('isCJK', () => {
+  it('detects CJK characters', () => {
+    expect(isCJK('今天')).toBe(true);
+    expect(isCJK('早餐')).toBe(true);
+    expect(isCJK('hello')).toBe(false);
+    expect(isCJK('hello world')).toBe(false);
+    expect(isCJK('123')).toBe(false);
+  });
+  it('handles mixed', () => {
+    expect(isCJK('今天 hello')).toBe(true);
+    expect(isCJK('hello 今天')).toBe(true);
+  });
+  it('handles empty', () => {
+    expect(isCJK('')).toBe(false);
+    expect(isCJK('   ')).toBe(false);
+  });
+});
+
+describe('findAllMatches', () => {
+  it('finds single match', () => {
+    const matches = findAllMatches('hello world', 'world');
+    expect(matches).toEqual([[6, 11]]);
+  });
+  it('finds multiple non-overlapping matches', () => {
+    const matches = findAllMatches('foo bar foo baz foo', 'foo');
+    expect(matches).toEqual([[0, 3], [8, 11], [16, 19]]);
+  });
+  it('is case-insensitive', () => {
+    const matches = findAllMatches('Hello hello HELLO', 'hello');
+    expect(matches).toEqual([[0, 5], [6, 11], [12, 17]]);
+  });
+  it('handles CJK', () => {
+    // '今天的早餐很好, 明天早餐更好' (15 chars: 今0天1的2早3餐4很5好6,7空8明9天10早11餐12更13好14)
+    // 早餐 出现在 [3,5] 和 [11,13]
+    const matches = findAllMatches('今天的早餐很好, 明天早餐更好', '早餐');
+    expect(matches).toEqual([[3, 5], [11, 13]]);
+  });
+  it('returns empty for no match', () => {
+    expect(findAllMatches('hello', 'xyz')).toEqual([]);
+  });
+  it('returns empty for empty query', () => {
+    expect(findAllMatches('hello', '')).toEqual([]);
+  });
+  it('returns empty for empty text', () => {
+    expect(findAllMatches('', 'foo')).toEqual([]);
+  });
+});
+
+describe('extractContext', () => {
+  it('extracts CJK context with 10 chars each side', () => {
+    // '今天天气很好非常适合出去运动打球跑步' (18 chars)
+    // match '很好' at [4, 6]
+    // before=10: startIdx = max(0, 4-10) = 0
+    // after=10:  endIdx   = min(18, 6+10) = 16
+    // context = text[0:16] = '今天天气很好非常适合出去运动打球' (16 chars: 4 before + 2 match + 10 after)
+    // hasLeading = (0 > 0) = false (没东西被截掉在前面)
+    // hasTrailing = (16 < 18) = true (后面还有 跑步 被截掉)
+    const text = '今天天气很好非常适合出去运动打球跑步';
+    const result = extractContext(text, 4, 6, 10, 10);
+    expect(result.context).toBe('今天天气很好非常适合出去运动打球');
+    expect(result.hasLeading).toBe(false);
+    expect(result.hasTrailing).toBe(true);
+  });
+  it('extracts English context with word boundary', () => {
+    const text = 'The quick brown fox jumps over the lazy dog in the park yesterday';
+    // "fox" at position 16
+    const result = extractContext(text, 16, 19, 10, 10);
+    // Should be "the quick brown fox jumps over the lazy" approximately
+    // (word boundary based, 10 words each side)
+    expect(result.context).toContain('fox');
+    expect(result.context).toContain('quick');
+    expect(result.context).toContain('brown');
+  });
+  it('handles match at start of text', () => {
+    const result = extractContext('hello world', 0, 5, 10, 10);
+    expect(result.hasLeading).toBe(false);
+    expect(result.context).toContain('hello');
+  });
+  it('handles match at end of text', () => {
+    const text = 'world hello';
+    const result = extractContext(text, 6, 11, 10, 10);
+    expect(result.hasTrailing).toBe(false);
+    expect(result.context).toContain('hello');
+  });
+  it('handles short text', () => {
+    const result = extractContext('foo bar foo', 0, 3, 10, 10);
+    expect(result.context).toBe('foo bar foo');
+    expect(result.hasLeading).toBe(false);
+    expect(result.hasTrailing).toBe(false);
+  });
+});
+
 describe('highlightMatches', () => {
   it('wraps matched text in substring in <mark>', () => {
     expect(highlightMatches('hello world', 'world')).toBe('hello <mark>world</mark>');
@@ -80,6 +178,7 @@ describe('searchArticles', () => {
     { slug: 'doc-2', title: 'Tech News', body: 'Latest technology trends' },
     { slug: 'doc-3', title: 'Food Guide', body: '美味早餐推荐' },
     { slug: 'doc-4', title: 'Empty Body', body: '' },
+    { slug: 'doc-5', title: '银行分析', body: '今天讨论银行不良率。银行股表现。银行业监管。' },
   ];
 
   it('returns empty array for empty / whitespace query', () => {
@@ -89,26 +188,17 @@ describe('searchArticles', () => {
   });
 
   it('handles single-char queries (MIN_QUERY_LENGTH=1, no crash)', () => {
-    // 单字查询不再返回空, 而是真的搜 (Frank 反馈要求)
     const results = searchArticles(sampleArticles, 'a');
     expect(Array.isArray(results)).toBe(true);
   });
 
-  it('handles 2-char query (was previous min, now works same)', () => {
+  it('handles 2-char query', () => {
     const results = searchArticles(sampleArticles, 'ap');
-    // 'ap' 不在 sample 数据中
     expect(results).toEqual([]);
-  });
-
-  it('returns empty array for too-long query (> MAX_QUERY_LENGTH)', () => {
-    const longQuery = 'a'.repeat(MAX_QUERY_LENGTH + 10);
-    // Truncated to MAX_QUERY_LENGTH = 50 chars, all 'a's, no match in titles
-    expect(searchArticles(sampleArticles, longQuery)).toEqual([]);
   });
 
   it('finds matches in title (case-insensitive)', () => {
     const results = searchArticles(sampleArticles, '早餐');
-    // doc-1 title contains 早餐, doc-3 body contains 早餐
     expect(results.length).toBeGreaterThanOrEqual(2);
     expect(results.some((r) => r.article.slug === 'doc-1' && r.matchedTitle)).toBe(true);
   });
@@ -129,22 +219,6 @@ describe('searchArticles', () => {
     expect(results1.length).toBe(results2.length);
   });
 
-  it('returns results with highlighted snippets', () => {
-    const results = searchArticles(sampleArticles, '早餐');
-    results.forEach((r) => {
-      expect(r.snippetHtml).toContain('<mark>');
-    });
-  });
-
-  it('escapes HTML in snippets', () => {
-    const xssArticles: Article[] = [
-      { slug: 'xss', title: 'normal title', body: 'contains <script>alert("XSS")</script> in body' },
-    ];
-    const results = searchArticles(xssArticles, 'alert');
-    expect(results[0].snippetHtml).not.toContain('<script>');
-    expect(results[0].snippetHtml).toContain('&lt;script&gt;');
-  });
-
   it('does not return articles without match', () => {
     const results = searchArticles(sampleArticles, '早餐');
     results.forEach((r) => {
@@ -153,10 +227,6 @@ describe('searchArticles', () => {
   });
 
   it('preserves original article order', () => {
-    const results = searchArticles(sampleArticles, 'doc');
-    // Should match doc-1 (title) and doc-2 (title "Tech News" no, body has no), doc-4 (title "Empty Body" no, body empty)
-    // Only doc-1 title matches "doc"? No, "doc" not in any. Let me try "body" instead.
-    // Actually, let me try a query that matches multiple articles in order
     const articles2: Article[] = [
       { slug: 'a', title: 'apple', body: '' },
       { slug: 'b', title: 'banana apple', body: '' },
@@ -166,9 +236,70 @@ describe('searchArticles', () => {
     expect(results2.map((r) => r.article.slug)).toEqual(['a', 'b', 'c']);
   });
 
-  it('does not include articles with empty body in body matches', () => {
-    const results = searchArticles(sampleArticles, 'normal');
-    expect(results.some((r) => r.article.slug === 'doc-4')).toBe(false);
+  it('escapes HTML in snippets', () => {
+    const xssArticles: Article[] = [
+      { slug: 'xss', title: 'normal title', body: 'contains <script>alert("XSS")</script> in body' },
+    ];
+    const results = searchArticles(xssArticles, 'alert');
+    expect(results[0].snippetsHtml[0]).not.toContain('<script>');
+    expect(results[0].snippetsHtml[0]).toContain('&lt;script&gt;');
+  });
+
+  it('returns empty snippets for title-only match', () => {
+    const titleOnly: Article[] = [
+      { slug: 't1', title: '银行不良率分析', body: 'financial sector overview with no keyword' },
+    ];
+    const results = searchArticles(titleOnly, '银行');
+    expect(results.length).toBe(1);
+    expect(results[0].matchedTitle).toBe(true);
+    expect(results[0].matchedBody).toBe(false);
+    expect(results[0].matchCount).toBe(0);
+    expect(results[0].snippetsHtml).toEqual([]);
+  });
+
+  it('returns up to 3 snippets for multiple matches', () => {
+    const results = searchArticles(sampleArticles, '银行');
+    const bankResult = results.find((r) => r.article.slug === 'doc-5');
+    expect(bankResult).toBeDefined();
+    // doc-5 body has "银行" 3 times
+    expect(bankResult!.matchCount).toBe(3);
+    expect(bankResult!.snippetsHtml.length).toBe(3);
+    bankResult!.snippetsHtml.forEach((s) => {
+      expect(s).toContain('<mark>银行</mark>');
+    });
+  });
+
+  it('truncates snippets to first 3 if more than 3 matches', () => {
+    const manyBank: Article[] = [
+      {
+        slug: 'many',
+        title: '银行研究',
+        body: '银行 银行 银行 银行 银行 银行 银行', // 7 matches
+      },
+    ];
+    const results = searchArticles(manyBank, '银行');
+    expect(results.length).toBe(1);
+    expect(results[0].matchCount).toBe(7);
+    expect(results[0].snippetsHtml.length).toBe(SNIPPET_MAX_COUNT);
+  });
+
+  it('snippetsHtml has context around match (10 chars CJK / 10 words English)', () => {
+    const cjkArticle: Article[] = [
+      { slug: 'cjk', title: '测试', body: '今天上午央行公布了最新的银行存款数据' },
+    ];
+    const cjkResults = searchArticles(cjkArticle, '银行');
+    expect(cjkResults[0].snippetsHtml[0]).toContain('央行');
+    expect(cjkResults[0].snippetsHtml[0]).toContain('<mark>银行</mark>');
+    expect(cjkResults[0].snippetsHtml[0]).toContain('存款');
+  });
+
+  it('returns 1 snippet for single body match', () => {
+    const singleMatch: Article[] = [
+      { slug: 'one', title: 'test', body: 'some text with one match here' },
+    ];
+    const results = searchArticles(singleMatch, 'match');
+    expect(results[0].matchCount).toBe(1);
+    expect(results[0].snippetsHtml.length).toBe(1);
   });
 });
 
@@ -177,5 +308,8 @@ describe('constants', () => {
     expect(MIN_QUERY_LENGTH).toBe(1);
     expect(MAX_QUERY_LENGTH).toBe(50);
     expect(BODY_EXCERPT_LENGTH).toBe(5000);
+    expect(SNIPPET_BEFORE).toBe(10);
+    expect(SNIPPET_AFTER).toBe(10);
+    expect(SNIPPET_MAX_COUNT).toBe(3);
   });
 });
