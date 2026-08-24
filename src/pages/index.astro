@@ -4,6 +4,9 @@ import '../styles/global.css';
 import Icon from '../components/icons/Icon.astro';
 import ArticleCard from '../components/ArticleCard.astro';
 import SectionHeader from '../components/SectionHeader.astro';
+import SearchBox from '../components/SearchBox.astro';
+import { normalizeBody, BODY_EXCERPT_LENGTH } from '../utils/search';
+import type { Article } from '../utils/search';
 
 // Get all docs and sort by date
 const allDocs = await getCollection('docs');
@@ -64,6 +67,20 @@ const today = new Date().toLocaleDateString('zh-CN', {
 
 // 构建时间戳（用于验证部署状态）
 const buildTime = new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false });
+
+// Build search index for SearchBox (injected client-side as JSON)
+const searchIndex: Article[] = sortedDocs.map((doc) => {
+  const dateMatch = doc.id.match(/(\d{8})/);
+  const date = dateMatch ? dateMatch[1] : '';
+  const rawBody = ('body' in doc && (doc as any).body) ? (doc as any).body : '';
+  const body = normalizeBody(rawBody).slice(0, BODY_EXCERPT_LENGTH);
+  return {
+    slug: doc.id.replace(/\.md$/, '').replace(/\.html$/, ''),
+    title: doc.data.title || doc.id,
+    date,
+    body,
+  };
+});
 
 // Process articles
 const articles = sortedDocs.map((doc, idx) => {
@@ -186,6 +203,8 @@ const articleCount = groupedArticles['财经早餐'].length;
         {articleCount > 0 && (
           <p class="hero-count">{articleCount} 篇财经早餐</p>
         )}
+
+        <SearchBox articles={searchIndex} />
       </header>
 
       <!-- 主内容区：居中单栏，文章列表更宽更舒展 -->
