@@ -1,14 +1,16 @@
 ---
 import '../styles/global.css';
 import Icon from '../components/icons/Icon.astro';
+import ReadingTime from '../components/ReadingTime.astro';
 
 interface Props {
   title: string;
   date?: string;
   tag?: string;
+  readingTime?: number;
 }
 
-const { title, date, tag } = Astro.props;
+const { title, date, tag, readingTime } = Astro.props;
 
 // Format date helper
 const formatDate = (dateStr: string) => {
@@ -62,6 +64,9 @@ const formattedDate = date ? formatDate(date) : '';
                 <Icon name="calendar" size={14} />
                 {formattedDate}
               </span>
+            )}
+            {readingTime && readingTime > 0 && (
+              <ReadingTime minutes={readingTime} />
             )}
           </div>
           
