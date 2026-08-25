@@ -38,6 +38,7 @@ rollback 机制:
   - 不带 --auto-rollback: 写 rollback.md + 飞书通知 Frank
 """
 import argparse
+import base64
 import json
 import os
 import re
@@ -84,18 +85,22 @@ def feature_dirs(name: str) -> Path:
 
 
 def feishu_notify(title: str, body: str):
+    """飞书通知 Frank (--target 不是 --to, MEMORY 8/24 踩过坑)."""
     try:
         r = subprocess.run(
             ["openclaw", "message", "send",
              "--channel", "feishu",
              "--target", FEISHU_TARGET,
              "--message", f"{title}\n\n{body}"],
-            capture_output=True, text=True, timeout=20
+            capture_output=True, text=True, timeout=60
         )
         log(f"feishu rc={r.returncode}")
         return r.returncode == 0
+    except subprocess.TimeoutExpired:
+        log(f"  ⚠ feishu notify timeout (60s), 消息可能未投递", "WARN")
+        return False
     except Exception as e:
-        log(f"feishu 失败: {e}", "WARN")
+        log(f"  ⚠ feishu notify 失败: {e}", "WARN")
         return False
 
 
@@ -128,6 +133,193 @@ def curl_with_text(url: str, expect_text: str = "", timeout: int = 15) -> tuple[
     if expect_text and expect_text not in body:
         return False, status, body[:300]
     return True, status, body[:300]
+
+
+# ── Helpers (平台检测 / Contents API push / bundle 验证 / smoke 集成) ──
+
+def detect_deploy_platform(url: str = SITE) -> str:
+    """从 server header 推断部署平台 (frankofswing.com 真部署平台!).
+
+    关键: Cloudflare proxy IP (76.76.21.21) ≠ Cloudflare Pages 部署!
+    必须看 server: header, x-vercel-id, cf-ray 综合判断.
+
+    返回: 'Vercel' / 'Cloudflare' / 'Cloudflare Pages' / 'Unknown'
+    """
+    try:
+        req = urllib.request.Request(url, method="HEAD", headers={
+            "User-Agent": "Jobs-DevLoop",
+            "Cache-Control": "no-cache",
+        })
+        with urllib.request.urlopen(req, timeout=10) as r:
+            server = r.headers.get("server", "").lower()
+            x_vercel_id = r.headers.get("x-vercel-id", "")
+            cf_ray = r.headers.get("cf-ray", "")
+            cf_cache = r.headers.get("cf-cache-status", "")
+            if "vercel" in server or x_vercel_id:
+                return "Vercel"
+            if "cloudflare" in server and cf_ray and not cf_cache:
+                # cloudflare + cf-ray 但没 cf-cache-status → 可能是 Pages 直出
+                return "Cloudflare Pages"
+            if "cloudflare" in server:
+                return "Cloudflare"
+            return f"Unknown (server={server!r})"
+    except Exception as e:
+        log(f"  ⚠ detect_deploy_platform 失败: {e}", "WARN")
+        return "Unknown"
+
+
+def get_git_token() -> Optional[str]:
+    """从 ~/.git-credentials 拿 GitHub PAT (格式 https://user:token@github.com).
+
+    """
+    cred_path = Path.home() / ".git-credentials"
+    if not cred_path.exists():
+        return None
+    try:
+        for line in cred_path.read_text().splitlines():
+            if "github.com" in line and "@" in line:
+                parts = line.split(":")
+                if len(parts) >= 3:
+                    return parts[2].split("@")[0]
+    except Exception:
+        pass
+    return None
+
+
+def contents_api_push(file: str, message: str, branch: str = "main") -> dict:
+    """GitHub Contents API PUT 一个文件 (绕过 git push 撞墙).
+
+    关键细节:
+      - 必须先 GET 当前 SHA (update 时); 文件不存在 → 跳过 sha 字段 (create)
+      - content 必须 base64
+      - PUT 用 urllib.Request(data=...) 在 constructor 传, 不能 req.data= 后续赋值
+      - zsh interpolation 会破坏 JSON body → 写 /tmp JSON file + 读 bytes
+      - 错误码: 401 token 失效 / 404 路径错或 SHA 不匹配 / 422 参数缺失
+
+    Returns: {"ok": bool, "sha": str, "url": str, "error": str}
+    """
+    token = get_git_token()
+    if not token:
+        return {"ok": False, "error": "no GitHub token in ~/.git-credentials"}
+
+    repo = "frankinvest/workspace-jobs"
+    full_path = WORKSPACE / file
+    if not full_path.exists():
+        return {"ok": False, "error": f"file not found: {full_path}"}
+    content = full_path.read_text(encoding="utf-8", errors="ignore")
+    b64 = base64.b64encode(content.encode()).decode()
+
+    # 1. GET current SHA (404 = 文件不存在, 走 create)
+    get_url = f"https://api.github.com/repos/{repo}/contents/{file}?ref={branch}"
+    req = urllib.request.Request(get_url, headers={
+        "Authorization": f"token {token}",
+        "Accept": "application/vnd.github+json",
+    })
+    sha = None
+    try:
+        with urllib.request.urlopen(req, timeout=15) as r:
+            data = json.loads(r.read())
+            sha = data.get("sha")
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            pass
+        else:
+            return {"ok": False, "error": f"GET SHA HTTP {e.code}: {e.read().decode()[:200]}"}
+
+    # 2. PUT 新内容
+    put_url = f"https://api.github.com/repos/{repo}/contents/{file}"
+    body = {"message": message, "content": b64, "branch": branch}
+    if sha:
+        body["sha"] = sha
+
+    # 写 JSON 到 /tmp 文件避免 zsh interpolation, 然后从文件读 bytes
+    tmp_path = Path("/tmp/dev_loop_put_body.json")
+    tmp_path.write_text(json.dumps(body))
+
+    try:
+        req = urllib.request.Request(put_url, data=tmp_path.read_bytes(), method="PUT", headers={
+            "Authorization": f"token {token}",
+            "Accept": "application/vnd.github+json",
+            "Content-Type": "application/json",
+        })
+        with urllib.request.urlopen(req, timeout=30) as r:
+            result = json.loads(r.read())
+            return {
+                "ok": True,
+                "sha": result["commit"]["sha"],
+                "url": result["content"]["html_url"],
+                "mode": "update" if sha else "create",
+            }
+    except urllib.error.HTTPError as e:
+        return {"ok": False, "error": f"PUT HTTP {e.code}: {e.read().decode()[:300]}"}
+    except Exception as e:
+        return {"ok": False, "error": f"PUT {type(e).__name__}: {e}"}
+
+
+def extract_bundle_urls(html: str) -> list[str]:
+    """从 HTML 找所有 <script src="..."> 的 URL (相对或绝对路径)."""
+    return re.findall(r'<script[^>]*src="([^"]+)"[^>]*>', html)
+
+
+def verify_bundle_field(bundle_url: str, field: str, timeout: int = 15) -> tuple[bool, str]:
+    """下载 bundle JS, 检查是否含指定字段名 (用 \\b word boundary 防误中).
+
+    例: field='snippetsHtml' 在 minified bundle 'i=t.snippetsHtml' 里命中
+       field='snippet' 同时命中 'snippetHtml' + 'snippetsHtml' + 'search-result-snippet'
+    """
+    try:
+        full_url = bundle_url if bundle_url.startswith("http") else f"{SITE.rstrip('/')}{bundle_url}"
+        req = urllib.request.Request(full_url, headers={
+            "User-Agent": "Jobs-DevLoop",
+            "Cache-Control": "no-cache",
+        })
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            js = r.read().decode("utf-8", errors="ignore")
+        # word boundary 防 substring 误中
+        if re.search(rf'\b{re.escape(field)}\b', js):
+            return True, f"✅ bundle {field!r} 命中 ({len(js)} chars)"
+        return False, f"❌ bundle {field!r} NOT found (size={len(js)})"
+    except Exception as e:
+        return False, f"❌ verify_bundle_field({field!r}) {type(e).__name__}: {e}"
+
+
+def run_browser_smoke(url: str, query: str, keyword: str, wait_ms: int = 5000,
+                       screenshot: Optional[str] = None) -> tuple[bool, str]:
+    """调 browser_smoke.py 跑端到端搜索验证 (CDP @ openclaw Chrome 18900)."""
+    cmd = [
+        "python3", str(TOOLS_DIR / "browser_smoke.py"),
+        "--url", url,
+        "--query", query,
+        "--expect-keyword", keyword,
+        "--wait-ms", str(wait_ms),
+        "--quiet",
+    ]
+    if screenshot:
+        cmd.extend(["--screenshot", screenshot])
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        out = (r.stdout or "").strip()
+        if r.stderr:
+            out += f"\nstderr: {r.stderr[:300]}"
+        return (r.returncode == 0, out)
+    except subprocess.TimeoutExpired:
+        return False, "smoke timeout (120s)"
+    except Exception as e:
+        return False, f"smoke {type(e).__name__}: {e}"
+
+
+def run_field_contract_check() -> bool:
+    """跑 field_contract_check.py 静态验证 SearchBox.astro 字段对齐 SearchResult 接口.
+
+    防 bug: render 端期待 snippetsHtml[] + matchCount, 但 searchArticles() 只返回
+    snippetHtml 单数 → 字段不匹配 → render undefined → 空 list.
+    """
+    r = sh(["python3", str(TOOLS_DIR / "field_contract_check.py")], timeout=30)
+    if r.returncode == 0:
+        log("  ✅ field contract check PASS")
+        return True
+    log(f"  ❌ field contract check FAIL:\n{r.stdout[:500]}", "ERR")
+    return False
 
 
 # ── Phase 0: PLAN ───────────────────────────────────────────────────
@@ -449,7 +641,7 @@ def phase_2_code(feature: str) -> bool:
 # ── Phase 3: VERIFY ─────────────────────────────────────────────────
 
 def phase_3_verify(feature: str) -> bool:
-    log_phase("3 VERIFY — astro check + build + test")
+    log_phase("3 VERIFY — astro check + build + test + field contract")
     results = {}
 
     log("  跑 astro check (TS strict)...")
@@ -483,6 +675,12 @@ def phase_3_verify(feature: str) -> bool:
         log(f"  ❌ test 失败", "ERR")
         results["test"] = "FAIL"
 
+    log("  跑 field contract check (SearchBox.astro ↔ SearchResult interface)...")
+    if run_field_contract_check():
+        results["field_contract"] = "PASS"
+    else:
+        results["field_contract"] = "FAIL"
+
     all_pass = all(v.startswith("PASS") for v in results.values())
     if not all_pass:
         log(f"❌ verify 没全过: {results}", "ERR")
@@ -493,11 +691,18 @@ def phase_3_verify(feature: str) -> bool:
 
 # ── Phase 4: DEPLOY ─────────────────────────────────────────────────
 
-def phase_4_deploy(feature: str, files: list[str], commit_msg: str, auto_rollback: bool = False) -> bool:
-    log_phase("4 DEPLOY — git push → Vercel (含 deploy-state.json)")
+def phase_4_deploy(feature: str, files: list[str], commit_msg: str, auto_rollback: bool = False,
+                  force_contents_api: bool = False) -> bool:
+    log_phase("4 DEPLOY — git push → Vercel (fallback: Contents API)")
     if not files:
         log("❌ 必须传 --files", "ERR")
         return False
+
+    # 0. 部署平台检测 (防误判)
+    platform = detect_deploy_platform()
+    log(f"  部署平台: {platform}")
+    log(f"  仓库: github.com/frankinvest/workspace-jobs")
+    log(f"  target: main 分支 ({platform} GitHub App 自动 rebuild)")
 
     r = sh(["git", "status", "-s"])
     log(f"  working tree:\n{r.stdout}")
@@ -523,29 +728,49 @@ def phase_4_deploy(feature: str, files: list[str], commit_msg: str, auto_rollbac
     pre_sha = get_remote_sha("HEAD") or get_remote_sha("origin/main") or "unknown"
     log(f"  pre-deploy HEAD: {pre_sha[:12]}")
 
-    log("  push via Contents API...")
+    # 1. 尝试 git push (主路径)
     file_commits = []
-    for f in files:
-        r = subprocess.run(
-            ["python3", str(TOOLS_DIR / "system_api_pusher.py"),
-             "--file", f, "--commit-msg", commit_msg],
-            cwd=str(WORKSPACE), capture_output=True, text=True, timeout=120
-        )
-        if r.returncode != 0:
-            log(f"  ❌ push {f} 失败: {r.stderr[:300]}", "ERR")
-            return False
-        m = re.search(r"commit ([a-f0-9]+)", r.stdout)
-        sha = m.group(1) if m else "?"
-        file_commits.append({"file": f, "sha": sha})
-        log(f"  ✅ {f} → {sha[:8]}")
+    push_mode = None
+    if not force_contents_api:
+        log("  push via git push origin main...")
+        try:
+            r = sh(["git", "push", "origin", "main"], timeout=60)
+            if r.returncode == 0:
+                push_mode = "git push"
+                log(f"  ✅ git push OK")
+                post_sha = get_remote_sha("origin/main") or pre_sha
+                log(f"  post-deploy origin/main: {post_sha[:12]}")
+            else:
+                raise RuntimeError(f"git push failed: {r.stderr[:200]}")
+        except (subprocess.TimeoutExpired, RuntimeError) as e:
+            log(f"  ⚠ git push 失败 ({e}), fallback Contents API", "WARN")
+            push_mode = None  # 走 fallback
 
-    post_sha = get_remote_sha("origin/main") or "unknown"
-    log(f"  post-deploy origin/main: {post_sha[:12]}")
+    # 2. fallback: Contents API push (逐文件)
+    if push_mode is None:
+        log("  push via Contents API (绕过 git push 撞墙)...")
+        for f in files:
+            full_path = WORKSPACE / f
+            if not full_path.exists():
+                log(f"  ❌ 文件不存在: {full_path}", "ERR")
+                return False
+            result = contents_api_push(f, commit_msg, branch="main")
+            if not result["ok"]:
+                log(f"  ❌ Contents API push {f} 失败: {result.get('error', '?')}", "ERR")
+                return False
+            sha = result["sha"]
+            file_commits.append({"file": f, "sha": sha, "mode": result.get("mode", "?")})
+            log(f"  ✅ {f} → {sha[:8]} ({result.get('mode', '?')})")
+        push_mode = "Contents API"
+        post_sha = get_remote_sha("origin/main") or "unknown"
+        log(f"  post-deploy origin/main: {post_sha[:12]}")
 
     state = {
         "feature": feature,
+        "platform": platform,
         "files": files,
         "files_commits": file_commits,
+        "push_mode": push_mode,
         "pre_deploy_sha": pre_sha,
         "post_deploy_sha": post_sha,
         "commit_msg": commit_msg,
@@ -554,6 +779,7 @@ def phase_4_deploy(feature: str, files: list[str], commit_msg: str, auto_rollbac
     }
     state_path.write_text(json.dumps(state, indent=2, ensure_ascii=False), encoding="utf-8")
     log(f"  ✅ deploy state: {state_path}")
+    log(f"  push_mode: {push_mode}")
     log("✅ Phase 4 完成")
     log(f"   回滚命令: git reset --hard {pre_sha[:8]} && git push --force-with-lease origin main")
     return True
@@ -562,15 +788,31 @@ def phase_4_deploy(feature: str, files: list[str], commit_msg: str, auto_rollbac
 # ── Phase 5: LIVE-VERIFY ────────────────────────────────────────────
 
 def phase_5_live_verify(feature: str, paths_to_check: list[str], wait_seconds: int = 60,
-                       expect_text: str = "", auto_rollback: bool = False) -> bool:
-    log_phase("5 LIVE-VERIFY — health check + feature 验证 (Vercel)")
+                       expect_text: str = "", auto_rollback: bool = False,
+                       expect_fields: str = "", smoke_query: str = "",
+                       smoke_keyword: str = "") -> bool:
+    """Live-verify 5 步骤:
+      1. 检测部署平台 (Vercel vs Cloudflare Pages)
+      2. 轮询 health check (last-modified 跨过 pre_deploy = build 完成)
+      3. 拉首页 HTML, 提取 <script src=...>, 验证 --expect-fields 都在 bundle 里
+      4. (可选) 跑 browser_smoke.py 端到端 search test
+      5. (可选) --auto-rollback: 失败时 git reset --hard + force-push
+    """
+    log_phase("5 LIVE-VERIFY — health check + bundle 字段 + smoke (端到端验证)")
     log(f"  paths: {paths_to_check}")
     log(f"  expect_text: '{ expect_text or '(空, 只看 HTTP 200)'}'")
+    log(f"  expect_fields: '{ expect_fields or '(空, 不验证 bundle)'}'")
+    log(f"  smoke: query={smoke_query!r} keyword={smoke_keyword!r}")
     log(f"  auto_rollback: {auto_rollback}")
-    log(f"  等 Vercel build {wait_seconds}s ...")
+    log(f"  等 {wait_seconds}s rebuild 预算")
+
+    # 0. 部署平台检测
+    platform = detect_deploy_platform()
+    log(f"  部署平台: {platform}")
 
     state_path = feature_dirs(feature) / "deploy-state.json"
     pre_deploy_sha = "unknown"
+    pre_deploy_lm = None
     if state_path.exists():
         try:
             state = json.loads(state_path.read_text())
@@ -579,14 +821,17 @@ def phase_5_live_verify(feature: str, paths_to_check: list[str], wait_seconds: i
         except Exception:
             pass
 
+    # 1. 轮询 health check (HTTP 200 + expect_text)
+    log(f"\n  [Step1] health check (poll last-modified / expect_text)")
     poll_interval = 15
     deadline = time.time() + wait_seconds
     attempt = 0
     all_paths_ok = False
+    final_html = ""
 
     while time.time() < deadline:
         attempt += 1
-        log(f"  [health check] attempt #{attempt} ({(deadline - time.time()):.0f}s 剩余)")
+        log(f"  attempt #{attempt} ({(deadline - time.time()):.0f}s 剩余)")
         all_paths_ok_this_round = True
 
         for p in paths_to_check:
@@ -595,52 +840,109 @@ def phase_5_live_verify(feature: str, paths_to_check: list[str], wait_seconds: i
             url = f"{SITE.rstrip('/')}{encoded_path}"
             ok, status, body = curl_with_text(url, expect_text=expect_text)
             mark = "✅" if ok else "❌"
-            log(f"    {mark} {url} → HTTP {status}"
-                + (f", expect_text NOT FOUND" if (status == 200 and not ok and expect_text) else ""))
+            extra = ""
+            if status == 200 and not ok and expect_text:
+                extra = f", expect_text '{expect_text}' NOT FOUND"
+            elif status == 200 and p == paths_to_check[0]:
+                final_html = body  # 留个 stash 给 bundle 提取
+            log(f"    {mark} {url} → HTTP {status}{extra}")
             if not ok:
                 all_paths_ok_this_round = False
 
         if all_paths_ok_this_round:
             all_paths_ok = True
-            log(f"  ✅ 所有路径通过 ({len(paths_to_check)} 个) in attempt #{attempt}")
+            log(f"  ✅ health check 全部通过 in attempt #{attempt}")
             break
         time.sleep(poll_interval)
 
     if not all_paths_ok:
         log(f"❌ Phase 5 失败: health check 超时 ({wait_seconds}s) 或 feature 未渲染")
         write_rollback_md(feature, pre_deploy_sha, paths_to_check, expect_text)
-        if auto_rollback:
-            log("  --auto-rollback 启用, 执行 git reset --hard + force-push")
-            ok = do_rollback(pre_deploy_sha)
-            if ok:
-                log("  ✅ rollback 完成, 飞书通知 Frank")
-                feishu_notify(f"🔴 {feature} 部署失败已 rollback",
-                              f"feature '{feature}' 部署后 live-verify 失败\n"
-                              f"已自动 rollback 到 pre-deploy SHA: {pre_deploy_sha[:8]}\n\n"
-                              f"rollback.md: {feature_dirs(feature) / 'rollback.md'}\n"
-                              f"Vercel 会自动 rebuild, 约 30-90s 生效")
-            else:
-                log("  ❌ rollback 失败, 飞书通知 Frank 手动处理", "ERR")
-                feishu_notify(f"🔴 {feature} 部署失败 + rollback 也失败",
-                              f"feature '{feature}' 部署后 live-verify 失败, rollback 也失败!\n\n"
-                              f"请 Frank 手动处理:\n"
-                              f"  cd {WORKSPACE}\n"
-                              f"  git reset --hard {pre_deploy_sha}\n"
-                              f"  git push --force-with-lease origin main")
-        else:
-            log("  未启用 --auto-rollback, 写 rollback.md 飞书通知 Frank")
-            feishu_notify(f"🔴 {feature} 部署失败",
-                          f"feature '{feature}' 部署后 live-verify 失败 ({wait_seconds}s 超时)\n\n"
-                          f"回滚命令 (Frank 手动执行):\n"
-                          f"  cd {WORKSPACE}\n"
-                          f"  git reset --hard {pre_deploy_sha}\n"
-                          f"  git push --force-with-lease origin main\n\n"
-                          f"rollback.md: {feature_dirs(feature) / 'rollback.md'}\n\n"
-                          f"或重跑: python3 tools/dev_loop.py --feature \"{feature}\" --phase live-verify --auto-rollback")
+        _rollback_or_notify(feature, pre_deploy_sha, auto_rollback, "health check 超时")
         return False
 
-    log("✅ Phase 5 完成: health check + feature 验证全部通过")
+    # 2. Bundle 字段验证 (检查 deploy 进去的 bundle JS 含目标字段)
+    if expect_fields:
+        log(f"\n  [Step2] bundle 字段验证: {expect_fields!r}")
+        # 拿首页完整 HTML
+        try:
+            req = urllib.request.Request(SITE, headers={"User-Agent": "Jobs-DevLoop", "Cache-Control": "no-cache"})
+            with urllib.request.urlopen(req, timeout=15) as r:
+                full_html = r.read().decode("utf-8", errors="ignore")
+        except Exception as e:
+            log(f"  ❌ 拉首页 HTML 失败: {e}", "ERR")
+            _rollback_or_notify(feature, pre_deploy_sha, auto_rollback, "拉首页失败")
+            return False
+
+        bundles = extract_bundle_urls(full_html)
+        log(f"  找到 {len(bundles)} 个 <script src>: {bundles[:3]}{'...' if len(bundles) > 3 else ''}")
+
+        fields_to_check = [f.strip() for f in expect_fields.split(",") if f.strip()]
+        fields_ok = True
+        for field in fields_to_check:
+            found_any = False
+            for bundle in bundles:
+                ok, msg = verify_bundle_field(bundle, field)
+                if ok:
+                    log(f"    {msg} (in {bundle[:60]})")
+                    found_any = True
+                    break
+            if not found_any:
+                log(f"    ❌ 字段 {field!r} 在任何 bundle 都未命中")
+                fields_ok = False
+
+        if not fields_ok:
+            log(f"❌ Phase 5 失败: bundle 字段验证不通过")
+            write_rollback_md(feature, pre_deploy_sha, paths_to_check, expect_text + f" (bundle fields: {expect_fields})")
+            _rollback_or_notify(feature, pre_deploy_sha, auto_rollback, f"bundle 字段 {expect_fields} 缺失")
+            return False
+
+    # 3. Browser smoke (端到端: 真 Chrome 跑搜索)
+    if smoke_query and smoke_keyword:
+        log(f"\n  [Step3] browser smoke (CDP @ openclaw Chrome 18900)")
+        log(f"  query={smoke_query!r} keyword={smoke_keyword!r}")
+        screenshot = f"/tmp/smoke_{feature}.png"
+        ok, out = run_browser_smoke(SITE, smoke_query, smoke_keyword, wait_ms=5000, screenshot=screenshot)
+        log(f"  {'✅' if ok else '❌'} {out}")
+        if not ok:
+            log(f"❌ Phase 5 失败: browser smoke 不通过")
+            write_rollback_md(feature, pre_deploy_sha, paths_to_check, expect_text + f" (smoke query={smoke_query})")
+            _rollback_or_notify(feature, pre_deploy_sha, auto_rollback, f"smoke {smoke_query} 失败")
+            return False
+
+    log("\n✅ Phase 5 完成: health check + bundle 字段 + smoke 全部通过")
     return True
+
+
+def _rollback_or_notify(feature: str, pre_sha: str, auto_rollback: bool, reason: str):
+    """Phase 5 失败的统一处理: 选 rollback 或 通知。"""
+    if auto_rollback and pre_sha != "unknown":
+        log("  --auto-rollback 启用, 执行 git reset --hard + force-push")
+        ok = do_rollback(pre_sha)
+        if ok:
+            log("  ✅ rollback 完成, 飞书通知 Frank")
+            feishu_notify(f"🔴 {feature} 部署失败已 rollback",
+                          f"feature '{feature}' 部署后 live-verify 失败 ({reason})\n"
+                          f"已自动 rollback 到 pre-deploy SHA: {pre_sha[:8]}\n\n"
+                          f"rollback.md: {feature_dirs(feature) / 'rollback.md'}\n"
+                          f"Vercel 会自动 rebuild, 约 30-90s 生效")
+        else:
+            log("  ❌ rollback 失败, 飞书通知 Frank 手动处理", "ERR")
+            feishu_notify(f"🔴 {feature} 部署失败 + rollback 也失败",
+                          f"feature '{feature}' 部署后 live-verify 失败 ({reason}), rollback 也失败!\n\n"
+                          f"请 Frank 手动处理:\n"
+                          f"  cd {WORKSPACE}\n"
+                          f"  git reset --hard {pre_sha}\n"
+                          f"  git push --force-with-lease origin main")
+    else:
+        log("  未启用 --auto-rollback, 飞书通知 Frank")
+        feishu_notify(f"🔴 {feature} 部署失败",
+                      f"feature '{feature}' 部署后 live-verify 失败 ({reason})\n\n"
+                      f"回滚命令 (Frank 手动执行):\n"
+                      f"  cd {WORKSPACE}\n"
+                      f"  git reset --hard {pre_sha}\n"
+                      f"  git push --force-with-lease origin main\n\n"
+                      f"或重跑: python3 tools/dev_loop.py --feature \"{feature}\" --phase live-verify --auto-rollback")
 
 
 def write_rollback_md(feature: str, pre_sha: str, paths: list[str], expect_text: str) -> Path:
@@ -722,10 +1024,11 @@ def run_phase(phase: str, args) -> bool:
         return phase_3_verify(args.feature)
     elif phase == "deploy":
         files = args.files.split(",") if args.files else []
-        return phase_4_deploy(args.feature, files, args.commit_msg, args.auto_rollback)
+        return phase_4_deploy(args.feature, files, args.commit_msg, args.auto_rollback, args.force_contents_api)
     elif phase == "live-verify":
         paths = args.paths.split(",") if args.paths else ["/"]
-        return phase_5_live_verify(args.feature, paths, args.wait, args.expect_text, args.auto_rollback)
+        return phase_5_live_verify(args.feature, paths, args.wait, args.expect_text, args.auto_rollback,
+                                  args.expect_fields, args.smoke_query, args.smoke_keyword)
     else:
         log(f"未知 phase: {phase}", "ERR")
         return False
@@ -739,9 +1042,13 @@ def main():
                    help=f"all / plan / finalize-plan / test / code / verify / deploy / live-verify")
     p.add_argument("--files", default="", help="deploy phase: 要 push 的文件列表 (逗号分隔)")
     p.add_argument("--commit-msg", default="feat: dev loop auto deploy", help="deploy phase: commit message")
+    p.add_argument("--force-contents-api", action="store_true", help="deploy phase: 跳过 git push, 直接走 Contents API")
     p.add_argument("--paths", default="", help="live-verify phase: 要 curl 的 URL 路径 (逗号分隔)")
     p.add_argument("--wait", type=int, default=60, help="live-verify phase: 等 Vercel build 秒数")
     p.add_argument("--expect-text", default="", help="live-verify phase: HTML 必须包含的文本 (例 '分钟阅读')")
+    p.add_argument("--expect-fields", default="", help="live-verify phase: bundle JS 必须含的字段名 (逗号分隔, 例 'snippetsHtml,matchCount')")
+    p.add_argument("--smoke-query", default="", help="live-verify phase: browser_smoke query (例 '加仓')")
+    p.add_argument("--smoke-keyword", default="", help="live-verify phase: browser_smoke expect keyword (例 '加仓')")
     p.add_argument("--auto-rollback", action="store_true", help="live-verify 失败时自动 git reset --hard + force-push")
     args = p.parse_args()
 
