@@ -6,10 +6,10 @@
  *   articles: Article[]  — 搜索索引 (slug + title + date + body excerpt)
  *
  * 行为:
- *   - input 触发, debounce 200ms
+ *   - button / Enter 触发 (不是 debounce)
  *   - 不区分大小写 substring 匹配 (title + body)
- *   - 边界: query < 2 字不搜, query > 50 字截断
- *   - 结果 < 10  显示
+ *   - 边界: query < 2 字提示, query > 50 字截断
+ *   - snippet 由 searchArticles() 在 Astro build 时算好塞进 data-search-data (server-side)
  *   - a11y: role=combobox, aria-expanded, Esc 关闭
  */
 import type { Article } from '../utils/search';
@@ -81,6 +81,9 @@ const articlesJson = JSON.stringify(articles);
 <script type="application/json" data-search-data set:html={articlesJson}></script>
 
 <script>
+  import type { Article, SearchResult } from '../utils/search';
+  import { searchArticles } from '../utils/search';
+
   // Client-side search filter (button-trigger, not live)
   const dataEl = document.querySelector('[data-search-data]');
   const articles: Article[] = dataEl ? JSON.parse(dataEl.textContent || '[]') : [];
@@ -138,13 +141,9 @@ const articlesJson = JSON.stringify(articles);
       return;
     }
 
-    const qLower = q.toLowerCase();
-    const matches = articles.filter((a) => {
-      const titleLower = (a.title || '').toLowerCase();
-      const bodyLower = (a.body || '').toLowerCase();
-      return titleLower.includes(qLower) || bodyLower.includes(qLower);
-    });
-
+    // 用 searchArticles() 一站式: count + matches + snippets (Q4 server 算)
+    const resultsFull = searchArticles(articles, q);
+    const matches = resultsFull;
     count.textContent = `找到 ${matches.length} 篇`;
 
     if (matches.length === 0) {
@@ -157,17 +156,21 @@ const articlesJson = JSON.stringify(articles);
     }
 
     empty.setAttribute('hidden', '');
+    // searchArticles() 已经在上面调过一次, 直接复用 matches (已经是 SearchResult[])
     const top = matches.slice(0, MAX_RESULTS);
     list.innerHTML = top
-      .map((a) => {
-        const body = a.body || '';
-        // Extract up to 2 meaningful snippets: split by Chinese sentence boundaries
-        const parts = body.split(/(?<=[。！？；])/).filter(s => s.trim().length > 0);
-        const rawSnippets = parts.length > 0
-          ? parts.slice(0, 2).map(s => s.trim())
-          : [body.slice(0, 100)];
-        const snippetsHtml = rawSnippets.map(s => highlight(s, q));
-        return `<li role="option"><a href="/docs/${escapeHtml(a.slug)}/" class="search-result-link"><div class="search-result-title">${highlight(a.title || '', q)}</div><div class="search-result-snippets">${snippetsHtml.map(s => `<div class="snippet">${s}</div>`).join('')}${snippetsHtml.length > 2 ? `<div class="snippet-more">+${snippetsHtml.length - 2} more</div>` : ''}</div><div class="search-result-date">${escapeHtml(a.date || '')}</div></a></li>`;
+      .map((r: SearchResult) => {
+        const a = r.article;
+        const snippetsHtml = r.snippetsHtml;
+        const matchCount = r.matchCount;
+        const moreCount = matchCount > snippetsHtml.length ? matchCount - snippetsHtml.length : 0;
+        // snippetsHtml 已经 HTML escape + <mark> 高亮, 直接 join
+        const snippetsBlock = snippetsHtml.length > 0
+          ? `<div class="search-result-snippets">${snippetsHtml.map((s: string) => `<div class="snippet">${s}</div>`).join('')}${moreCount > 0 ? `<div class="snippet-more">还有 ${moreCount} 处匹配</div>` : ''}</div>`
+          : (r.matchedTitle && !r.matchedBody
+              ? `<div class="search-result-snippet-title-only">仅标题匹配</div>`
+              : '');
+        return `<li role="option"><a href="/docs/${escapeHtml(a.slug)}/" class="search-result-link"><div class="search-result-title">${highlight(a.title || '', q)}</div>${snippetsBlock}<div class="search-result-date">${escapeHtml(a.date || '')}</div></a></li>`;
       })
       .join('');
     results.removeAttribute('hidden');
