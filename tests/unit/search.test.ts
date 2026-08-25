@@ -301,6 +301,45 @@ describe('searchArticles', () => {
     expect(results[0].matchCount).toBe(1);
     expect(results[0].snippetsHtml.length).toBe(1);
   });
+
+  // 回归测试: 关键词出现在第 5 句 (不是前 2 句) 时, snippet 必须仍包含关键词
+  // 之前 SearchBox.astro 客户端 render() 简单地取 body 前 2 句, 导致关键词在后面的文章
+  // 根本不显示在 snippet 里. 这个测试保证了 search.ts 的 extractContext 行为不被改坏.
+  it('REGRESSION: snippet contains keyword even when keyword is in late sentence (not first 2)', () => {
+    const lateKeyword: Article[] = [
+      {
+        slug: 'late',
+        title: 'test',
+        // 5 句话: 关键词 "加仓" 只在第 5 句出现
+        body: '今天的市场行情非常不错。半导体板块表现强势。新能源也有资金流入。建议考虑加仓一些低估值的优质标的。',
+      },
+    ];
+    const results = searchArticles(lateKeyword, '加仓');
+    expect(results.length).toBe(1);
+    expect(results[0].matchCount).toBe(1);
+    expect(results[0].snippetsHtml.length).toBe(1);
+    // snippet 必须包含 <mark>加仓</mark>
+    expect(results[0].snippetsHtml[0]).toContain('<mark>加仓</mark>');
+    // snippet 不能只是前 2 句 (没有 "加仓" 的句子)
+    expect(results[0].snippetsHtml[0]).toContain('低估值的优质标的');
+    expect(results[0].snippetsHtml[0]).toContain('建议考虑');
+  });
+
+  it('REGRESSION: snippet for keyword in body has word-boundary context (English)', () => {
+    const engArticle: Article[] = [
+      {
+        slug: 'eng',
+        title: 'tech news',
+        body: 'Some intro text here. Other unrelated content. More filler. The semiconductor industry is booming this year.',
+      },
+    ];
+    const results = searchArticles(engArticle, 'semiconductor');
+    expect(results.length).toBe(1);
+    expect(results[0].snippetsHtml[0]).toContain('<mark>semiconductor</mark>');
+    // English word-boundary: 前后各取 10 个 word, 应包含 'industry' 和 'booming'
+    expect(results[0].snippetsHtml[0]).toContain('industry');
+    expect(results[0].snippetsHtml[0]).toContain('booming');
+  });
 });
 
 describe('constants', () => {
