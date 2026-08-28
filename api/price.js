@@ -1,49 +1,37 @@
-/**
- * Vercel serverless function: stock price proxy.
- *
- *   GET /api/price?codes=600015,000001,300750
- *
- * Returns JSON:
- *   {
-  "prices": { "600015": 7.85, "000001": null, ... },
-  "source": "eastmoney" | "tencent" | "sina" | "mixed" | "none",
-  "fetchedAt": 1756420800000
-  }
- *
- * Strategy: Promise.race across all 3 sources per code, 2s per-source timeout,
- * take first SUCCESSFUL result. Worst-case 2s per code (vs 6s sequential).
- *
- * Sources:
- *   1. 东方财富 — https://push2.eastmoney.com/api/qt/stock/get?secid=1.600015&fields=f43
- *      response.data.f43 = current price × 100 (单位: 分)
- *   2. 腾讯 — https://qt.gtimg.cn/q=sh600015
- *      response: v_sh600015="1~华夏银行~600015~38.76~..."; split('~')[3] = price
- *   3. 新浪 — https://hq.sinajs.cn/list=sh600015 (needs Referer)
- *      response: var hq_str_sh600015="华夏银行,38.93,38.90,38.76,..."; split(',')[3] = price
- *
- * Per MEMORY 6/11 v3: 腾讯 + 新浪 都用 native fetch, GBK decode.
- */
+// Vercel serverless function: stock price proxy (ESM).
+//
+//   GET /api/price?codes=600015,000001,300750
+//
+// Returns JSON:
+//   {
+//     "prices": { "600015": 7.85, "000001": null, ... },
+//     "source": "eastmoney" | "tencent" | "sina" | "mixed" | "none",
+//     "fetchedAt": 1756420800000
+//   }
+//
+// Strategy: Promise.race across 3 sources per code, 2s per-source timeout,
+// take first SUCCESSFUL result. Worst case 2.2s per code.
+//
+// Sources:
+//   1. 东方财富 — push2.eastmoney.com (primary, GBK not needed)
+//   2. 腾讯 — qt.gtimg.cn (GBK decode)
+//   3. 新浪 — hq.sinajs.cn (GBK decode, needs Referer)
 
-const https = require('https');
-const { URL } = require('url');
+import https from 'node:https';
 
-const TIMEOUT_MS = 2000; // Per-source timeout (Promise.race → first wins)
+const TIMEOUT_MS = 2000;
 const USER_AGENT = 'Mozilla/5.0 (Jobs-Portfolio)';
 
-// A 股代码 → 市场 secid (上海=1, 深圳/北交所=0)
 function marketSecid(code) {
   if (code.startsWith('6') || code.startsWith('9') || code.startsWith('5')) return '1';
   return '0';
 }
 
-// A 股代码 → 腾讯/新浪 prefix (sh/sz/bj)
 function sinaPrefix(code) {
   if (code.startsWith('6') || code.startsWith('9') || code.startsWith('5')) return 'sh';
   if (code.startsWith('8') || code.startsWith('4')) return 'bj';
   return 'sz';
 }
-
-// ── fetchUrl: native https.get, timeout + GBK decode ──
 
 function fetchUrl(rawUrl, headers = {}, encoding = 'utf-8') {
   return new Promise((resolve, reject) => {
@@ -84,8 +72,6 @@ function fetchUrl(rawUrl, headers = {}, encoding = 'utf-8') {
     req.on('error', reject);
   });
 }
-
-// ── 3 个数据源 ──
 
 async function fetchEastMoney(code) {
   const secid = marketSecid(code) + '.' + code;
@@ -134,76 +120,63 @@ async function fetchSina(code) {
   }
 }
 
-// ── Race: first non-null wins, 2s ceiling per code ──
-
 async function fetchPriceRace(code) {
-  // Promise.race returns first non-rejecting result; we also need first non-null.
-  const sources = [
-    { name: 'eastmoney', promise: fetchEastMoney(code) },
-    { name: 'tencent', promise: fetchTencent(code) },
-    { name: 'sina', promise: fetchSina(code) },
+  // Wrap each source so null / error becomes a pending promise (race skips it).
+  const wrapped = [
+    fetchEastMoney(code).then((p) => (p != null ? { price: p, source: 'eastmoney' } : new Promise(() => {}))).catch(() => new Promise(() => {})),
+    fetchTencent(code).then((p) => (p != null ? { price: p, source: 'tencent' } : new Promise(() => {}))).catch(() => new Promise(() => {})),
+    fetchSina(code).then((p) => (p != null ? { price: p, source: 'sina' } : new Promise(() => {}))).catch(() => new Promise(() => {})),
   ];
-  // We can't easily do "first non-null" with race (null is a value, not rejection).
-  // Wrap each so null becomes a never-resolving promise (so race skips it).
-  const wrapped = sources.map((s) =>
-    s.promise.then((price) => {
-      if (price != null) return { price, source: s.name };
-      // Return a pending promise so race doesn't pick this one
-      return new Promise(() => {});
-    }).catch(() => new Promise(() => {})),
-  );
-  // Race wrapped; if all fail or return null, all promises pending → use a hard timeout
   const timeoutPromise = new Promise((resolve) =>
     setTimeout(() => resolve({ price: null, source: 'none' }), TIMEOUT_MS + 200),
   );
-  const result = await Promise.race([...wrapped, timeoutPromise]);
-  return result;
+  return Promise.race([...wrapped, timeoutPromise]);
 }
 
-// ── Vercel handler ──
-
-module.exports = async function handler(req, res) {
-  res.setHeader('Cache-Control', 'no-store, max-age=0');
-  res.setHeader('Content-Type', 'application/json; charset=utf-8');
-
-  if (req.method !== 'GET') {
-    res.status(405).json({ error: 'Method not allowed' });
-    return;
-  }
-
-  const codesParam = (req.query && req.query.codes) || '';
-  const codes = String(codesParam)
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .slice(0, 20);
-
-  if (codes.length === 0) {
-    res.status(400).json({ error: 'codes param required (1-20 codes)' });
-    return;
-  }
-
+export default async function handler(req, res) {
   try {
-    // Parallel per-code (each code races its 3 sources internally)
+    res.setHeader('Cache-Control', 'no-store, max-age=0');
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+
+    if (req.method !== 'GET') {
+      res.status(405).json({ error: 'Method not allowed' });
+      return;
+    }
+
+    const codesParam = (req.query && req.query.codes) || '';
+    const codes = String(codesParam)
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .slice(0, 20);
+
+    if (codes.length === 0) {
+      res.status(400).json({ error: 'codes param required (1-20 codes)' });
+      return;
+    }
+
     const results = await Promise.all(codes.map((c) => fetchPriceRace(c)));
     const prices = {};
-    let allSameSource = results.length > 0 ? results[0].source : 'none';
     let anySuccess = false;
     codes.forEach((code, i) => {
       prices[code] = results[i].price;
       if (results[i].source !== 'none') anySuccess = true;
     });
-    // Detect mixed: if all results came from same source, use that; else 'mixed'
     const distinctSources = new Set(results.map((r) => r.source).filter((s) => s !== 'none'));
     let source;
     if (!anySuccess) source = 'none';
     else if (distinctSources.size === 1) source = Array.from(distinctSources)[0];
     else source = 'mixed';
+
     res.status(200).json({ prices, source, fetchedAt: Date.now() });
   } catch (err) {
-    // Should not happen since fetchPriceRace always resolves, but defensive
-    res.status(500).json({
-      error: err && err.message ? err.message : String(err),
-    });
+    console.error('[api/price] unhandled error:', err);
+    try {
+      res.status(500).json({
+        error: err && err.message ? err.message : String(err),
+      });
+    } catch (_) {
+      // Headers already sent; can't change status.
+    }
   }
-};
+}
