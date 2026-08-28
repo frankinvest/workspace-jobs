@@ -5,8 +5,10 @@ import Icon from '../components/icons/Icon.astro';
 import ArticleCard from '../components/ArticleCard.astro';
 import SectionHeader from '../components/SectionHeader.astro';
 import SearchBox from '../components/SearchBox.astro';
+import PortfolioSidebar from '../components/PortfolioSidebar.astro';
 import { normalizeBody, BODY_EXCERPT_LENGTH } from '../utils/search';
 import type { Article } from '../utils/search';
+import stockHoldings from '../../data/stock_holdings.json';
 
 // Get all docs and sort by date
 const allDocs = await getCollection('docs');
@@ -207,20 +209,23 @@ const articleCount = groupedArticles['财经早餐'].length;
         <SearchBox articles={searchIndex} />
       </header>
 
-      <!-- 主内容区：居中单栏，文章列表更宽更舒展 -->
-      <div class="article-container">
-        <div class="sections">
-          {groupedArticles['财经早餐'].length > 0 && (
-            <section class="section">
-              <SectionHeader title="财经早餐" icon="chart" count={groupedArticles['财经早餐'].length} />
-              <div class="article-list">
-                {groupedArticles['财经早餐'].map((article) => (
-                  <ArticleCard {...article} />
-                ))}
-              </div>
-            </section>
-          )}
+      <!-- 主内容区: 左 2/3 文章 + 右 1/3 Frank 持仓 sidebar (移动端堆叠) -->
+      <div class="layout-grid">
+        <div class="article-container">
+          <div class="sections">
+            {groupedArticles['财经早餐'].length > 0 && (
+              <section class="section">
+                <SectionHeader title="财经早餐" icon="chart" count={groupedArticles['财经早餐'].length} />
+                <div class="article-list">
+                  {groupedArticles['财经早餐'].map((article) => (
+                    <ArticleCard {...article} />
+                  ))}
+                </div>
+              </section>
+            )}
+          </div>
         </div>
+        <PortfolioSidebar holdings={stockHoldings as any} />
       </div>
 
       <!-- Footer -->
@@ -374,11 +379,27 @@ const articleCount = groupedArticles['财经早餐'].length;
     flex-direction: column;
   }
 
-  /* ── 居中单栏布局：PC 端加宽到 920px ── */
-  .article-container {
-    max-width: 920px;
+  /* ── Grid 布局: 左 2/3 文章 + 右 1/3 Frank 持仓 sidebar ── */
+  .layout-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: var(--space-8);
+    max-width: 1200px;
     margin: 0 auto;
     padding: 0 var(--space-4);
+    align-items: start;
+  }
+
+  .article-container {
+    min-width: 0; /* 防 grid item 内容溢出 */
+  }
+
+  /* 移动端: 单列堆叠 (sidebar 落到文章下方) */
+  @media (max-width: 1024px) {
+    .layout-grid {
+      grid-template-columns: 1fr;
+      gap: var(--space-10);
+    }
   }
   
   /* Footer */
@@ -418,8 +439,9 @@ const articleCount = groupedArticles['财经早餐'].length;
       height: 40px;
     }
     
-    .article-container {
+    .layout-grid {
       padding: 0 var(--space-3);
+      gap: var(--space-8);
     }
   }
 </style>
