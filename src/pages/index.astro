@@ -225,6 +225,7 @@ const articleCount = groupedArticles['财经早餐'].length;
                 </div>
                 <div class="article-more-wrap">
                   <button type="button" id="article-more-btn" class="article-more-btn">展开更多</button>
+                  <button type="button" id="article-all-btn" class="article-more-btn">展开所有</button>
                 </div>
               </section>
             )}
@@ -245,6 +246,7 @@ const articleCount = groupedArticles['财经早餐'].length;
       const ARTICLE_VISIBLE_STEP = 6;
       const articleSlots = Array.from(document.querySelectorAll('[data-article-slot]'));
       const articleMoreBtn = document.getElementById('article-more-btn');
+      const articleAllBtn = document.getElementById('article-all-btn');
       let articleVisibleCount = ARTICLE_VISIBLE_INITIAL;
 
       function updateArticleVisibility() {
@@ -256,10 +258,18 @@ const articleCount = groupedArticles['财经早餐'].length;
           articleMoreBtn.hidden = remaining <= 0;
           articleMoreBtn.textContent = remaining > 0 ? `展开更多（还剩 ${remaining} 篇）` : '已全部展示';
         }
+        if (articleAllBtn) {
+          articleAllBtn.hidden = remaining <= 0;
+        }
       }
 
       articleMoreBtn?.addEventListener('click', () => {
         articleVisibleCount += ARTICLE_VISIBLE_STEP;
+        updateArticleVisibility();
+      });
+
+      articleAllBtn?.addEventListener('click', () => {
+        articleVisibleCount = articleSlots.length;
         updateArticleVisibility();
       });
 
@@ -413,7 +423,10 @@ const articleCount = groupedArticles['财经早餐'].length;
 
   .article-more-wrap {
     margin-top: var(--space-5);
-    text-align: center;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--space-3);
   }
 
   .article-more-btn {
