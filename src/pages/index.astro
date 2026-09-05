@@ -253,8 +253,8 @@ const articleCount = groupedArticles['财经早餐'].length;
         articleSlots.forEach((slot, idx) => {
           slot.style.display = idx < articleVisibleCount ? '' : 'none';
         });
+        const remaining = Math.max(articleSlots.length - articleVisibleCount, 0);
         if (articleMoreBtn) {
-          const remaining = Math.max(articleSlots.length - articleVisibleCount, 0);
           articleMoreBtn.hidden = remaining <= 0;
           articleMoreBtn.textContent = remaining > 0 ? `展开更多（还剩 ${remaining} 篇）` : '已全部展示';
         }
