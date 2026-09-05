@@ -4,6 +4,16 @@
 // Reads holdings from build-time DOM data-* attributes, fetches live prices from
 // /api/price (Vercel serverless proxy), and renders price/position%/return%.
 
+// ── Collapse / expand toggle ──
+const portfolioSidebar = document.querySelector('.portfolio-sidebar');
+const portfolioToggle = document.querySelector('.portfolio-toggle');
+if (portfolioSidebar && portfolioToggle) {
+  portfolioToggle.addEventListener('click', () => {
+    const nowCollapsed = portfolioSidebar.classList.toggle('is-collapsed');
+    portfolioToggle.setAttribute('aria-expanded', String(!nowCollapsed));
+  });
+}
+
 // ── Helpers (inlined from src/utils/portfolio.ts for client-side use) ──
 
 function calcHoldingStats(holdings, prices) {
