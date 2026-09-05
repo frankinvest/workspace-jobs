@@ -28,50 +28,54 @@ for (const h of holdings) emptyPrices[h.code] = null;
 const stats = calcHoldingStats(holdings, emptyPrices);
 ---
 
-<aside class="portfolio-sidebar" aria-label="Frank 持仓信息">
-  <header class="portfolio-header">
-    <div class="portfolio-title-group">
-      <span class="portfolio-icon" aria-hidden="true">
-        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <line x1="12" y1="20" x2="12" y2="10"></line>
-          <line x1="18" y1="20" x2="18" y2="4"></line>
-          <line x1="6" y1="20" x2="6" y2="16"></line>
-        </svg>
-      </span>
-      <h2 class="portfolio-title">Frank 持仓</h2>
-      <span class="portfolio-count">{holdings.length}</span>
-    </div>
-    <div class="portfolio-line"></div>
-  </header>
+<aside class="portfolio-sidebar is-collapsed" aria-label="Frank 持仓信息">
+  <button type="button" class="portfolio-toggle" aria-expanded="false" aria-controls="portfolio-body">
+    <span class="portfolio-icon" aria-hidden="true">
+      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="12" y1="20" x2="12" y2="10"></line>
+        <line x1="18" y1="20" x2="18" y2="4"></line>
+        <line x1="6" y1="20" x2="6" y2="16"></line>
+      </svg>
+    </span>
+    <h2 class="portfolio-title">Frank 持仓</h2>
+    <span class="portfolio-count">{holdings.length}</span>
+    <span class="portfolio-chevron" aria-hidden="true">
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="6 9 12 15 18 9"></polyline>
+      </svg>
+    </span>
+  </button>
 
-  <ul class="portfolio-list" id="portfolio-list">
-    {stats.map(h => (
-      <li class="portfolio-item" data-code={h.code} data-shares={h.shares} data-cost={h.cost}>
-        <div class="portfolio-item-row portfolio-item-top">
-          <span class="portfolio-name">{h.name}</span>
-          <span class="portfolio-price portfolio-price-value" data-field="currentPrice">--</span>
-        </div>
-        <div class="portfolio-item-meta">
-          <span class="portfolio-shares">{h.shares.toLocaleString('zh-CN')} 股 · 成本 {h.cost.toFixed(3)}</span>
-        </div>
-        <div class="portfolio-item-stats">
-          <div class="portfolio-stat">
-            <span class="portfolio-stat-label">占比</span>
-            <span class="portfolio-stat-value" data-field="positionPct">--</span>
+  <div class="portfolio-body" id="portfolio-body">
+    <ul class="portfolio-list" id="portfolio-list">
+      {stats.map(h => (
+        <li class="portfolio-item" data-code={h.code} data-shares={h.shares} data-cost={h.cost}>
+          <div class="portfolio-item-row portfolio-item-top">
+            <span class="portfolio-name">{h.name}</span>
+            <span class="portfolio-price portfolio-price-value" data-field="currentPrice">--</span>
           </div>
-          <div class="portfolio-stat">
-            <span class="portfolio-stat-label">收益率</span>
-            <span class="portfolio-stat-value portfolio-return" data-field="returnPct">--</span>
+          <div class="portfolio-item-meta">
+            <span class="portfolio-shares">{h.shares.toLocaleString('zh-CN')} 股 · 成本 {h.cost.toFixed(3)}</span>
           </div>
-        </div>
-      </li>
-    ))}
-  </ul>
+          <div class="portfolio-item-stats">
+            <div class="portfolio-stat">
+              <span class="portfolio-stat-label">占比</span>
+              <span class="portfolio-stat-value" data-field="positionPct">--</span>
+            </div>
+            <div class="portfolio-stat">
+              <span class="portfolio-stat-label">收益率</span>
+              <span class="portfolio-stat-value portfolio-return" data-field="returnPct">--</span>
+            </div>
+          </div>
+        </li>
+      ))}
+    </ul>
 
-  <footer class="portfolio-footer">
-    <span class="portfolio-update" id="portfolio-update">加载中…</span>
-    <span class="portfolio-source" id="portfolio-source"></span>
-  </footer>
+    <footer class="portfolio-footer">
+      <span class="portfolio-update" id="portfolio-update">加载中…</span>
+      <span class="portfolio-source" id="portfolio-source"></span>
+    </footer>
+  </div>
 </aside>
 
 <script is:inline src="/portfolio.js" type="module"></script>
@@ -87,18 +91,43 @@ const stats = calcHoldingStats(holdings, emptyPrices);
     align-self: start;
   }
 
-  .portfolio-header {
-    display: flex;
-    align-items: center;
-    gap: var(--space-4);
-    margin-bottom: var(--space-5);
-  }
-
-  .portfolio-title-group {
+  .portfolio-toggle {
     display: flex;
     align-items: center;
     gap: var(--space-3);
+    width: 100%;
+    margin-bottom: var(--space-5);
+    padding: 0;
+    background: none;
+    border: none;
+    cursor: pointer;
+    text-align: left;
+    color: inherit;
+    font: inherit;
+  }
+
+  .portfolio-toggle:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: var(--radius-md);
+  }
+
+  .portfolio-chevron {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-text-muted);
+    transition: transform var(--transition-fast);
     flex-shrink: 0;
+    margin-left: auto;
+  }
+
+  .portfolio-toggle[aria-expanded="true"] .portfolio-chevron {
+    transform: rotate(180deg);
+  }
+
+  .portfolio-sidebar.is-collapsed .portfolio-body {
+    display: none;
   }
 
   .portfolio-icon {
@@ -113,6 +142,7 @@ const stats = calcHoldingStats(holdings, emptyPrices);
   }
 
   .portfolio-title {
+    flex: 1;
     font-family: var(--font-sans);
     font-size: var(--font-size-sm);
     font-weight: var(--font-weight-semibold);
@@ -134,12 +164,6 @@ const stats = calcHoldingStats(holdings, emptyPrices);
     font-weight: var(--font-weight-medium);
     border-radius: var(--radius-full);
     border: 1px solid var(--color-border);
-  }
-
-  .portfolio-line {
-    flex: 1;
-    height: 1px;
-    background: var(--color-border);
   }
 
   .portfolio-list {
