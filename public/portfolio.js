@@ -229,6 +229,16 @@ function applyStats() {
   const statMap = new Map(stats.map((s) => [s.code, s]));
   const maxPct = Math.max(...stats.map((s) => s.positionPct), 0);
 
+  // Reorder DOM so holdings are displayed by position share, largest first.
+  const listEl = document.getElementById('portfolio-list');
+  if (listEl) {
+    const elByCode = new Map(itemEls.map((el) => [el.getAttribute('data-code') || '', el]));
+    stats.forEach((stat) => {
+      const el = elByCode.get(stat.code);
+      if (el) listEl.appendChild(el);
+    });
+  }
+
   const totalCost = holdings.reduce((sum, h) => sum + h.shares * h.cost, 0);
   const totalValue = stats.reduce((sum, s) => sum + (s.marketValue != null ? s.marketValue : 0), 0);
   const totalPnl = totalValue - totalCost;
