@@ -206,20 +206,25 @@ const articleCount = groupedArticles['财经早餐'].length;
           <p class="hero-count">{articleCount} 篇财经早餐</p>
         )}
 
-        <SearchBox articles={searchIndex} />
       </header>
 
       <!-- 主内容区: 左 2/3 文章 + 右 1/3 Frank 持仓 sidebar (移动端堆叠) -->
       <div class="layout-grid">
         <div class="article-container">
+          <SearchBox articles={searchIndex} />
           <div class="sections">
             {groupedArticles['财经早餐'].length > 0 && (
               <section class="section">
                 <SectionHeader title="财经早餐" icon="chart" count={groupedArticles['财经早餐'].length} />
                 <div class="article-list">
-                  {groupedArticles['财经早餐'].map((article) => (
-                    <ArticleCard {...article} />
+                  {groupedArticles['财经早餐'].map((article, idx) => (
+                    <div class="article-card-slot" data-article-slot style={idx >= 3 ? 'display:none' : undefined}>
+                      <ArticleCard {...article} />
+                    </div>
                   ))}
+                </div>
+                <div class="article-more-wrap">
+                  <button type="button" id="article-more-btn" class="article-more-btn">展开更多</button>
                 </div>
               </section>
             )}
@@ -234,6 +239,32 @@ const articleCount = groupedArticles['财经早餐'].length;
         <p class="build-info">构建版本: {buildTime}</p>
       </footer>
     </main>
+
+    <script>
+      const ARTICLE_VISIBLE_INITIAL = 3;
+      const ARTICLE_VISIBLE_STEP = 6;
+      const articleSlots = Array.from(document.querySelectorAll('[data-article-slot]'));
+      const articleMoreBtn = document.getElementById('article-more-btn');
+      let articleVisibleCount = ARTICLE_VISIBLE_INITIAL;
+
+      function updateArticleVisibility() {
+        articleSlots.forEach((slot, idx) => {
+          slot.style.display = idx < articleVisibleCount ? '' : 'none';
+        });
+        if (articleMoreBtn) {
+          const remaining = Math.max(articleSlots.length - articleVisibleCount, 0);
+          articleMoreBtn.hidden = remaining <= 0;
+          articleMoreBtn.textContent = remaining > 0 ? `展开更多（还剩 ${remaining} 篇）` : '已全部展示';
+        }
+      }
+
+      articleMoreBtn?.addEventListener('click', () => {
+        articleVisibleCount += ARTICLE_VISIBLE_STEP;
+        updateArticleVisibility();
+      });
+
+      updateArticleVisibility();
+    </script>
   </body>
 </html>
 
@@ -378,6 +409,32 @@ const articleCount = groupedArticles['财经早餐'].length;
   .article-list {
     display: flex;
     flex-direction: column;
+  }
+
+  .article-more-wrap {
+    margin-top: var(--space-5);
+    text-align: center;
+  }
+
+  .article-more-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-6);
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-full);
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-sm);
+    cursor: pointer;
+    transition: border-color var(--transition-fast), color var(--transition-fast), background var(--transition-fast);
+  }
+
+  .article-more-btn:hover {
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+    background: var(--color-accent-dim);
   }
 
   /* ── Grid 布局: 左 2/3 文章 + 右 1/3 Frank 持仓 sidebar ── */
