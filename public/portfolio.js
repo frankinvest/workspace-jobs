@@ -116,10 +116,11 @@ function applyStats() {
     prices[code] = raw == null || raw === '' ? null : parseFloat(raw);
   }
   const stats = calcHoldingStats(holdings, prices);
-  for (let i = 0; i < stats.length; i++) {
-    const stat = stats[i];
-    const el = itemEls[i];
-    if (!stat || !el) continue;
+  const statMap = new Map(stats.map((s) => [s.code, s]));
+  for (const el of itemEls) {
+    const code = el.getAttribute('data-code') || '';
+    const stat = statMap.get(code);
+    if (!stat) continue;
     const priceEl = el.querySelector('[data-field="currentPrice"]');
     const pctEl = el.querySelector('[data-field="positionPct"]');
     const retEl = el.querySelector('[data-field="returnPct"]');
