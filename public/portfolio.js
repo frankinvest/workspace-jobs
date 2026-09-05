@@ -1,16 +1,77 @@
-// Frank Portfolio Sidebar — client-side price poller.
+// Frank Portfolio Sidebar — client-side price poller + password gate.
 // Loaded via <script src="/portfolio.js" type="module"> in PortfolioSidebar.astro.
 // Public/ static file (not bundled by Astro) to bypass component-script bundling.
 // Reads holdings from build-time DOM data-* attributes, fetches live prices from
-// /api/price (Vercel serverless proxy), and renders price/position%/return%.
+// /api/price (Vercel serverless proxy), and renders price/position%/P&L.
 
-// ── Collapse / expand toggle ──
+const PORTFOLIO_PASSWORD = 'frank123';
+const PORTFOLIO_STORAGE_KEY = 'portfolio-unlocked-v1';
+
 const portfolioSidebar = document.querySelector('.portfolio-sidebar');
-const portfolioToggle = document.querySelector('.portfolio-toggle');
-if (portfolioSidebar && portfolioToggle) {
-  portfolioToggle.addEventListener('click', () => {
-    const nowCollapsed = portfolioSidebar.classList.toggle('is-collapsed');
-    portfolioToggle.setAttribute('aria-expanded', String(!nowCollapsed));
+const portfolioLockBtn = document.querySelector('.portfolio-lock-btn');
+const portfolioGateForm = document.getElementById('portfolio-gate-form');
+const portfolioPassword = document.getElementById('portfolio-password');
+const portfolioGateError = document.getElementById('portfolio-gate-error');
+
+function isStorageAvailable() {
+  try {
+    const key = '__portfolio_test__';
+    window.sessionStorage.setItem(key, '1');
+    window.sessionStorage.removeItem(key);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+function wasUnlocked() {
+  if (!isStorageAvailable()) return false;
+  return window.sessionStorage.getItem(PORTFOLIO_STORAGE_KEY) === '1';
+}
+
+function markUnlocked() {
+  if (!isStorageAvailable()) return;
+  try {
+    window.sessionStorage.setItem(PORTFOLIO_STORAGE_KEY, '1');
+  } catch (_) {
+    // ignore storage failures; still unlock for this page view
+  }
+}
+
+function unlockPortfolio() {
+  if (!portfolioSidebar) return;
+  portfolioSidebar.classList.remove('is-locked', 'is-gate-open');
+  portfolioSidebar.classList.add('is-unlocked');
+  portfolioLockBtn?.setAttribute('aria-expanded', 'false');
+  if (portfolioPassword) portfolioPassword.value = '';
+  if (portfolioGateError) portfolioGateError.hidden = true;
+  markUnlocked();
+}
+
+function initPasswordGate() {
+  if (!portfolioSidebar) return;
+
+  if (wasUnlocked()) {
+    unlockPortfolio();
+    return;
+  }
+
+  portfolioLockBtn?.addEventListener('click', () => {
+    const willOpen = portfolioSidebar.classList.toggle('is-gate-open');
+    portfolioLockBtn.setAttribute('aria-expanded', String(willOpen));
+    if (willOpen) {
+      window.setTimeout(() => portfolioPassword?.focus(), 0);
+    }
+  });
+
+  portfolioGateForm?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    if (portfolioPassword?.value === PORTFOLIO_PASSWORD) {
+      unlockPortfolio();
+    } else {
+      if (portfolioGateError) portfolioGateError.hidden = false;
+      portfolioPassword?.select();
+    }
   });
 }
 
@@ -53,6 +114,17 @@ function fmtPct(pct) {
 
 function fmtPrice(price) {
   return price != null ? price.toFixed(2) : '--';
+}
+
+function fmtAmount(value) {
+  if (value == null || Number.isNaN(value)) return '--';
+  return `¥${value.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function fmtSignedAmount(value) {
+  if (value == null || Number.isNaN(value)) return '--';
+  const sign = value > 0 ? '+' : '';
+  return `${sign}¥${Math.abs(value).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 // ── Price fetching (inlined from src/utils/price-fetcher.ts) ──
@@ -108,6 +180,12 @@ const holdings = itemEls
 
 const codes = holdings.map((h) => h.code);
 
+function setReturnClass(el, value) {
+  if (!el) return;
+  el.classList.toggle('up', value > 0);
+  el.classList.toggle('down', value < 0);
+}
+
 function applyStats() {
   const prices = {};
   for (const el of itemEls) {
@@ -115,21 +193,53 @@ function applyStats() {
     const raw = el.getAttribute('data-latest-price');
     prices[code] = raw == null || raw === '' ? null : parseFloat(raw);
   }
+
   const stats = calcHoldingStats(holdings, prices);
   const statMap = new Map(stats.map((s) => [s.code, s]));
+  const maxPct = Math.max(...stats.map((s) => s.positionPct), 0);
+
+  const totalCost = holdings.reduce((sum, h) => sum + h.shares * h.cost, 0);
+  const totalValue = stats.reduce((sum, s) => sum + (s.marketValue != null ? s.marketValue : 0), 0);
+  const totalPnl = totalValue - totalCost;
+  const totalReturnPct = totalCost > 0 ? (totalPnl / totalCost) * 100 : 0;
+
+  const totalValueEl = document.getElementById('portfolio-total-value');
+  const totalPnlEl = document.getElementById('portfolio-total-pnl');
+  const totalReturnEl = document.getElementById('portfolio-total-return');
+  if (totalValueEl) totalValueEl.textContent = fmtAmount(totalValue);
+  if (totalPnlEl) {
+    totalPnlEl.textContent = fmtSignedAmount(totalPnl);
+    setReturnClass(totalPnlEl, totalPnl);
+  }
+  if (totalReturnEl) {
+    totalReturnEl.textContent = fmtPct(totalReturnPct);
+    setReturnClass(totalReturnEl, totalReturnPct);
+  }
+
   for (const el of itemEls) {
     const code = el.getAttribute('data-code') || '';
     const stat = statMap.get(code);
     if (!stat) continue;
+
     const priceEl = el.querySelector('[data-field="currentPrice"]');
     const pctEl = el.querySelector('[data-field="positionPct"]');
+    const barEl = el.querySelector('[data-field="positionBar"]');
     const retEl = el.querySelector('[data-field="returnPct"]');
+    const pnlEl = el.querySelector('[data-field="pnlAmount"]');
+
     if (priceEl) priceEl.textContent = fmtPrice(stat.currentPrice);
     if (pctEl) pctEl.textContent = fmtPct(stat.positionPct);
+    if (barEl) {
+      const width = maxPct > 0 ? (stat.positionPct / maxPct) * 100 : 0;
+      barEl.style.width = `${width.toFixed(2)}%`;
+    }
     if (retEl) {
       retEl.textContent = fmtPct(stat.returnPct);
-      retEl.classList.toggle('up', stat.returnPct > 0);
-      retEl.classList.toggle('down', stat.returnPct < 0);
+      setReturnClass(retEl, stat.returnPct);
+    }
+    if (pnlEl) {
+      const pnl = stat.marketValue != null ? stat.marketValue - stat.shares * stat.cost : null;
+      pnlEl.textContent = fmtSignedAmount(pnl);
     }
   }
 }
@@ -169,6 +279,8 @@ function handleResponse(resp) {
   applyStats();
   applyMeta(resp.source, resp.fetchedAt);
 }
+
+initPasswordGate();
 
 if (codes.length > 0) {
   startPricePolling(codes, handleResponse, 60000);
