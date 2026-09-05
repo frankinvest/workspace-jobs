@@ -1,17 +1,18 @@
-// Frank Portfolio Sidebar — client-side price poller + password gate.
+// Frank Portfolio Sidebar — client-side price poller + collapse + P&L amount gate.
 // Loaded via <script src="/portfolio.js" type="module"> in PortfolioSidebar.astro.
-// Public/ static file (not bundled by Astro) to bypass component-script bundling.
-// Reads holdings from build-time DOM data-* attributes, fetches live prices from
-// /api/price (Vercel serverless proxy), and renders price/position%/P&L.
 
 const PORTFOLIO_PASSWORD = 'frank123';
-const PORTFOLIO_STORAGE_KEY = 'portfolio-unlocked-v1';
+const PORTFOLIO_STORAGE_KEY = 'portfolio-amount-unlocked-v1';
+const MASK = '***';
 
 const portfolioSidebar = document.querySelector('.portfolio-sidebar');
 const portfolioLockBtn = document.querySelector('.portfolio-lock-btn');
+const portfolioCollapseBtn = document.querySelector('.portfolio-collapse-btn');
 const portfolioGateForm = document.getElementById('portfolio-gate-form');
 const portfolioPassword = document.getElementById('portfolio-password');
 const portfolioGateError = document.getElementById('portfolio-gate-error');
+
+let amountsUnlocked = false;
 
 function isStorageAvailable() {
   try {
@@ -24,40 +25,70 @@ function isStorageAvailable() {
   }
 }
 
-function wasUnlocked() {
+function wasAmountsUnlocked() {
   if (!isStorageAvailable()) return false;
   return window.sessionStorage.getItem(PORTFOLIO_STORAGE_KEY) === '1';
 }
 
-function markUnlocked() {
+function persistAmountsUnlocked(unlocked) {
   if (!isStorageAvailable()) return;
   try {
-    window.sessionStorage.setItem(PORTFOLIO_STORAGE_KEY, '1');
+    if (unlocked) {
+      window.sessionStorage.setItem(PORTFOLIO_STORAGE_KEY, '1');
+    } else {
+      window.sessionStorage.removeItem(PORTFOLIO_STORAGE_KEY);
+    }
   } catch (_) {
-    // ignore storage failures; still unlock for this page view
+    // ignore storage failures; state still works for this page view
   }
 }
 
-function unlockPortfolio() {
-  if (!portfolioSidebar) return;
-  portfolioSidebar.classList.remove('is-locked', 'is-gate-open');
-  portfolioSidebar.classList.add('is-unlocked');
-  portfolioLockBtn?.setAttribute('aria-expanded', 'false');
-  if (portfolioPassword) portfolioPassword.value = '';
-  if (portfolioGateError) portfolioGateError.hidden = true;
-  markUnlocked();
+function setLockButtonState() {
+  if (!portfolioLockBtn) return;
+  const label = portfolioLockBtn.querySelector('span');
+  if (label) label.textContent = amountsUnlocked ? '隐藏盈亏金额' : '输入密码查看盈亏';
+  portfolioLockBtn.setAttribute('aria-expanded', String(portfolioSidebar?.classList.contains('is-gate-open') || false));
 }
 
-function initPasswordGate() {
-  if (!portfolioSidebar) return;
+function hideGate() {
+  portfolioSidebar?.classList.remove('is-gate-open');
+  if (portfolioLockBtn) portfolioLockBtn.setAttribute('aria-expanded', 'false');
+  if (portfolioGateError) portfolioGateError.hidden = true;
+  if (portfolioPassword) portfolioPassword.value = '';
+}
 
-  if (wasUnlocked()) {
-    unlockPortfolio();
+function setAmountsUnlocked(unlocked) {
+  amountsUnlocked = unlocked;
+  portfolioSidebar?.classList.toggle('is-amount-locked', !unlocked);
+  portfolioSidebar?.classList.toggle('is-amount-unlocked', unlocked);
+  persistAmountsUnlocked(unlocked);
+  hideGate();
+  setLockButtonState();
+  applyStats();
+}
+
+function initCollapse() {
+  if (!portfolioSidebar || !portfolioCollapseBtn) return;
+  portfolioCollapseBtn.addEventListener('click', () => {
+    const nowCollapsed = portfolioSidebar.classList.toggle('is-collapsed');
+    portfolioCollapseBtn.setAttribute('aria-expanded', String(!nowCollapsed));
+  });
+  const collapsed = portfolioSidebar.classList.contains('is-collapsed');
+  portfolioCollapseBtn.setAttribute('aria-expanded', String(!collapsed));
+}
+
+function initAmountGate() {
+  if (wasAmountsUnlocked()) {
+    setAmountsUnlocked(true);
     return;
   }
 
   portfolioLockBtn?.addEventListener('click', () => {
-    const willOpen = portfolioSidebar.classList.toggle('is-gate-open');
+    if (amountsUnlocked) {
+      setAmountsUnlocked(false);
+      return;
+    }
+    const willOpen = portfolioSidebar?.classList.toggle('is-gate-open') || false;
     portfolioLockBtn.setAttribute('aria-expanded', String(willOpen));
     if (willOpen) {
       window.setTimeout(() => portfolioPassword?.focus(), 0);
@@ -67,7 +98,7 @@ function initPasswordGate() {
   portfolioGateForm?.addEventListener('submit', (event) => {
     event.preventDefault();
     if (portfolioPassword?.value === PORTFOLIO_PASSWORD) {
-      unlockPortfolio();
+      setAmountsUnlocked(true);
     } else {
       if (portfolioGateError) portfolioGateError.hidden = false;
       portfolioPassword?.select();
@@ -127,7 +158,7 @@ function fmtSignedAmount(value) {
   return `${sign}¥${Math.abs(value).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-// ── Price fetching (inlined from src/utils/price-fetcher.ts) ──
+// ── Price fetching ──
 
 async function fetchPrices(codes) {
   if (codes.length === 0) {
@@ -206,10 +237,13 @@ function applyStats() {
   const totalValueEl = document.getElementById('portfolio-total-value');
   const totalPnlEl = document.getElementById('portfolio-total-pnl');
   const totalReturnEl = document.getElementById('portfolio-total-return');
-  if (totalValueEl) totalValueEl.textContent = fmtAmount(totalValue);
+
+  if (totalValueEl) {
+    totalValueEl.textContent = amountsUnlocked ? fmtAmount(totalValue) : MASK;
+  }
   if (totalPnlEl) {
-    totalPnlEl.textContent = fmtSignedAmount(totalPnl);
-    setReturnClass(totalPnlEl, totalPnl);
+    totalPnlEl.textContent = amountsUnlocked ? fmtSignedAmount(totalPnl) : MASK;
+    setReturnClass(totalPnlEl, amountsUnlocked ? totalPnl : 0);
   }
   if (totalReturnEl) {
     totalReturnEl.textContent = fmtPct(totalReturnPct);
@@ -239,7 +273,7 @@ function applyStats() {
     }
     if (pnlEl) {
       const pnl = stat.marketValue != null ? stat.marketValue - stat.shares * stat.cost : null;
-      pnlEl.textContent = fmtSignedAmount(pnl);
+      pnlEl.textContent = amountsUnlocked ? fmtSignedAmount(pnl) : MASK;
     }
   }
 }
@@ -280,7 +314,8 @@ function handleResponse(resp) {
   applyMeta(resp.source, resp.fetchedAt);
 }
 
-initPasswordGate();
+initCollapse();
+initAmountGate();
 
 if (codes.length > 0) {
   startPricePolling(codes, handleResponse, 60000);
