@@ -27,7 +27,7 @@ for (const h of holdings) emptyPrices[h.code] = null;
 const stats = calcHoldingStats(holdings, emptyPrices);
 ---
 
-<aside class="portfolio-sidebar is-locked" aria-label="Frank 持仓信息">
+<aside class="portfolio-sidebar is-collapsed is-amount-locked" aria-label="Frank 持仓信息">
   <div class="portfolio-header">
     <div class="portfolio-heading">
       <span class="portfolio-icon" aria-hidden="true">
@@ -43,13 +43,20 @@ const stats = calcHoldingStats(holdings, emptyPrices);
       </div>
     </div>
 
-    <button type="button" class="portfolio-lock-btn" aria-expanded="false" aria-controls="portfolio-gate">
-      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-        <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
-      </svg>
-      <span>输入密码查看</span>
-    </button>
+    <div class="portfolio-actions">
+      <button type="button" class="portfolio-lock-btn" aria-expanded="false" aria-controls="portfolio-gate">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+        </svg>
+        <span>输入密码查看盈亏</span>
+      </button>
+      <button type="button" class="portfolio-collapse-btn" aria-expanded="false" aria-controls="portfolio-body">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="6 9 12 15 18 9"></polyline>
+        </svg>
+      </button>
+    </div>
   </div>
 
   <div class="portfolio-gate" id="portfolio-gate">
@@ -67,11 +74,11 @@ const stats = calcHoldingStats(holdings, emptyPrices);
     <div class="portfolio-summary">
       <div class="portfolio-summary-cell">
         <span class="portfolio-summary-label">总市值</span>
-        <strong class="portfolio-summary-value" id="portfolio-total-value">--</strong>
+        <strong class="portfolio-summary-value" id="portfolio-total-value">***</strong>
       </div>
       <div class="portfolio-summary-cell">
         <span class="portfolio-summary-label">持仓盈亏</span>
-        <strong class="portfolio-summary-value portfolio-return" id="portfolio-total-pnl">--</strong>
+        <strong class="portfolio-summary-value portfolio-return" id="portfolio-total-pnl">***</strong>
       </div>
       <div class="portfolio-summary-cell">
         <span class="portfolio-summary-label">总收益率</span>
@@ -103,7 +110,7 @@ const stats = calcHoldingStats(holdings, emptyPrices);
             <span class="portfolio-pnl-label">持仓盈亏</span>
             <div class="portfolio-pnl-values">
               <span class="portfolio-pnl-rate portfolio-return" data-field="returnPct">--</span>
-              <span class="portfolio-pnl-amount" data-field="pnlAmount">--</span>
+              <span class="portfolio-pnl-amount" data-field="pnlAmount">***</span>
             </div>
           </div>
         </li>
@@ -133,6 +140,13 @@ const stats = calcHoldingStats(holdings, emptyPrices);
     align-items: flex-start;
     justify-content: space-between;
     gap: var(--space-3);
+  }
+
+  .portfolio-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-shrink: 0;
   }
 
   .portfolio-heading {
@@ -197,12 +211,45 @@ const stats = calcHoldingStats(holdings, emptyPrices);
     outline-offset: 2px;
   }
 
+  .portfolio-collapse-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    background: transparent;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    color: var(--color-text-muted);
+    cursor: pointer;
+    transition: color var(--transition-fast), border-color var(--transition-fast);
+  }
+
+  .portfolio-collapse-btn:hover {
+    color: var(--color-text-primary);
+    border-color: var(--color-text-muted);
+  }
+
+  .portfolio-collapse-btn:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+
+  .portfolio-collapse-btn svg {
+    transition: transform var(--transition-fast);
+  }
+
+  .portfolio-sidebar:not(.is-collapsed) .portfolio-collapse-btn svg {
+    transform: rotate(180deg);
+  }
+
   .portfolio-gate {
     display: none;
     margin-top: var(--space-5);
   }
 
-  .portfolio-sidebar.is-locked.is-gate-open .portfolio-gate {
+  .portfolio-sidebar.is-gate-open .portfolio-gate {
     display: block;
   }
 
@@ -266,12 +313,11 @@ const stats = calcHoldingStats(holdings, emptyPrices);
     display: none;
   }
 
-  .portfolio-sidebar.is-unlocked .portfolio-lock-btn,
-  .portfolio-sidebar.is-unlocked .portfolio-gate {
+  .portfolio-sidebar.is-collapsed .portfolio-body {
     display: none;
   }
 
-  .portfolio-sidebar.is-unlocked .portfolio-body {
+  .portfolio-sidebar:not(.is-collapsed) .portfolio-body {
     display: block;
     margin-top: var(--space-5);
   }
