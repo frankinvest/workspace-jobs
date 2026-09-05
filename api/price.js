@@ -59,7 +59,11 @@ function fetchUrl(rawUrl, headers = {}, encoding = 'utf-8') {
           }
           const buf = Buffer.concat(chunks);
           try {
-            const text = encoding === 'gbk' ? buf.toString('gbk') : buf.toString('utf-8');
+            // Node.js does not support GBK natively (Buffer.toString('gbk') throws
+            // "Unknown encoding: gbk"). We only need the ASCII price field, so decode
+            // GBK responses as latin1 (1 byte → 1 char); the Chinese name will be
+            // mojibake but the price/delimiters stay intact and parseable.
+            const text = encoding === 'gbk' ? buf.toString('latin1') : buf.toString('utf-8');
             resolve(text);
           } catch (err) {
             reject(err);
@@ -75,7 +79,9 @@ function fetchUrl(rawUrl, headers = {}, encoding = 'utf-8') {
 
 async function fetchEastMoney(code) {
   const secid = marketSecid(code) + '.' + code;
-  const url = 'https://push2.eastmoney.com/api/qt/stock/get?secid=' + secid + '&fields=f43';
+  // `ut` is a required public token for the eastmoney web API; without it the
+  // server returns an empty reply (curl 52) rather than JSON.
+  const url = 'https://push2.eastmoney.com/api/qt/stock/get?secid=' + secid + '&fields=f43&ut=fa5fd1943c7b386f172d6893dbfba10b';
   try {
     const text = await fetchUrl(url, { Referer: 'https://quote.eastmoney.com/' });
     if (!text) return null;
