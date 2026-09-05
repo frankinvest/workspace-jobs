@@ -123,7 +123,7 @@ function fmtAmount(value) {
 
 function fmtSignedAmount(value) {
   if (value == null || Number.isNaN(value)) return '--';
-  const sign = value > 0 ? '+' : '';
+  const sign = value > 0 ? '+' : value < 0 ? '-' : '';
   return `${sign}¥${Math.abs(value).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
