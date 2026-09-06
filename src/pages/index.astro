@@ -144,13 +144,29 @@ const groupedArticles = {
 // 文章数量统计（仅用于信息展示）
 const articleCount = groupedArticles['财经早餐'].length;
 
-// P0-2 今日速览 TL;DR（Frank 决策#2：内容只能从当天财经早餐文章 frontmatter 抽取，无外源）
+// P0-2 今日速览 TL;DR（Frank 决策#2：内容只能从财经早餐文章 frontmatter 抽取，无外源；
+// 无当天文章时回退到最近一期，并标注日期）
 const todayDate = new Date();
 const todayStr = `${todayDate.getFullYear()}${String(todayDate.getMonth() + 1).padStart(2, '0')}${String(todayDate.getDate()).padStart(2, '0')}`;
-const todayDoc = allDocs.find((doc) => {
-  const m = doc.id.match(/JJC-(\d{8})/i);
-  return m && m[1] === todayStr;
-});
+
+// 带 tldr 的财经早餐文章，按日期降序（最新在前）
+const tldrCandidates = allDocs
+  .filter((doc) => /JJC-(\d{8})/i.test(doc.id) && (doc.data as any)?.tldr)
+  .sort((a, b) => {
+    const da = a.id.match(/JJC-(\d{8})/i)?.[1] || '';
+    const db = b.id.match(/JJC-(\d{8})/i)?.[1] || '';
+    return db.localeCompare(da);
+  });
+
+// 优先当天；否则最近一期
+const tldrDoc =
+  tldrCandidates.find((doc) => doc.id.match(/JJC-(\d{8})/i)?.[1] === todayStr) ??
+  tldrCandidates[0];
+const tldrDocDate = tldrDoc
+  ? tldrDoc.id.match(/JJC-(\d{8})/i)?.[1] || todayStr
+  : todayStr;
+const isTodayTldr = tldrDocDate === todayStr;
+
 const tldrCategoryOrder = ['macro', 'policy', 'anomaly', 'stock', 'fx'] as const;
 const tldrCategoryLabels: Record<string, string> = {
   macro: '宏观',
@@ -159,9 +175,9 @@ const tldrCategoryLabels: Record<string, string> = {
   stock: '个股',
   fx: '外汇',
 };
-const tldrItems = (todayDoc?.data as any)?.tldr
+const tldrItems = (tldrDoc?.data as any)?.tldr
   ? tldrCategoryOrder
-      .map((cat) => (todayDoc.data as any).tldr.find((t: any) => t.category === cat))
+      .map((cat) => (tldrDoc.data as any).tldr.find((t: any) => t.category === cat))
       .filter((t) => t !== undefined)
   : [];
 ---
@@ -235,7 +251,8 @@ const tldrItems = (todayDoc?.data as any)?.tldr
           <div class="tldr-header">
             <h2 class="tldr-title">今日速览</h2>
             <span class="tldr-subtitle">
-              从 {todayStr.slice(0, 4)}-{todayStr.slice(4, 6)}-{todayStr.slice(6, 8)} 当天财经早餐提取
+              从 {tldrDocDate.slice(0, 4)}-{tldrDocDate.slice(4, 6)}-{tldrDocDate.slice(6, 8)} 财经早餐提取
+              {isTodayTldr ? '' : '（最近一期）'}
             </span>
           </div>
           <div class="tldr-grid">
