@@ -19,7 +19,7 @@
 
 import https from 'node:https';
 
-const TIMEOUT_MS = 2000;
+const TIMEOUT_MS = 8000;
 const USER_AGENT = 'Mozilla/5.0 (Jobs-Portfolio)';
 
 function marketSecid(code) {
