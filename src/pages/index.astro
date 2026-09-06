@@ -143,6 +143,27 @@ const groupedArticles = {
 
 // 文章数量统计（仅用于信息展示）
 const articleCount = groupedArticles['财经早餐'].length;
+
+// P0-2 今日速览 TL;DR（Frank 决策#2：内容只能从当天财经早餐文章 frontmatter 抽取，无外源）
+const todayDate = new Date();
+const todayStr = `${todayDate.getFullYear()}${String(todayDate.getMonth() + 1).padStart(2, '0')}${String(todayDate.getDate()).padStart(2, '0')}`;
+const todayDoc = allDocs.find((doc) => {
+  const m = doc.id.match(/JJC-(\d{8})/i);
+  return m && m[1] === todayStr;
+});
+const tldrCategoryOrder = ['macro', 'policy', 'anomaly', 'stock', 'fx'] as const;
+const tldrCategoryLabels: Record<string, string> = {
+  macro: '宏观',
+  policy: '政策',
+  anomaly: '异动',
+  stock: '个股',
+  fx: '外汇',
+};
+const tldrItems = (todayDoc?.data as any)?.tldr
+  ? tldrCategoryOrder
+      .map((cat) => (todayDoc.data as any).tldr.find((t: any) => t.category === cat))
+      .filter((t) => t !== undefined)
+  : [];
 ---
 
 <html lang="zh-CN">
@@ -207,6 +228,34 @@ const articleCount = groupedArticles['财经早餐'].length;
         )}
 
       </header>
+
+      {/* P0-2 今日速览 TL;DR（只从当天文章 frontmatter tldr 字段抽取，无外源） */}
+      {tldrItems.length > 0 && (
+        <section class="tldr-section" aria-label="今日速览">
+          <div class="tldr-header">
+            <h2 class="tldr-title">今日速览</h2>
+            <span class="tldr-subtitle">
+              从 {todayStr.slice(0, 4)}-{todayStr.slice(4, 6)}-{todayStr.slice(6, 8)} 当天财经早餐提取
+            </span>
+          </div>
+          <div class="tldr-grid">
+            {tldrItems.map((item) => (
+              <a href={item.articleLink} class={`tldr-card tldr-${item.category}`}>
+                <span class={`tldr-bar tldr-bar-${item.category}`}></span>
+                <div class="tldr-category">{tldrCategoryLabels[item.category] || item.category}</div>
+                <div class="tldr-headline">{item.title}</div>
+                {item.keyNumbers && item.keyNumbers.length > 0 && (
+                  <div class="tldr-numbers">
+                    {item.keyNumbers.map((n) => (
+                      <span class="tldr-number">{n}</span>
+                    ))}
+                  </div>
+                )}
+              </a>
+            ))}
+          </div>
+        </section>
+      )}
 
       <!-- 主内容区: 左 2/3 文章 + 右 1/3 Frank 持仓 sidebar (移动端堆叠) -->
       <div class="layout-grid">
@@ -448,6 +497,117 @@ const articleCount = groupedArticles['财经早餐'].length;
     border-color: var(--color-accent);
     color: var(--color-accent);
     background: var(--color-accent-dim);
+  }
+
+  /* ── P0-2 今日速览 TL;DR ── */
+  .tldr-section {
+    max-width: 1200px;
+    margin: 0 auto var(--space-8);
+    padding: 0 var(--space-4);
+  }
+
+  .tldr-header {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-3);
+    margin-bottom: var(--space-4);
+  }
+
+  .tldr-title {
+    font-family: var(--font-serif);
+    font-size: var(--font-size-lg);
+    font-weight: var(--font-weight-bold);
+    letter-spacing: 0.05em;
+  }
+
+  .tldr-subtitle {
+    font-size: var(--font-size-xs);
+    color: var(--color-text-muted);
+  }
+
+  .tldr-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: var(--space-3);
+  }
+
+  .tldr-card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-4);
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    text-decoration: none;
+    overflow: hidden;
+    transition: border-color var(--transition-fast), transform var(--transition-fast);
+  }
+
+  .tldr-card:hover {
+    border-color: var(--color-accent);
+    transform: translateY(-2px);
+  }
+
+  .tldr-bar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 4px;
+  }
+
+  .tldr-bar-macro { background: #3b82f6; }
+  .tldr-bar-policy { background: #a855f7; }
+  .tldr-bar-anomaly { background: #ef4444; }
+  .tldr-bar-stock { background: #22c55e; }
+  .tldr-bar-fx { background: #f59e0b; }
+
+  .tldr-category {
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-medium);
+    color: var(--color-text-muted);
+  }
+
+  .tldr-macro .tldr-category { color: #3b82f6; }
+  .tldr-policy .tldr-category { color: #a855f7; }
+  .tldr-anomaly .tldr-category { color: #ef4444; }
+  .tldr-stock .tldr-category { color: #22c55e; }
+  .tldr-fx .tldr-category { color: #f59e0b; }
+
+  .tldr-headline {
+    font-size: var(--font-size-sm);
+    line-height: 1.5;
+    color: var(--color-text);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .tldr-numbers {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
+  .tldr-number {
+    font-size: var(--font-size-xs);
+    color: var(--color-text-secondary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  @media (max-width: 1024px) {
+    .tldr-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+
+  @media (max-width: 640px) {
+    .tldr-grid {
+      grid-template-columns: 1fr;
+    }
   }
 
   /* ── Grid 布局: 左 2/3 文章 + 右 1/3 Frank 持仓 sidebar ── */
