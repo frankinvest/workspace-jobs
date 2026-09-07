@@ -8,7 +8,7 @@ finance_breakfast.py - 财经早餐发布主流程 (支持单步可重入) — v
   2. format   - 用 bs4 + markdownify + build_comments.py 核心逻辑, 渲染 .md 含评论区
   3. images   - 跳过 (按 MEMORY.md 约定: 图片直接引用红圈原 URL, 不下载到本地)
   4. guard    - 用真实数据审计 (图片数 / 评论数 / 标题 / 数据提取时间)
-  5. push     - 调 system_git_pusher.py 穿墙推送 (commit message 由脚本动态生成)
+  5. push     - 调 system_api_pusher.py (GitHub Contents API) 推送 (commit message 由脚本动态生成)
 
 用法:
   python3 tools/finance_breakfast.py                            # 跑全流程
@@ -24,6 +24,16 @@ finance_breakfast.py - 财经早餐发布主流程 (支持单步可重入) — v
   0 - 成功
   1 - 失败
   2 - 跳过 (前置条件不满足)
+
+运行环境 / 登录态（重要，丢失会导致抓取失败）:
+  - 抓取依赖本机 Chrome CDP 调试实例，端口 18900。
+  - Chrome 登录态 profile: /Users/frank_bot/.openclaw/workspace-jobs/.chrome-redring
+    （launchd 任务 ai.redring.chrome 负责自启 + KeepAlive）。
+  - 登录态丢失时，需要 Frank 在红圈页用微信扫码重新登录一次。
+
+定时调度（每天 08:00 Asia/Shanghai，双保险）:
+  - OpenClaw cron: ce064e9d-91ea-496d-97c8-151a1cadc4df
+  - launchd: ai.finance-breakfast.daily
 """
 import argparse
 import subprocess
