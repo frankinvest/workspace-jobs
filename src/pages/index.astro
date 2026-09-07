@@ -167,18 +167,23 @@ const tldrDocDate = tldrDoc
   : todayStr;
 const isTodayTldr = tldrDocDate === todayStr;
 
-const tldrCategoryOrder = ['macro', 'policy', 'anomaly', 'stock', 'fx'] as const;
+// Frank 2026-09-07 11:11 任务：分类改成【宏观】【军事】【产业】【大宗】【个股】，
+// 每类最多 3 条；按分类顺序展开渲染（不再 5 类各取 1 条）
+const tldrCategoryOrder = ['macro', 'military', 'industry', 'commodity', 'stock'] as const;
 const tldrCategoryLabels: Record<string, string> = {
   macro: '宏观',
-  policy: '政策',
-  anomaly: '异动',
+  military: '军事',
+  industry: '产业',
+  commodity: '大宗',
   stock: '个股',
-  fx: '外汇',
 };
+// 每类最多取 3 条（Frank 决策），按分类顺序展开
 const tldrItems = (tldrDoc?.data as any)?.tldr
-  ? tldrCategoryOrder
-      .map((cat) => (tldrDoc.data as any).tldr.find((t: any) => t.category === cat))
-      .filter((t) => t !== undefined)
+  ? tldrCategoryOrder.flatMap(
+      (cat) => (tldrDoc.data as any).tldr
+        .filter((t: any) => t.category === cat)
+        .slice(0, 3)
+    )
   : [];
 ---
 
