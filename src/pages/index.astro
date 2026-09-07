@@ -580,11 +580,12 @@ const tldrItems = (tldrDoc?.data as any)?.tldr
     height: 4px;
   }
 
-  .tldr-bar-macro { background: #3b82f6; }
-  .tldr-bar-policy { background: #a855f7; }
-  .tldr-bar-anomaly { background: #ef4444; }
-  .tldr-bar-stock { background: #22c55e; }
-  .tldr-bar-fx { background: #f59e0b; }
+  /* 5 分类色条（Frank 2026-09-07 11:11 任务：macro/military/industry/commodity/stock） */
+  .tldr-bar-macro { background: #3b82f6; }     /* 蓝：宏观 */
+  .tldr-bar-military { background: #dc2626; }  /* 红：军事 */
+  .tldr-bar-industry { background: #8b5cf6; }  /* 紫：产业 */
+  .tldr-bar-commodity { background: #d97706; } /* 琥珀：大宗 */
+  .tldr-bar-stock { background: #22c55e; }     /* 绿：个股 */
 
   .tldr-category {
     font-size: var(--font-size-xs);
@@ -593,10 +594,10 @@ const tldrItems = (tldrDoc?.data as any)?.tldr
   }
 
   .tldr-macro .tldr-category { color: #3b82f6; }
-  .tldr-policy .tldr-category { color: #a855f7; }
-  .tldr-anomaly .tldr-category { color: #ef4444; }
+  .tldr-military .tldr-category { color: #dc2626; }
+  .tldr-industry .tldr-category { color: #8b5cf6; }
+  .tldr-commodity .tldr-category { color: #d97706; }
   .tldr-stock .tldr-category { color: #22c55e; }
-  .tldr-fx .tldr-category { color: #f59e0b; }
 
   .tldr-headline {
     font-size: var(--font-size-sm);
