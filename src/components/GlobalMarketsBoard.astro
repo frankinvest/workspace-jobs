@@ -1,27 +1,34 @@
 ---
 // GlobalMarketsBoard.astro
-// 「纵横东西」模块：常见大宗期货 + 美股/亚太指数价格
-// 数据来源: /api/global-markets (Vercel serverless，多源 race + 5min 缓存)
-// Frank 2026-09-07 17:57 新增任务
-const CATEGORY_ORDER = ['energy', 'precious', 'metals', 'agriculture', 'us_index', 'asia_index'] as const;
+// 「纵横东西」模块：重点行情（9 项置顶）+ 其余分类折叠
+// 数据来源: /api/global-markets (Vercel serverless，多源 + 5min 缓存)
+// Frank 2026-09-07 19:25 反馈：布局优化 + 重点 9 项 + 其余折叠
+const CATEGORY_ORDER = ['energy', 'precious', 'metals', 'agriculture', 'us_index', 'asia_index', 'cn_index'];
 ---
 
 <section class="global-markets" aria-label="纵横东西">
   <header class="gm-header">
     <h2 class="gm-title">🌐 纵横东西</h2>
-    <p class="gm-sub">大宗期货 · 美股 · 亚太指数</p>
+    <p class="gm-sub">大宗期货 · 美股 · 亚太 · 中国指数</p>
   </header>
 
-  <div class="gm-board" id="global-markets-board" data-loading="true">
-    <div class="gm-skeleton">
-      <span>正在拉取全球行情…</span>
+  <!-- 重点行情：9 项永远可见，大字卡片 -->
+  <div class="gm-featured">
+    <div class="gm-featured-head">
+      <h3 class="gm-featured-title">🔥 重点行情</h3>
+      <span class="gm-updated" id="global-markets-updated"></span>
+    </div>
+    <div class="gm-featured-grid" id="gm-featured-grid">
+      <div class="gm-skeleton">正在拉取全球行情…</div>
     </div>
   </div>
 
-  <div class="gm-footer">
-    <span class="gm-source">数据来源：腾讯财经 + Yahoo Finance</span>
-    <span class="gm-updated" id="global-markets-updated"></span>
-  </div>
+  <!-- 其余行情：默认折叠 -->
+  <div class="gm-cats" id="gm-cats"></div>
+
+  <footer class="gm-footer">
+    <span class="gm-source">数据来源：腾讯财经 · 新浪财经 · Yahoo Finance</span>
+  </footer>
 </section>
 
 <style>
@@ -34,9 +41,7 @@ const CATEGORY_ORDER = ['energy', 'precious', 'metals', 'agriculture', 'us_index
     border: 1px solid var(--color-border, #2a2f3a);
   }
 
-  .gm-header {
-    margin-bottom: var(--space-5);
-  }
+  .gm-header { margin-bottom: var(--space-5); }
 
   .gm-title {
     font-size: var(--font-size-xl, 1.5rem);
@@ -54,67 +59,170 @@ const CATEGORY_ORDER = ['energy', 'precious', 'metals', 'agriculture', 'us_index
     margin: var(--space-1) 0 0;
   }
 
-  /* 6 分类网格：默认 3 列 */
-  .gm-board {
+  /* ── 重点行情 ── */
+  .gm-featured { margin-bottom: var(--space-4); }
+
+  .gm-featured-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-2);
+    margin-bottom: var(--space-3);
+  }
+
+  .gm-featured-title {
+    margin: 0;
+    font-size: var(--font-size-lg, 1.125rem);
+    font-weight: var(--font-weight-semibold, 600);
+    color: var(--color-text, #e5e7eb);
+  }
+
+  .gm-updated {
+    font-size: var(--font-size-xs, 0.75rem);
+    color: var(--color-text-muted, #9ca3af);
+  }
+
+  .gm-featured-grid {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: var(--space-4);
+    gap: var(--space-3);
   }
 
   @media (max-width: 1024px) {
-    .gm-board {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
+    .gm-featured-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   }
 
   @media (max-width: 640px) {
-    .gm-board {
-      grid-template-columns: 1fr;
-    }
+    .gm-featured-grid { grid-template-columns: 1fr; }
   }
 
   .gm-skeleton {
     grid-column: 1 / -1;
     text-align: center;
-    padding: var(--space-12) 0;
-    color: var(--color-text-muted);
-    font-size: var(--font-size-sm);
+    padding: var(--space-10) 0;
+    color: var(--color-text-muted, #9ca3af);
+    font-size: var(--font-size-sm, 0.875rem);
   }
 
-  .gm-category {
+  .gm-fcard {
+    background: var(--color-bg, #0f1117);
+    border: 1px solid var(--color-border, #2a2f3a);
+    border-radius: 10px;
+    padding: var(--space-4);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+  }
+
+  .gm-fcard-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+
+  .gm-fcard-name {
+    font-size: var(--font-size-sm, 0.875rem);
+    color: var(--color-text-muted, #9ca3af);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .gm-fcard-unit {
+    font-size: var(--font-size-xs, 0.75rem);
+    color: var(--color-text-muted, #9ca3af);
+    flex-shrink: 0;
+  }
+
+  .gm-fcard-price {
+    font-size: 1.5rem;
+    line-height: 1.2;
+    font-weight: var(--font-weight-semibold, 600);
+    color: var(--color-text, #e5e7eb);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .gm-change {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: var(--font-size-sm, 0.875rem);
+    font-weight: var(--font-weight-medium, 500);
+  }
+
+  .gm-change.up { color: #ef4444; }   /* A 股惯例：红涨 */
+  .gm-change.down { color: #22c55e; } /* 绿跌 */
+  .gm-change.flat { color: var(--color-text-muted, #9ca3af); }
+
+  .gm-arrow { font-size: 0.75em; }
+
+  /* ── 其余行情（折叠分类）── */
+  .gm-cats {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  details.gm-cat {
     background: var(--color-bg, #0f1117);
     border: 1px solid var(--color-border, #2a2f3a);
     border-radius: 8px;
     overflow: hidden;
-    display: flex;
-    flex-direction: column;
   }
 
-  /* 分类顶部色条 */
-  .gm-cat-bar {
-    height: 3px;
-    width: 100%;
-  }
-
-  .gm-cat-bar-energy     { background: #f97316; } /* 能源：橙 */
-  .gm-cat-bar-precious   { background: #eab308; } /* 贵金属：金黄 */
-  .gm-cat-bar-metals     { background: #6366f1; } /* 有色：靛蓝 */
-  .gm-cat-bar-agriculture{ background: #84cc16; } /* 农产品：草绿 */
-  .gm-cat-bar-us_index   { background: #3b82f6; } /* 美股：蓝 */
-  .gm-cat-bar-asia_index { background: #ec4899; } /* 亚太：粉 */
-
-  .gm-cat-label {
+  summary.gm-cat-label {
+    cursor: pointer;
+    list-style: none;
     padding: var(--space-3) var(--space-4);
     font-size: var(--font-size-base, 1rem);
     font-weight: var(--font-weight-medium, 500);
-    color: var(--color-text);
-    border-bottom: 1px solid var(--color-border);
-    background: var(--color-bg-elevated);
+    color: var(--color-text, #e5e7eb);
+    background: var(--color-bg-elevated, #14171f);
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    user-select: none;
   }
 
-  .gm-items {
-    display: flex;
-    flex-direction: column;
+  summary.gm-cat-label::-webkit-details-marker { display: none; }
+
+  summary.gm-cat-label::before {
+    content: '▸';
+    transition: transform 150ms ease;
+    color: var(--color-text-muted, #9ca3af);
+  }
+
+  details[open] summary.gm-cat-label::before { transform: rotate(90deg); }
+
+  .gm-cat-count {
+    margin-left: auto;
+    font-size: var(--font-size-xs, 0.75rem);
+    color: var(--color-text-muted, #9ca3af);
+    font-weight: normal;
+  }
+
+  .gm-cat-bar { height: 3px; width: 100%; }
+
+  .gm-cat-bar-energy      { background: #f97316; }
+  .gm-cat-bar-precious    { background: #eab308; }
+  .gm-cat-bar-metals      { background: #6366f1; }
+  .gm-cat-bar-agriculture { background: #84cc16; }
+  .gm-cat-bar-us_index    { background: #3b82f6; }
+  .gm-cat-bar-asia_index  { background: #ec4899; }
+  .gm-cat-bar-cn_index    { background: #ef4444; }
+
+  .gm-cat-items {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0;
+    padding: var(--space-2) var(--space-4);
+  }
+
+  @media (max-width: 640px) {
+    .gm-cat-items { grid-template-columns: 1fr; }
   }
 
   .gm-item {
@@ -122,19 +230,8 @@ const CATEGORY_ORDER = ['energy', 'precious', 'metals', 'agriculture', 'us_index
     grid-template-columns: 1fr auto;
     align-items: center;
     gap: var(--space-2);
-    padding: var(--space-3) var(--space-4);
-    border-bottom: 1px solid var(--color-border);
-    text-decoration: none;
-    color: inherit;
-    transition: background var(--transition-fast, 150ms ease);
-  }
-
-  .gm-item:last-child {
-    border-bottom: none;
-  }
-
-  .gm-item:hover {
-    background: var(--color-bg-hover, #1a1f2b);
+    padding: var(--space-2) 0;
+    border-bottom: 1px solid var(--color-border, #2a2f3a);
   }
 
   .gm-item-name {
@@ -145,8 +242,8 @@ const CATEGORY_ORDER = ['energy', 'precious', 'metals', 'agriculture', 'us_index
   }
 
   .gm-item-name-zh {
-    font-size: var(--font-size-sm);
-    color: var(--color-text);
+    font-size: var(--font-size-sm, 0.875rem);
+    color: var(--color-text, #e5e7eb);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -154,7 +251,7 @@ const CATEGORY_ORDER = ['energy', 'precious', 'metals', 'agriculture', 'us_index
 
   .gm-item-unit {
     font-size: var(--font-size-xs, 0.75rem);
-    color: var(--color-text-muted);
+    color: var(--color-text-muted, #9ca3af);
   }
 
   .gm-item-price {
@@ -166,48 +263,17 @@ const CATEGORY_ORDER = ['energy', 'precious', 'metals', 'agriculture', 'us_index
   }
 
   .gm-item-price-value {
-    font-size: var(--font-size-base);
-    font-weight: var(--font-weight-medium);
-    color: var(--color-text);
+    font-size: var(--font-size-base, 1rem);
+    font-weight: var(--font-weight-medium, 500);
+    color: var(--color-text, #e5e7eb);
   }
 
-  .gm-item-change {
-    display: flex;
-    align-items: center;
-    gap: 3px;
-    font-size: var(--font-size-xs);
-    font-weight: var(--font-weight-medium);
-  }
-
-  .gm-item-change.up {
-    color: #ef4444; /* A 股惯例：红涨绿跌 */
-  }
-
-  .gm-item-change.down {
-    color: #22c55e;
-  }
-
-  .gm-item-change.flat {
-    color: var(--color-text-muted);
-  }
-
-  .gm-item-arrow {
-    font-size: 0.75em;
-  }
-
-  .gm-item-empty {
-    color: var(--color-text-muted);
-    font-style: italic;
-  }
+  .gm-item-empty { color: var(--color-text-muted, #9ca3af); font-style: italic; }
 
   .gm-footer {
     margin-top: var(--space-4);
-    display: flex;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: var(--space-2);
-    font-size: var(--font-size-xs);
-    color: var(--color-text-muted);
+    font-size: var(--font-size-xs, 0.75rem);
+    color: var(--color-text-muted, #9ca3af);
   }
 
   .gm-error {
@@ -217,18 +283,19 @@ const CATEGORY_ORDER = ['energy', 'precious', 'metals', 'agriculture', 'us_index
     border: 1px solid rgba(239, 68, 68, 0.4);
     border-radius: 6px;
     color: #fca5a5;
-    font-size: var(--font-size-sm);
+    font-size: var(--font-size-sm, 0.875rem);
     text-align: center;
   }
 </style>
 
 <script>
-  // 客户端拉取 + 渲染（每 5 分钟轮询一次，与服务端 5min 缓存同步）
-  const board = document.getElementById('global-markets-board');
+  const featuredGrid = document.getElementById('gm-featured-grid');
+  const catsEl = document.getElementById('gm-cats');
   const updatedEl = document.getElementById('global-markets-updated');
-  const REFRESH_MS = 5 * 60 * 1000; // 5 min
+  const REFRESH_MS = 5 * 60 * 1000;
 
-  // 分类色条类名
+  const CATEGORY_ORDER = ['energy', 'precious', 'metals', 'agriculture', 'us_index', 'asia_index', 'cn_index'];
+
   const BAR_CLASS = {
     energy: 'gm-cat-bar-energy',
     precious: 'gm-cat-bar-precious',
@@ -236,9 +303,9 @@ const CATEGORY_ORDER = ['energy', 'precious', 'metals', 'agriculture', 'us_index
     agriculture: 'gm-cat-bar-agriculture',
     us_index: 'gm-cat-bar-us_index',
     asia_index: 'gm-cat-bar-asia_index',
+    cn_index: 'gm-cat-bar-cn_index',
   };
 
-  // 分类显示名
   const CATEGORY_LABELS = {
     energy: '⚡ 能源',
     precious: '🥇 贵金属',
@@ -246,7 +313,15 @@ const CATEGORY_ORDER = ['energy', 'precious', 'metals', 'agriculture', 'us_index
     agriculture: '🌾 农产品',
     us_index: '🇺🇸 美股指数',
     asia_index: '🌏 亚太指数',
+    cn_index: '🇨🇳 中国指数',
   };
+
+  function escapeHtml(s) {
+    if (s == null) return '';
+    return String(s).replace(/[&<>"']/g, ch => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[ch] || ch));
+  }
 
   function fmtPrice(p) {
     if (p == null || isNaN(p)) return '—';
@@ -261,28 +336,46 @@ const CATEGORY_ORDER = ['energy', 'precious', 'metals', 'agriculture', 'us_index
     return (p >= 0 ? '+' : '') + p.toFixed(2) + '%';
   }
 
+  function changeHtml(change) {
+    const text = fmtChangePct(change);
+    if (text == null) return `<span class="gm-change flat">—</span>`;
+    let cls = 'flat';
+    let arrow = '—';
+    if (change > 0) { cls = 'up'; arrow = '▲'; }
+    else if (change < 0) { cls = 'down'; arrow = '▼'; }
+    return `<span class="gm-change ${cls}"><span class="gm-arrow">${arrow}</span>${escapeHtml(text)}</span>`;
+  }
+
+  function renderFeatured(items) {
+    if (!featuredGrid) return;
+    if (!items.length) {
+      featuredGrid.innerHTML = '<div class="gm-skeleton">暂无数据</div>';
+      return;
+    }
+    featuredGrid.innerHTML = items.map(it => {
+      const priceHtml = it.price != null
+        ? `<span class="gm-fcard-price">${fmtPrice(it.price)}</span>`
+        : `<span class="gm-fcard-price gm-item-empty">暂无</span>`;
+      return `<div class="gm-fcard">
+        <div class="gm-fcard-top">
+          <span class="gm-fcard-name">${escapeHtml(it.nameZh || it.code)}</span>
+          <span class="gm-fcard-unit">${escapeHtml(it.unit || '')}</span>
+        </div>
+        ${priceHtml}
+        ${changeHtml(it.changePct)}
+      </div>`;
+    }).join('');
+  }
+
   function renderCategory(catKey, catData) {
-    const items = catData.items || [];
+    const items = (catData.items || []).filter(it => !it.featured);
+    if (!items.length) return '';
     const barClass = BAR_CLASS[catKey] || '';
     const label = catData.label || CATEGORY_LABELS[catKey] || catKey;
-
     const itemsHtml = items.map(it => {
-      const price = it.price;
-      const change = it.changePct;
-      const changeText = fmtChangePct(change);
-      let changeCls = 'flat';
-      let arrow = '—';
-      if (change != null && !isNaN(change)) {
-        if (change > 0) { changeCls = 'up'; arrow = '▲'; }
-        else if (change < 0) { changeCls = 'down'; arrow = '▼'; }
-        else { changeCls = 'flat'; arrow = '—'; }
-      }
-      const priceHtml = price != null
-        ? `<span class="gm-item-price-value">${fmtPrice(price)}</span>`
+      const priceHtml = it.price != null
+        ? `<span class="gm-item-price-value">${fmtPrice(it.price)}</span>`
         : `<span class="gm-item-price-value gm-item-empty">暂无</span>`;
-      const changeHtml = changeText != null
-        ? `<span class="gm-item-change ${changeCls}"><span class="gm-item-arrow">${arrow}</span>${changeText}</span>`
-        : `<span class="gm-item-change flat">—</span>`;
       return `<div class="gm-item">
         <div class="gm-item-name">
           <span class="gm-item-name-zh">${escapeHtml(it.nameZh || it.code)}</span>
@@ -290,48 +383,46 @@ const CATEGORY_ORDER = ['energy', 'precious', 'metals', 'agriculture', 'us_index
         </div>
         <div class="gm-item-price">
           ${priceHtml}
-          ${changeHtml}
+          ${changeHtml(it.changePct)}
         </div>
       </div>`;
     }).join('');
-
-    return `<div class="gm-category">
+    return `<details class="gm-cat">
       <div class="gm-cat-bar ${barClass}"></div>
-      <div class="gm-cat-label">${escapeHtml(label)}</div>
-      <div class="gm-items">${itemsHtml}</div>
-    </div>`;
-  }
-
-  function escapeHtml(s) {
-    if (s == null) return '';
-    return String(s).replace(/[&<>"']/g, ch => ({
-      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-    }[ch] || ch));
+      <summary class="gm-cat-label">${escapeHtml(label)}<span class="gm-cat-count">${items.length} 项</span></summary>
+      <div class="gm-cat-items">${itemsHtml}</div>
+    </details>`;
   }
 
   function render(payload) {
-    if (!board) return;
     const cats = payload.categories || {};
-    const html = Object.entries(cats).map(([k, v]) => renderCategory(k, v)).join('');
-    board.innerHTML = html || '<div class="gm-error">暂无数据</div>';
+    const featured = [];
+    for (const cat of Object.values(cats)) {
+      for (const it of (cat.items || [])) {
+        if (it.featured) featured.push(it);
+      }
+    }
+    renderFeatured(featured);
+
+    if (catsEl) {
+      const html = CATEGORY_ORDER.map(k => cats[k] ? renderCategory(k, cats[k]) : '').join('');
+      catsEl.innerHTML = html || '<div class="gm-error">暂无更多行情</div>';
+    }
 
     if (updatedEl) {
       const t = new Date(payload.asOf || Date.now());
-      const ts = t.toLocaleString('zh-CN', { hour12: false, timeZone: 'Asia/Shanghai' });
-      updatedEl.textContent = `快照：${ts}${payload.cached ? '（缓存）' : ''}`;
+      updatedEl.textContent = '快照 ' + t.toLocaleString('zh-CN', { hour12: false, timeZone: 'Asia/Shanghai' });
     }
   }
 
   async function fetchAndRender() {
-    if (!board) return;
     try {
       const r = await fetch('/api/global-markets', { cache: 'no-store' });
       if (!r.ok) throw new Error('http ' + r.status);
-      const data = await r.json();
-      render(data);
+      render(await r.json());
     } catch (err) {
-      if (board) {
-        board.innerHTML = `<div class="gm-error">⚠️ 实时行情获取失败（${escapeHtml(String(err && err.message || err))}）。请稍后重试。</div>`;
+      if (featuredGrid) {
+        featuredGrid.innerHTML = `<div class="gm-error">⚠️ 实时行情获取失败（${escapeHtml(String(err && err.message || err))}）。请稍后重试。</div>`;
       }
       if (updatedEl) updatedEl.textContent = '快照：—';
     }
