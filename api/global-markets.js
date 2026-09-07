@@ -181,19 +181,21 @@ async function fetchTencentIndex(code) {
   }
 }
 
-// ── 新浪 hq.sinajs.cn 期货解析 ──
-// 真实返回（curl 18:21 验证 nf_CU0）：
-//   var hq_str_nf_CU0="ͭ����,150000,108760.000,109580.000,108700.000,109410.000,109410.000,109420.000,109410.000,109210.000,109110.000,59,4,214449.000,70006,��,ͭ,2026-09-07,1,,,,,,,,,109213.621,0.000,0,"
+// ── 新浪 hq.sinajs.cn 期货解析（nf_ 连续合约）──
+// 真实返回（curl 验证 nf_CU0）：
+//   var hq_str_nf_CU0="铜连续,150000,108760.000,109580.000,108700.000,109410.000,109410.000,109420.000,109410.000,109210.000,109110.000,59,4,214449.000,70006,沪,铜,2026-09-07,1,..."
+// 字段索引（逗号分隔，0 起）：
 //   parts[0]  = 中文名
-//   parts[1]  = 合约乘数 / 交易单位
+//   parts[1]  = 时间 (HHMMSS)
 //   parts[2]  = 今开
 //   parts[3]  = 最高
 //   parts[4]  = 最低
-//   parts[5]  = 当前价 ⭐
-//   ...
-//   parts[29] = 昨结（settlement price，前收盘）⭐
-//   parts[30] = 涨跌额
-//   parts[31] = 涨跌幅（%） ⭐
+//   parts[5]  = 昨收（部分行情与最新价相等，勿当最新价用）
+//   parts[6]  = 买价
+//   parts[7]  = 卖价
+//   parts[8]  = 最新价 ⭐
+//   parts[9]  = 结算价
+//   parts[10] = 昨结算 ⭐（涨跌幅基准）
 async function fetchSinaFutures(code) {
   const url = 'https://hq.sinajs.cn/list=' + code;
   try {
@@ -202,19 +204,17 @@ async function fetchSinaFutures(code) {
     const match = text.match(/"([^"]+)"/);
     if (!match) return null;
     const parts = match[1].split(',');
-    if (parts.length < 6) return null;
-    const price = parseFloat(parts[5]);
-    const prevClose = parts.length > 29 ? parseFloat(parts[29]) : NaN;
-    const changePct = parts.length > 31 ? parseFloat(parts[31]) : NaN;
+    if (parts.length < 11) return null;
+    const price = parseFloat(parts[8]);      // 最新价
+    const prevClose = parseFloat(parts[10]); // 昨结算
     if (isNaN(price) || price <= 0) return null;
-    // 兜底：如果新浪没给昨结，用 (price - 涨跌额) 推
-    const prevCloseFallback = (isNaN(prevClose) && parts.length > 30)
-      ? price - parseFloat(parts[30])
-      : prevClose;
+    const changePct = (!isNaN(prevClose) && prevClose > 0)
+      ? ((price - prevClose) / prevClose) * 100
+      : null;
     return {
       price,
-      prevClose: isNaN(prevCloseFallback) ? null : prevCloseFallback,
-      changePct: isNaN(changePct) ? null : changePct,
+      prevClose: isNaN(prevClose) ? null : prevClose,
+      changePct,
       source: 'sina',
       asOf: Date.now(),
     };
