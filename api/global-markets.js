@@ -143,15 +143,18 @@ const CATEGORIES = {
 };
 
 // ── 腾讯 qt.gtimg.cn 指数解析 ──
-// 真实返回结构（curl 18:21 验证 v_usINX）：
+// 真实返回结构（curl 18:25 验证 v_usINX / v_hkHSI）：
 //   parts[0]  = 200 (类型代码) 或 100 (港股)
-//   parts[1]  = 中文名（GBK latin1 解码后会 mojibake，但字段位置固定）
+//   parts[1]  = 中文名（GBK latin1 解码后会 mojibake）
 //   parts[2]  = 英文代码（".INX", "HSI" 等）
 //   parts[3]  = 当前价 ⭐
-//   parts[4]  = 昨收 ⭐
-//   parts[5]  = 今开
-//   parts[33] = 涨跌额
-//   parts[34] = 涨跌幅（%） ⭐
+//   parts[4]  = 今开（**不是**昨收）
+//   parts[5]  = 最高
+//   parts[31] = 涨跌额 ⭐
+//   parts[32] = 涨跌幅（%） ⭐  ← 重要：不是 parts[34]！
+//   parts[33] = 今日最高
+//   parts[34] = 今日最低
+//   所以 prevClose 应该用 (price - change) 反推
 async function fetchTencentIndex(code) {
   const url = 'https://qt.gtimg.cn/q=' + code;
   try {
@@ -161,13 +164,15 @@ async function fetchTencentIndex(code) {
     if (!match) return null;
     const parts = match[1].split('~');
     const price = parseFloat(parts[3]);
-    const prevClose = parseFloat(parts[4]);
-    const changePct = parseFloat(parts[34]);
+    const change = parseFloat(parts[31]);
+    const changePct = parseFloat(parts[32]);
     if (isNaN(price) || price <= 0) return null;
+    // 反推昨收 = 当前价 - 涨跌额
+    const prevClose = !isNaN(change) ? price - change : NaN;
     return {
       price,
-      prevClose: isNaN(prevClose) ? null : prevClose,
-      changePct: isNaN(changePct) ? null : changePct,
+      prevClose: !isNaN(prevClose) ? prevClose : null,
+      changePct: !isNaN(changePct) ? changePct : null,
       source: 'tencent',
       asOf: Date.now(),
     };
