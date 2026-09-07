@@ -48,7 +48,7 @@ STATE_FILE = Path("/tmp/finance_breakfast_state.json")
 LOG_FILE = "/tmp/finance_breakfast.log"
 CDP_SCRIPT = TOOLS_DIR / "cdp_get_innerhtml.py"
 BUILD_COMMENTS_SCRIPT = TOOLS_DIR / "build_comments.py"
-PUSHER = TOOLS_DIR / "system_git_pusher.py"
+PUSHER = TOOLS_DIR / "system_api_pusher.py"
 
 GROUP_URL = "https://www.red-ring.cn/group/27593"  # 红运Dang投圈子
 
@@ -501,10 +501,17 @@ def step_push(date_str, dry_run=False):
         log(f"  ❌ git 阶段异常: {type(e).__name__}: {e}")
         return 1
     
-    # 调穿墙推送
+    # 调 GitHub Contents API 推送（绕过 github.com:443 撞墙；git push 已不可用）
     try:
-        push_cmd = [sys.executable, str(PUSHER)]
-        log(f"  → {PUSHER.name} 穿墙推送")
+        rel_file = str(Path(md_file).relative_to(WORKSPACE_JOBS))
+        push_cmd = [
+            sys.executable,
+            str(PUSHER),
+            "--file", rel_file,
+            "--local", str(md_file),
+            "--commit-msg", commit_msg,
+        ]
+        log(f"  → {PUSHER.name} Contents API 推送")
         cp = subprocess.run(push_cmd, cwd=WORKSPACE_JOBS, capture_output=True, text=True, timeout=120)
         if cp.stdout:
             for line in cp.stdout.split("\n")[-10:]:
