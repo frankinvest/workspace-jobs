@@ -72,7 +72,7 @@ const CATEGORIES = {
     label: '能源',
     items: [
       { code: 'CL=F',  nameZh: 'WTI 原油',   unit: 'USD/桶', src: 'yahoo' },
-      { code: 'BZ=F',  nameZh: '布伦特原油', unit: 'USD/桶', src: 'yahoo' },
+      { code: 'BZ=F',  nameZh: '布伦特原油', unit: 'USD/桶', src: 'yahoo', featured: true },
       { code: 'NG=F',  nameZh: '天然气',     unit: 'USD/MMBtu', src: 'yahoo' },
       { code: 'HO=F',  nameZh: '取暖油',     unit: 'USD/加仑', src: 'yahoo' },
       { code: 'RB=F',  nameZh: 'RBOB 汽油',  unit: 'USD/加仑', src: 'yahoo' },
@@ -81,7 +81,7 @@ const CATEGORIES = {
   precious: {
     label: '贵金属',
     items: [
-      { code: 'GC=F',  nameZh: 'COMEX 黄金',     unit: 'USD/盎司', src: 'yahoo' },
+      { code: 'GC=F',  nameZh: 'COMEX 黄金',     unit: 'USD/盎司', src: 'yahoo', featured: true },
       { code: 'SI=F',  nameZh: 'COMEX 白银',     unit: 'USD/盎司', src: 'yahoo' },
       { code: 'HG=F',  nameZh: 'COMEX 铜',       unit: 'USD/磅', src: 'yahoo' },
       { code: 'PL=F',  nameZh: 'NYMEX 铂金',     unit: 'USD/盎司', src: 'yahoo' },
@@ -124,8 +124,8 @@ const CATEGORIES = {
     label: '美股指数',
     items: [
       // 腾讯 qt.gtimg.cn (parts 索引修好后 work — parts[3]=价格, parts[34]=涨跌幅)
-      { code: 'usINX', nameZh: '标普 500',     unit: '点', src: 'tencent' },
-      { code: 'usIXIC',nameZh: '纳斯达克综合', unit: '点', src: 'tencent' },
+      { code: 'usINX', nameZh: '标普 500',     unit: '点', src: 'tencent', featured: true },
+      { code: 'usIXIC',nameZh: '纳斯达克综合', unit: '点', src: 'tencent', featured: true },
       { code: 'usDJI', nameZh: '道琼斯工业',   unit: '点', src: 'tencent' },
     ],
   },
@@ -135,9 +135,18 @@ const CATEGORIES = {
       // 港股 — 腾讯 hkHSI（验证 work）
       { code: 'hkHSI', nameZh: '恒生指数',  unit: '点', src: 'tencent' },
       // 日韩台 — 腾讯/新浪都无数据，尝试 Yahoo (Codex 说有 anti-bot 但还有概率通)
-      { code: '^N225', nameZh: '日经 225',  unit: '点', src: 'yahoo' },
-      { code: '^KS11', nameZh: '韩国 KOSPI',unit: '点', src: 'yahoo' },
+      { code: '^N225', nameZh: '日经 225',  unit: '点', src: 'yahoo', featured: true },
+      { code: '^KS11', nameZh: '韩国 KOSPI',unit: '点', src: 'yahoo', featured: true },
       { code: '^TWII', nameZh: '台湾加权',  unit: '点', src: 'yahoo' },
+    ],
+  },
+  cn_index: {
+    label: '中国指数',
+    items: [
+      // A 股三大指数 — 腾讯 qt.gtimg.cn（Codex 2026-09-07 19:25 验证代码 + parts[3]=价格/parts[32]=涨跌幅）
+      { code: 'sh000001', nameZh: '上证指数',   unit: '点', src: 'tencent', featured: true },
+      { code: 'sz399001', nameZh: '深证成指',   unit: '点', src: 'tencent', featured: true },
+      { code: 'sz399673', nameZh: '创业板50',   unit: '点', src: 'tencent', featured: true },
     ],
   },
 };
@@ -341,6 +350,7 @@ export default async function handler(req, res) {
           code: t.item.code,
           nameZh: t.item.nameZh,
           unit: t.item.unit,
+          featured: !!t.item.featured,
           price: r.price,
           prevClose: r.prevClose,
           changePct: r.changePct,
@@ -353,6 +363,7 @@ export default async function handler(req, res) {
           code: t.item.code,
           nameZh: t.item.nameZh,
           unit: t.item.unit,
+          featured: !!t.item.featured,
           price: null,
           prevClose: null,
           changePct: null,
