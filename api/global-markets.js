@@ -1,11 +1,11 @@
-// Vercel serverless function: 全球大宗期货 + 美股/日韩指数聚合 (ESM).
+// Vercel serverless function: 全球大宗期货 + 美股/亚太指数聚合 (ESM).
 //
 //   GET /api/global-markets
 //
 // 返回 JSON:
 //   {
 //     "categories": {
-//       "energy":       [ { code, name_zh, name_en, price, changePct, prevClose, source, asOf }, ... ],
+//       "energy":       [ ... ],
 //       "precious":     [ ... ],
 //       "metals":       [ ... ],
 //       "agriculture":  [ ... ],
@@ -13,15 +13,17 @@
 //       "asia_index":   [ ... ]
 //     },
 //     "asOf": 1756420800000,
-//     "source": "tencent|yahoo|mixed|none",
-//     "errors": [ ... ]   // 仅在 fallback 时填充
+//     "source": "tencent|sina|yahoo|mixed|none",
+//     "errors": [ ... ]
 //   }
 //
 // 数据源策略（多源 race，Promise.race 取最快成功）：
-//   1. 国内大宗期货（沪/大商/郑商所）→ qt.gtimg.cn (GBK → latin1 解析价格)
-//   2. 国际期货（COMEX/NYMEX/CBOT/LME）+ 美股/亚太指数 → Yahoo Finance v8
+//   - 国内大宗期货 → 新浪 hq.sinajs.cn (nf_* 格式，GBK 解码)  [Codex 18:00 反馈：腾讯 nf 前缀在 qt.gtimg.cn 不存在]
+//   - 港股指数 → 腾讯 qt.gtimg.cn (hkHSI)
+//   - 美股指数 → 腾讯 qt.gtimg.cn (usINX/usIXIC/usDJI)  [parts[3]=价格, parts[34]=涨跌幅 — 我之前猜错]
+//   - 国际期货（COMEX/NYMEX/CBOT/LME）+ 日韩台 → Yahoo Finance v8
 //
-// 缓存：5 分钟内存缓存（Vercel 单实例内有效）
+// 缓存：5 分钟内存缓存
 
 import https from 'node:https';
 
@@ -29,7 +31,6 @@ const TIMEOUT_MS = 8000;
 const USER_AGENT = 'Mozilla/5.0 (Jobs-GlobalMarkets)';
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
-// 内存缓存（同一 Vercel 实例内有效）
 let cache = { data: null, expiresAt: 0 };
 
 // ── 网络工具 ──────────────────────────────────────────────
@@ -66,13 +67,6 @@ function fetchUrl(rawUrl, headers = {}, encoding = 'utf-8') {
 }
 
 // ── 期货 / 指数代码定义（Frank 2026-09-07 17:57【纵横东西】模块）──
-// 分类 → 合约列表
-// 字段说明：
-//   code   — 数据源用的代码
-//   nameZh — 中文名
-//   nameEn — 英文名（备用）
-//   unit   — 单位（用于前端展示）
-//   src    — 'tencent' | 'yahoo'
 const CATEGORIES = {
   energy: {
     label: '能源',
@@ -97,27 +91,27 @@ const CATEGORIES = {
   metals: {
     label: '有色金属',
     items: [
-      // 国内 SHFE / LME 通过 qt.gtimg.cn（nf 前缀）
-      { code: 'nfCU0', nameZh: '沪铜主力',   unit: '元/吨', src: 'tencent' },
-      { code: 'nfAL0', nameZh: '沪铝主力',   unit: '元/吨', src: 'tencent' },
-      { code: 'nfZN0', nameZh: '沪锌主力',   unit: '元/吨', src: 'tencent' },
-      { code: 'nfNI0', nameZh: '沪镍主力',   unit: '元/吨', src: 'tencent' },
-      { code: 'nfSN0', nameZh: '沪锡主力',   unit: '元/吨', src: 'tencent' },
-      { code: 'nfPB0', nameZh: '沪铅主力',   unit: '元/吨', src: 'tencent' },
+      // 新浪 hq.sinajs.cn nf_* 格式（curl 18:20 验证 nf_CU0 有数据）
+      { code: 'nf_CU0', nameZh: '沪铜主力',   unit: '元/吨', src: 'sina' },
+      { code: 'nf_AL0', nameZh: '沪铝主力',   unit: '元/吨', src: 'sina' },
+      { code: 'nf_ZN0', nameZh: '沪锌主力',   unit: '元/吨', src: 'sina' },
+      { code: 'nf_NI0', nameZh: '沪镍主力',   unit: '元/吨', src: 'sina' },
+      { code: 'nf_SN0', nameZh: '沪锡主力',   unit: '元/吨', src: 'sina' },
+      { code: 'nf_PB0', nameZh: '沪铅主力',   unit: '元/吨', src: 'sina' },
     ],
   },
   agriculture: {
     label: '农产品',
     items: [
-      // 国内
-      { code: 'nfSR0', nameZh: '郑商所白糖',  unit: '元/吨', src: 'tencent' },
-      { code: 'nfCF0', nameZh: '郑商所棉花',  unit: '元/吨', src: 'tencent' },
-      { code: 'nfM0',  nameZh: '大商所豆粕',  unit: '元/吨', src: 'tencent' },
-      { code: 'nfY0',  nameZh: '大商所豆油',  unit: '元/吨', src: 'tencent' },
-      { code: 'nfP0',  nameZh: '大商所棕榈',  unit: '元/吨', src: 'tencent' },
-      { code: 'nfC0',  nameZh: '大商所玉米',  unit: '元/吨', src: 'tencent' },
-      { code: 'nfI0',  nameZh: '大商所铁矿',  unit: '元/吨', src: 'tencent' },
-      // 国际
+      // 国内 — 新浪 nf_* 格式
+      { code: 'nf_SR0', nameZh: '郑商所白糖',  unit: '元/吨', src: 'sina' },
+      { code: 'nf_CF0', nameZh: '郑商所棉花',  unit: '元/吨', src: 'sina' },
+      { code: 'nf_M0',  nameZh: '大商所豆粕',  unit: '元/吨', src: 'sina' },
+      { code: 'nf_Y0',  nameZh: '大商所豆油',  unit: '元/吨', src: 'sina' },
+      { code: 'nf_P0',  nameZh: '大商所棕榈',  unit: '元/吨', src: 'sina' },
+      { code: 'nf_C0',  nameZh: '大商所玉米',  unit: '元/吨', src: 'sina' },
+      { code: 'nf_I0',  nameZh: '大商所铁矿',  unit: '元/吨', src: 'sina' },
+      // 国际 — Yahoo Finance v8
       { code: 'ZC=F',  nameZh: 'CBOT 玉米',    unit: '¢/蒲式耳', src: 'yahoo' },
       { code: 'ZW=F',  nameZh: 'CBOT 小麦',    unit: '¢/蒲式耳', src: 'yahoo' },
       { code: 'ZS=F',  nameZh: 'CBOT 大豆',    unit: '¢/蒲式耳', src: 'yahoo' },
@@ -129,7 +123,7 @@ const CATEGORIES = {
   us_index: {
     label: '美股指数',
     items: [
-      // 腾讯 qt.gtimg.cn — Codex 2026-09-07 17:58 实测 Yahoo Finance 返 anti-bot sad-panda
+      // 腾讯 qt.gtimg.cn (parts 索引修好后 work — parts[3]=价格, parts[34]=涨跌幅)
       { code: 'usINX', nameZh: '标普 500',     unit: '点', src: 'tencent' },
       { code: 'usIXIC',nameZh: '纳斯达克综合', unit: '点', src: 'tencent' },
       { code: 'usDJI', nameZh: '道琼斯工业',   unit: '点', src: 'tencent' },
@@ -138,70 +132,40 @@ const CATEGORIES = {
   asia_index: {
     label: '亚太指数',
     items: [
-      // 腾讯 qt.gtimg.cn — 避开 Yahoo Finance anti-bot
-      { code: 'hkHSI',  nameZh: '恒生指数',  unit: '点', src: 'tencent' },
-      { code: 'jpN225', nameZh: '日经 225',  unit: '点', src: 'tencent' },
-      { code: 'krKOSPI',nameZh: '韩国 KOSPI',unit: '点', src: 'tencent' },
-      { code: 'twTWSE', nameZh: '台湾加权',  unit: '点', src: 'tencent' },
+      // 港股 — 腾讯 hkHSI（验证 work）
+      { code: 'hkHSI', nameZh: '恒生指数',  unit: '点', src: 'tencent' },
+      // 日韩台 — 腾讯/新浪都无数据，尝试 Yahoo (Codex 说有 anti-bot 但还有概率通)
+      { code: '^N225', nameZh: '日经 225',  unit: '点', src: 'yahoo' },
+      { code: '^KS11', nameZh: '韩国 KOSPI',unit: '点', src: 'yahoo' },
+      { code: '^TWII', nameZh: '台湾加权',  unit: '点', src: 'yahoo' },
     ],
   },
 };
 
-// ── 腾讯 qt.gtimg.cn 期货解析（GBK latin1 解码后正则切分）──
-async function fetchTencentFutures(code) {
-  const url = 'https://qt.gtimg.cn/q=' + code;
-  try {
-    const text = await fetchUrl(url, {}, 'gbk');
-    if (!text) return null;
-    const match = text.match(/="([^"]+)"/);
-    if (!match) return null;
-    const parts = match[1].split('~');
-    // qt.gtimg.cn 期货返回结构：
-    //   parts[0] = 中文名
-    //   parts[3] = 当前价
-    //   parts[4] = 昨收
-    //   parts[5] = 今开
-    //   parts[32] = 涨跌幅（%）
-    const price = parseFloat(parts[3]);
-    const prevClose = parseFloat(parts[4]);
-    const changePct = parseFloat(parts[32]);
-    if (isNaN(price) || price <= 0) return null;
-    return {
-      price: price,
-      prevClose: isNaN(prevClose) ? null : prevClose,
-      changePct: isNaN(changePct) ? null : changePct,
-      source: 'tencent',
-      asOf: Date.now(),
-    };
-  } catch (err) {
-    return null;
-  }
-}
-
-// ── 腾讯 qt.gtimg.cn 指数解析（GBK latin1 解码）──
-// 返回结构与期货不同（以 usINX 为例验证）：
-//   v_usINX="1~纳斯达克综合指数~IXIC.US~20804.36~..." 实际格式：
-//   parts[0] = 名称中文
-//   parts[1] = 代码
-//   parts[2] = 当前价
-//   parts[3] = 涨跌额
-//   parts[4] = 涨跌幅（%）
-//   parts[5] = 昨收
+// ── 腾讯 qt.gtimg.cn 指数解析 ──
+// 真实返回结构（curl 18:21 验证 v_usINX）：
+//   parts[0]  = 200 (类型代码) 或 100 (港股)
+//   parts[1]  = 中文名（GBK latin1 解码后会 mojibake，但字段位置固定）
+//   parts[2]  = 英文代码（".INX", "HSI" 等）
+//   parts[3]  = 当前价 ⭐
+//   parts[4]  = 昨收 ⭐
+//   parts[5]  = 今开
+//   parts[33] = 涨跌额
+//   parts[34] = 涨跌幅（%） ⭐
 async function fetchTencentIndex(code) {
   const url = 'https://qt.gtimg.cn/q=' + code;
   try {
     const text = await fetchUrl(url, {}, 'gbk');
-    if (!text) return null;
+    if (!text || text.includes('pv_none_match')) return null;
     const match = text.match(/="([^"]+)"/);
     if (!match) return null;
     const parts = match[1].split('~');
-    // 指数返回结构：parts[2]=当前价, parts[3]=涨跌额, parts[4]=涨跌幅, parts[5]=昨收
-    const price = parseFloat(parts[2]);
-    const changePct = parseFloat(parts[4]);
-    const prevClose = parseFloat(parts[5]);
+    const price = parseFloat(parts[3]);
+    const prevClose = parseFloat(parts[4]);
+    const changePct = parseFloat(parts[34]);
     if (isNaN(price) || price <= 0) return null;
     return {
-      price: price,
+      price,
       prevClose: isNaN(prevClose) ? null : prevClose,
       changePct: isNaN(changePct) ? null : changePct,
       source: 'tencent',
@@ -212,9 +176,84 @@ async function fetchTencentIndex(code) {
   }
 }
 
-// ── Yahoo Finance v8 chart API（免费、无需 key）──
-// 文档：https://query1.finance.yahoo.com/v8/finance/chart/<symbol>?interval=1d&range=2d
-// 返回结构：chart.result[0].meta.regularMarketPrice + chartMeta.chartPreviousClose + chartMeta.regularMarketChangePercent
+// ── 新浪 hq.sinajs.cn 期货解析 ──
+// 真实返回（curl 18:21 验证 nf_CU0）：
+//   var hq_str_nf_CU0="ͭ����,150000,108760.000,109580.000,108700.000,109410.000,109410.000,109420.000,109410.000,109210.000,109110.000,59,4,214449.000,70006,��,ͭ,2026-09-07,1,,,,,,,,,109213.621,0.000,0,"
+//   parts[0]  = 中文名
+//   parts[1]  = 合约乘数 / 交易单位
+//   parts[2]  = 今开
+//   parts[3]  = 最高
+//   parts[4]  = 最低
+//   parts[5]  = 当前价 ⭐
+//   ...
+//   parts[29] = 昨结（settlement price，前收盘）⭐
+//   parts[30] = 涨跌额
+//   parts[31] = 涨跌幅（%） ⭐
+async function fetchSinaFutures(code) {
+  const url = 'https://hq.sinajs.cn/list=' + code;
+  try {
+    const text = await fetchUrl(url, { Referer: 'https://finance.sina.com.cn/' }, 'gbk');
+    if (!text) return null;
+    const match = text.match(/"([^"]+)"/);
+    if (!match) return null;
+    const parts = match[1].split(',');
+    if (parts.length < 6) return null;
+    const price = parseFloat(parts[5]);
+    const prevClose = parts.length > 29 ? parseFloat(parts[29]) : NaN;
+    const changePct = parts.length > 31 ? parseFloat(parts[31]) : NaN;
+    if (isNaN(price) || price <= 0) return null;
+    // 兜底：如果新浪没给昨结，用 (price - 涨跌额) 推
+    const prevCloseFallback = (isNaN(prevClose) && parts.length > 30)
+      ? price - parseFloat(parts[30])
+      : prevClose;
+    return {
+      price,
+      prevClose: isNaN(prevCloseFallback) ? null : prevCloseFallback,
+      changePct: isNaN(changePct) ? null : changePct,
+      source: 'sina',
+      asOf: Date.now(),
+    };
+  } catch (err) {
+    return null;
+  }
+}
+
+// ── 新浪 hq.sinajs.cn 指数解析（gb_*/int_*）──
+// 真实返回（curl 18:21 验证 gb_ixic）：
+//   var hq_str_gb_ixic="纳斯达克,26506.9901,-0.29,2026-09-05 05:30:00,-77.0699,26587.8961,26628.5841,26444.8426,..."
+//   parts[0] = 中文名
+//   parts[1] = 当前价 ⭐
+//   parts[2] = 涨跌幅（%） ⭐
+//   parts[3] = 时间
+//   parts[4] = 涨跌额
+//   parts[5] = 最高
+//   parts[6] = 今开
+//   parts[7] = 最低
+async function fetchSinaIndex(code) {
+  const url = 'https://hq.sinajs.cn/list=' + code;
+  try {
+    const text = await fetchUrl(url, { Referer: 'https://finance.sina.com.cn/' }, 'gbk');
+    if (!text) return null;
+    const match = text.match(/"([^"]+)"/);
+    if (!match) return null;
+    const parts = match[1].split(',');
+    if (parts.length < 3) return null;
+    const price = parseFloat(parts[1]);
+    const changePct = parseFloat(parts[2]);
+    if (isNaN(price) || price <= 0) return null;
+    return {
+      price,
+      prevClose: null,
+      changePct: isNaN(changePct) ? null : changePct,
+      source: 'sina',
+      asOf: Date.now(),
+    };
+  } catch (err) {
+    return null;
+  }
+}
+
+// ── Yahoo Finance v8 chart API ──
 async function fetchYahooQuote(code) {
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(code)}?interval=1d&range=2d`;
   try {
@@ -226,10 +265,10 @@ async function fetchYahooQuote(code) {
     const meta = result.meta || {};
     const price = meta.regularMarketPrice;
     const prevClose = meta.chartPreviousClose || meta.previousClose;
-    const changePct = meta.regularMarketChangePercent; // 已是百分比数字
+    const changePct = meta.regularMarketChangePercent;
     if (typeof price !== 'number' || price <= 0) return null;
     return {
-      price: price,
+      price,
       prevClose: typeof prevClose === 'number' ? prevClose : null,
       changePct: typeof changePct === 'number' ? changePct : null,
       source: 'yahoo',
@@ -240,14 +279,22 @@ async function fetchYahooQuote(code) {
   }
 }
 
-// ── 调度：根据 src 字段选择 fetcher ──
+// ── 调度 ──
 async function fetchOne(item) {
-  if (item.src === 'tencent') {
-    // 区分期货（nf 前缀）vs 指数（us/hk/jp/kr/tw 前缀）
-    if (item.code.startsWith('nf')) return fetchTencentFutures(item.code);
-    return fetchTencentIndex(item.code);
+  switch (item.src) {
+    case 'tencent':
+      return fetchTencentIndex(item.code);
+    case 'sina':
+      // 用 code 前缀区分期货/指数
+      if (item.code.startsWith('nf_') || item.code.startsWith('NF_')) {
+        return fetchSinaFutures(item.code);
+      }
+      return fetchSinaIndex(item.code);
+    case 'yahoo':
+      return fetchYahooQuote(item.code);
+    default:
+      return null;
   }
-  return fetchYahooQuote(item.code);
 }
 
 // ── 主 handler ──
@@ -261,14 +308,12 @@ export default async function handler(req, res) {
       return;
     }
 
-    // 缓存命中（5 分钟内复用）
     const now = Date.now();
     if (cache.data && cache.expiresAt > now) {
       res.status(200).json({ ...cache.data, cached: true });
       return;
     }
 
-    // 并发抓所有合约（每合约单独 timeout）
     const tasks = [];
     for (const [catKey, cat] of Object.entries(CATEGORIES)) {
       for (const item of cat.items) {
@@ -279,14 +324,10 @@ export default async function handler(req, res) {
     const results = await Promise.all(tasks.map(t => t.p));
     const errors = [];
 
-    // 聚合结果
     const categories = {};
     const sources = new Set();
     for (const [catKey, cat] of Object.entries(CATEGORIES)) {
-      categories[catKey] = {
-        label: cat.label,
-        items: [],
-      };
+      categories[catKey] = { label: cat.label, items: [] };
     }
     tasks.forEach((t, i) => {
       const r = results[i];
@@ -329,16 +370,12 @@ export default async function handler(req, res) {
       errors: errors.length > 0 ? errors : undefined,
     };
 
-    // 写缓存
     cache = { data: payload, expiresAt: now + CACHE_TTL_MS };
-
     res.status(200).json(payload);
   } catch (err) {
     console.error('[api/global-markets] unhandled error:', err);
     try {
-      res.status(500).json({
-        error: err && err.message ? err.message : String(err),
-      });
+      res.status(500).json({ error: err && err.message ? err.message : String(err) });
     } catch (_) { /* headers sent */ }
   }
 }
