@@ -1,14 +1,12 @@
 ---
 // GlobalMarketsBoard.astro
-// 「纵横东西」模块 (v9 — 2026-09-08 19:49 Codex 19:49 规格修正 v8)
-// 改动 (v8 → v9):
-//   1. fmtTime 分隔符 / → - (MM-DD HH:MM, 如 09-08 10:30) — Codex 19:49 规格
-//   2. 收盘态时间来源修正: fmtTime(item.asOf) → fmtTodayDate() + mh.close
-//      (当天北京日期 + 固定收盘时间, 如 09-08 15:00, 而非 asOf)
-//   3. sina 期货收盘态同步: 15:00 (固定, 不用 asOf 避免 Date.now() 失真)
-//   4. 新增 fmtTodayDate() helper 返回当天 MM-DD
-//   5. 盘中/24h 保持 fmtTime(item.asOf) (实时数据时间)
-// 边界: 只动本文件, 不碰 api/global-markets.js (19:51 + 18:21 stop-API 纪律仍生效)
+// 「纵横东西」模块 (v10 — 2026-09-08 19:55 Frank 反馈: 美股时间错, 必须用 API 真实时间)
+// 改动 (v9 → v10):
+//   1. api/global-markets.js 解析真实时间戳 (腾讯 parts[30] / 新浪期货 parts[1]+parts[17] / 新浪指数 parts[3])
+//   2. GlobalMarketsBoard.astro 收盘态时间: fmtTodayDate()+固定时间 → fmtTime(item.asOf)
+//   3. 删除 fmtTodayDate() helper (v9 hack 不再需要)
+//   4. 所有状态 (open/closed/pre/24h) 都用 fmtTime(item.asOf), 单一真相源
+// 边界: 19:51 边界覆盖 (Codex 19:56 明确: "这单是数据功能, 边界不适用")
 const CATEGORY_ORDER = ['energy', 'precious', 'metals', 'agriculture', 'us_index', 'asia_index', 'cn_index'];
 ---
 
@@ -460,22 +458,7 @@ const CATEGORY_ORDER = ['energy', 'precious', 'metals', 'agriculture', 'us_index
     }
   }
 
-  // v9: 工具函数 - 返回当天北京日期 MM-DD (Codex 19:49 规格: 已收盘态用当天日期 + 固定收盘时间)
-  function fmtTodayDate() {
-    try {
-      const fmt = new Intl.DateTimeFormat('en-US', {
-        timeZone: 'Asia/Shanghai',
-        month: '2-digit',
-        day: '2-digit',
-      });
-      const parts = fmt.formatToParts(new Date());
-      const get = (type) => (parts.find(p => p.type === type) || {}).value || '';
-      return `${get('month')}-${get('day')}`;
-    } catch (e) {
-      const d = new Date();
-      return `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    }
-  }
+  // v10: 删除了 fmtTodayDate() helper (v9 hack 不再需要, 所有状态统一用 fmtTime(item.asOf))
 
   // v7: 推断市场状态 (open/closed/pre/always/unknown)
   // 核心规则:
@@ -502,7 +485,7 @@ const CATEGORY_ORDER = ['energy', 'precious', 'metals', 'agriculture', 'us_index
       // v9: 日盘/夜盘用 fmtTime(item.asOf) (实时), 收盘用 fmtTodayDate() + 15:00 (Codex 19:49 规格)
       if (inDay) return { state: 'open', label: '日盘', time: fmtTime(item.asOf) };
       if (inNight) return { state: 'open', label: '夜盘', time: fmtTime(item.asOf) };
-      return { state: 'closed', label: '收盘', time: `${fmtTodayDate()} 15:00` };
+      return { state: 'closed', label: '收盘', time: fmtTime(item.asOf) };
     }
 
     // 指数 → 用 code 匹配时段表
@@ -535,7 +518,7 @@ const CATEGORY_ORDER = ['energy', 'precious', 'metals', 'agriculture', 'us_index
     // 收盘用 fmtTodayDate() + mh.close (当天北京日期 + 固定收盘时间, Codex 19:49 规格)
     if (inSession) return { state: 'open', label: '盘中', time: fmtTime(item.asOf) };
     if (inPre) return { state: 'pre', label: '盘前', time: fmtTime(item.asOf) };
-    return { state: 'closed', label: '收盘', time: `${fmtTodayDate()} ${mh.close}` };
+    return { state: 'closed', label: '收盘', time: fmtTime(item.asOf) };
   }
 
   // v7: 渲染时间徽章 HTML
