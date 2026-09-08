@@ -1,45 +1,67 @@
 ---
 // GlobalMarketsBoard.astro
-// 「纵横东西」模块：重点行情（9 项置顶）+ 其余分类折叠
-// 数据来源: /api/global-markets (Vercel serverless，多源 + 5min 缓存)
-// 风格: Bloomberg Terminal 专业终端风 — 深色 + monospace 等宽数字 + 高密度 + 涨跌左侧色条
-// rebuild-trigger: 2026-09-07 21:40
+// 「纵横东西」模块（v5 — 2026-09-08 16:02 Frank 批准 Codex 6 推荐答案）：
+//   1. 顶部 featured 9 项：方块 grid (响应式 4/3/2/1)
+//   2. 分类：7 个 tab + 小按钮横纵向排列（item 全部出现，含 featured）
+//   3. 共用详情面板：tab 切换显示哪个分类的 items，点击按钮显示详情
+//   4. 默认 active = 能源
+//   5. featured 纯展示不可点
+//   6. 详情字段：名称 / 价格 / 单位 / 涨跌%
+// 数据来源: /api/global-markets (Vercel serverless, 多源 + 5min 缓存)
+// 风格: Bloomberg Terminal — 深色 + monospace 等宽数字 + 涨跌色条
+// 边界: 只动本文件, 不碰 api/global-markets.js
+// 教训: scoped CSS 不命中 JS 动态注入的 DOM → 全用 <style is:global> + inline style 兜底
 const CATEGORY_ORDER = ['energy', 'precious', 'metals', 'agriculture', 'us_index', 'asia_index', 'cn_index'];
 ---
 
 <section class="global-markets" aria-label="纵横东西">
   <header class="gm-header">
-    <h2 class="gm-title">纵横东西</h2>
+    <h2 class="gm-title">🌐 纵横东西</h2>
     <p class="gm-sub">大宗期货 · 美股 · 亚太 · 中国指数</p>
+    <span class="gm-updated" id="global-markets-updated"></span>
   </header>
 
+  <!-- 重点行情：方块 grid (4/3/2/1 响应式, 纯展示不可点) -->
   <div class="gm-featured">
     <div class="gm-featured-head">
-      <h3 class="gm-featured-title">重点行情</h3>
-      <span class="gm-updated" id="global-markets-updated"></span>
+      <h3 class="gm-featured-title">🔥 重点行情</h3>
+      <span class="gm-featured-hint">纯展示 · 不可点击</span>
     </div>
     <div class="gm-featured-grid" id="gm-featured-grid">
       <div class="gm-skeleton">加载中…</div>
     </div>
   </div>
 
+  <!-- 分类 tab + 共用详情面板 (tab 切换 + item 按钮 + 共享 detail) -->
   <div class="gm-cats" id="gm-cats"></div>
 
   <footer class="gm-footer">
-    <span>数据来源：腾讯财经 · 新浪财经 · Yahoo Finance</span>
+    <span>数据来源：腾讯财经 · 新浪财经 · Yahoo Finance · 缓存 5 分钟</span>
   </footer>
 </section>
 
 <style is:global>
+  /* =========================================================
+     Global scope: Astro scoped CSS 不命中 JS 动态注入的 DOM
+     (Codex 15:11 / Frank 15:25 教训), 所以本组件全部样式用 is:global
+     ========================================================= */
+
   .global-markets {
     --gm-bg: #0f1115;
     --gm-card: #171a21;
+    --gm-card-hover: #1d2129;
     --gm-border: #232833;
+    --gm-border-strong: #2f3540;
     --gm-text: #f5f7fa;
     --gm-muted: #8b93a1;
     --gm-up: #ff6b6b;
+    --gm-up-bg: rgba(255, 107, 107, 0.14);
+    --gm-up-faint: rgba(255, 107, 107, 0.06);
     --gm-down: #2dd4a0;
+    --gm-down-bg: rgba(45, 212, 160, 0.14);
+    --gm-down-faint: rgba(45, 212, 160, 0.06);
     --gm-flat: #6b7280;
+    --gm-flat-bg: rgba(107, 114, 128, 0.12);
     --gm-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
 
     max-width: 1200px;
@@ -50,89 +72,98 @@ const CATEGORY_ORDER = ['energy', 'precious', 'metals', 'agriculture', 'us_index
     border-radius: 8px;
   }
 
+  /* ===== Header ===== */
   .gm-header {
     display: flex;
     align-items: baseline;
-    justify-content: space-between;
+    flex-wrap: wrap;
     gap: var(--space-3);
-    margin-bottom: var(--space-4);
+    margin-bottom: var(--space-5);
     padding-bottom: var(--space-3);
     border-bottom: 1px solid var(--gm-border);
   }
-
   .gm-title {
     margin: 0;
-    font-size: 1.1rem;
+    font-size: 1.25rem;
     font-weight: 600;
-    letter-spacing: 0.02em;
     color: var(--gm-text);
+    letter-spacing: 0.01em;
   }
-
   .gm-sub {
     margin: 0;
     font-size: 0.78rem;
     color: var(--gm-muted);
   }
-
-  /* 重点行情 */
-  .gm-featured { margin-bottom: var(--space-4); }
-
-  .gm-featured-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: var(--space-2);
-  }
-
-  .gm-featured-title {
-    margin: 0;
-    font-size: 0.82rem;
-    font-weight: 600;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    color: var(--gm-muted);
-  }
-
   .gm-updated {
     font-family: var(--gm-mono);
     font-size: 0.72rem;
     color: var(--gm-muted);
+    margin-left: auto;
+  }
+
+  /* ===== Featured (方块 grid) ===== */
+  .gm-featured { margin-bottom: var(--space-6); }
+
+  .gm-featured-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: var(--space-3);
+  }
+  .gm-featured-title {
+    margin: 0;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--gm-text);
+    letter-spacing: 0.02em;
+  }
+  .gm-featured-hint {
+    font-family: var(--gm-mono);
+    font-size: 0.7rem;
+    color: var(--gm-muted);
   }
 
   .gm-featured-grid {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+  }
+  /* 响应式断点 (Codex 推荐答案 #2: 桌面 4 / 平板 3 / 手机 2 / 窄屏 1) */
+  @media (max-width: 1024px) {
+    .gm-featured-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  }
+  @media (max-width: 640px) {
+    .gm-featured-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @media (max-width: 380px) {
+    .gm-featured-grid { grid-template-columns: 1fr; }
   }
 
-  .gm-skeleton {
-    grid-column: 1 / -1;
-    padding: var(--space-10) 0;
-    text-align: center;
-    color: var(--gm-muted);
-    font-size: 0.8rem;
-  }
-
+  /* Featured 方块 (column 布局, 顶部涨跌色条) */
   .gm-fcard {
     display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 9px 14px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+    padding: 12px 14px;
     background: var(--gm-card);
     border: 1px solid var(--gm-border);
-    border-left: 4px solid var(--gm-flat);
+    border-top: 4px solid var(--gm-flat);
     border-radius: 8px;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+    cursor: default; /* 纯展示不可点 */
+    transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease;
     min-width: 0;
   }
-
-  .gm-fcard.up { border-left-color: var(--gm-up); background: linear-gradient(90deg, rgba(255,107,107,0.10), var(--gm-card) 48%); }
-  .gm-fcard.down { border-left-color: var(--gm-down); background: linear-gradient(90deg, rgba(45,212,160,0.10), var(--gm-card) 48%); }
-  .gm-fcard.flat { border-left-color: var(--gm-flat); }
+  .gm-fcard:hover {
+    transform: translateY(-1px);
+    border-color: var(--gm-border-strong);
+    background: var(--gm-card-hover);
+  }
+  .gm-fcard.up { border-top-color: var(--gm-up); background: linear-gradient(180deg, var(--gm-up-faint), var(--gm-card) 32%); }
+  .gm-fcard.down { border-top-color: var(--gm-down); background: linear-gradient(180deg, var(--gm-down-faint), var(--gm-card) 32%); }
+  .gm-fcard.flat { border-top-color: var(--gm-flat); }
 
   .gm-fcard-name {
-    flex: 1;
-    min-width: 0;
     font-size: 0.82rem;
     font-weight: 500;
     color: var(--gm-muted);
@@ -140,155 +171,229 @@ const CATEGORY_ORDER = ['energy', 'precious', 'metals', 'agriculture', 'us_index
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-
   .gm-fcard-price {
-    flex-shrink: 0;
     font-family: var(--gm-mono);
-    font-size: 1.35rem;
+    font-size: 1.4rem;
     font-weight: 700;
     line-height: 1.1;
     color: var(--gm-text);
     font-variant-numeric: tabular-nums;
-    text-align: right;
+    white-space: nowrap;
   }
-
   .gm-fcard.up .gm-fcard-price { color: var(--gm-up); }
   .gm-fcard.down .gm-fcard-price { color: var(--gm-down); }
   .gm-fcard.flat .gm-fcard-price { color: var(--gm-text); }
 
   .gm-fcard-unit {
+    font-family: var(--gm-mono);
     font-size: 0.68rem;
     font-weight: 400;
     color: var(--gm-muted);
+    margin-left: 4px;
   }
 
+  /* 涨跌徽章 */
   .gm-change {
-    flex-shrink: 0;
     display: inline-flex;
     align-items: center;
     gap: 3px;
     padding: 3px 8px;
     border-radius: 6px;
     font-family: var(--gm-mono);
-    font-size: 0.8rem;
+    font-size: 0.78rem;
     font-weight: 600;
     font-variant-numeric: tabular-nums;
+    width: fit-content;
   }
+  .gm-change.up { color: var(--gm-up); background: var(--gm-up-bg); }
+  .gm-change.down { color: var(--gm-down); background: var(--gm-down-bg); }
+  .gm-change.flat { color: var(--gm-muted); background: var(--gm-flat-bg); }
 
-  .gm-change.up { color: var(--gm-up); background: rgba(255,107,107,0.14); }
-  .gm-change.down { color: var(--gm-down); background: rgba(45,212,160,0.14); }
-  .gm-change.flat { color: var(--gm-muted); background: rgba(107,114,128,0.12); }
-
-  /* 折叠分类 */
-  .gm-cats {
+  /* ===== Category Tabs ===== */
+  .gm-cat-tabs {
     display: flex;
-    flex-direction: column;
+    flex-wrap: wrap;
     gap: 6px;
+    margin-bottom: 14px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--gm-border);
   }
-
-  details.gm-cat {
-    background: var(--gm-card);
+  .gm-cat-tab {
+    padding: 6px 14px;
     border: 1px solid var(--gm-border);
-    border-radius: 4px;
-    overflow: hidden;
+    background: transparent;
+    color: var(--gm-muted);
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+    font-family: inherit;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .gm-cat-tab:hover {
+    color: var(--gm-text);
+    border-color: var(--gm-border-strong);
+  }
+  .gm-cat-tab.active {
+    background: var(--gm-card);
+    color: var(--gm-text);
+    border-color: var(--gm-text);
+  }
+  .gm-cat-tab-count {
+    font-family: var(--gm-mono);
+    font-size: 0.7rem;
+    opacity: 0.7;
   }
 
-  summary.gm-cat-label {
-    cursor: pointer;
-    list-style: none;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 12px;
+  /* ===== Active Category Section (items as buttons) ===== */
+  .gm-cat-section { margin-bottom: 14px; }
+  .gm-cat-section-title {
     font-size: 0.82rem;
     font-weight: 600;
     color: var(--gm-text);
-    user-select: none;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
   }
-
-  summary.gm-cat-label::-webkit-details-marker { display: none; }
-
-  summary.gm-cat-label::before {
-    content: '+';
-    font-family: var(--gm-mono);
-    color: var(--gm-muted);
-    width: 12px;
-  }
-
-  details[open] summary.gm-cat-label::before { content: '−'; }
-
-  .gm-cat-count {
-    margin-left: auto;
+  .gm-cat-section-count {
     font-family: var(--gm-mono);
     font-size: 0.72rem;
     font-weight: 400;
     color: var(--gm-muted);
   }
 
-  .gm-cat-items {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0 12px;
-    padding: 4px 12px 8px;
+  .gm-cat-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
   }
-
-  @media (max-width: 640px) {
-    .gm-cat-items { grid-template-columns: 1fr; }
-  }
-
-  .gm-item {
-    display: grid;
-    grid-template-columns: 1fr auto;
+  .gm-cat-btn {
+    display: inline-flex;
     align-items: center;
-    gap: 8px;
-    padding: 5px 0;
-    border-bottom: 1px solid var(--gm-border);
-  }
-
-  .gm-item-name {
-    font-size: 0.8rem;
+    gap: 6px;
+    padding: 6px 12px;
+    border: 1px solid var(--gm-border);
+    background: var(--gm-card);
     color: var(--gm-text);
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: border-color 0.18s ease, background 0.18s ease;
+    font-family: inherit;
+    min-width: 0;
+  }
+  .gm-cat-btn:hover {
+    border-color: var(--gm-border-strong);
+    background: var(--gm-card-hover);
+  }
+  .gm-cat-btn.active {
+    border-color: var(--gm-text);
+    background: rgba(255, 255, 255, 0.06);
+  }
+  .gm-cat-btn-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 110px;
+  }
+  .gm-cat-btn-price {
+    font-family: var(--gm-mono);
+    font-variant-numeric: tabular-nums;
+    font-size: 0.72rem;
+    font-weight: 600;
+  }
+  .gm-cat-btn-price.up { color: var(--gm-up); }
+  .gm-cat-btn-price.down { color: var(--gm-down); }
+  .gm-cat-btn-price.flat { color: var(--gm-muted); }
+
+  /* ===== Shared Detail Panel ===== */
+  .gm-detail-panel {
+    padding: 16px;
+    background: var(--gm-card);
+    border: 1px solid var(--gm-border);
+    border-radius: 8px;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 16px;
+    align-items: center;
+    min-height: 84px;
+    margin-top: 4px;
+  }
+  @media (max-width: 640px) {
+    .gm-detail-panel {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+  }
+  .gm-detail-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+  }
+  .gm-detail-label {
+    font-family: var(--gm-mono);
+    font-size: 0.7rem;
+    color: var(--gm-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .gm-detail-value {
+    font-family: var(--gm-mono);
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: var(--gm-text);
+    font-variant-numeric: tabular-nums;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-
-  .gm-item-unit {
-    font-size: 0.68rem;
-    color: var(--gm-muted);
-  }
-
-  .gm-item-price {
-    display: flex;
-    align-items: baseline;
-    gap: 8px;
-    font-variant-numeric: tabular-nums;
-  }
-
-  .gm-item-price-value {
-    font-family: var(--gm-mono);
-    font-size: 0.85rem;
-    color: var(--gm-text);
-  }
-
-  .gm-item-empty { color: var(--gm-muted); font-style: italic; }
-
-  .gm-footer {
-    margin-top: var(--space-3);
-    font-family: var(--gm-mono);
-    font-size: 0.7rem;
-    color: var(--gm-muted);
-  }
-
-  .gm-error {
+  .gm-detail-value.up { color: var(--gm-up); }
+  .gm-detail-value.down { color: var(--gm-down); }
+  .gm-detail-value.flat { color: var(--gm-muted); }
+  .gm-detail-placeholder {
     grid-column: 1 / -1;
+    text-align: center;
+    color: var(--gm-muted);
+    font-size: 0.85rem;
+    padding: 8px 0;
+  }
+
+  /* ===== Common ===== */
+  .gm-skeleton {
+    grid-column: 1 / -1;
+    padding: var(--space-8) 0;
+    text-align: center;
+    color: var(--gm-muted);
+    font-size: 0.85rem;
+  }
+  .gm-error {
     padding: var(--space-4);
     background: rgba(240, 85, 77, 0.08);
     border: 1px solid rgba(240, 85, 77, 0.35);
     border-radius: 4px;
     color: #fca5a5;
-    font-size: 0.8rem;
+    font-size: 0.85rem;
     text-align: center;
+  }
+  .gm-footer {
+    margin-top: var(--space-4);
+    padding-top: var(--space-3);
+    border-top: 1px solid var(--gm-border);
+    font-family: var(--gm-mono);
+    font-size: 0.7rem;
+    color: var(--gm-muted);
+  }
+
+  /* Reduced motion */
+  @media (prefers-reduced-motion: reduce) {
+    .gm-fcard, .gm-cat-tab, .gm-cat-btn { transition: none; }
+    .gm-fcard:hover { transform: none; }
   }
 </style>
 
@@ -309,6 +414,15 @@ const CATEGORY_ORDER = ['energy', 'precious', 'metals', 'agriculture', 'us_index
     asia_index: '亚太指数',
     cn_index: '中国指数',
   };
+
+  const DEFAULT_CAT = 'energy';
+
+  // Mutable state (in-module, not on window)
+  let currentPayload = null;
+  let activeCat = DEFAULT_CAT;
+  let activeCode = null;
+
+  // ── Helpers ────────────────────────────────────────────────────
 
   function escapeHtml(s) {
     if (s == null) return '';
@@ -343,45 +457,165 @@ const CATEGORY_ORDER = ['energy', 'precious', 'metals', 'agriculture', 'us_index
     return `<span class="gm-change ${dir}">${arrow} ${escapeHtml(text)}</span>`;
   }
 
+  function findItem(code) {
+    if (!currentPayload) return null;
+    const cats = currentPayload.categories || {};
+    for (const cat of Object.values(cats)) {
+      for (const it of (cat.items || [])) {
+        if (it.code === code) return it;
+      }
+    }
+    return null;
+  }
+
+  // ── Render: Featured (方块 grid, 纯展示不可点) ────────────────
+
   function renderFeatured(items) {
     if (!featuredGrid) return;
     if (!items.length) {
-      featuredGrid.innerHTML = '<div class="gm-skeleton">暂无数据</div>';
+      featuredGrid.innerHTML = '<div class="gm-skeleton">暂无重点行情数据</div>';
       return;
     }
     featuredGrid.innerHTML = items.map(it => {
       const dir = dirOf(it.changePct);
-      const priceHtml = it.price != null
-        ? `<span class="gm-fcard-price">${fmtPrice(it.price)} <span class="gm-fcard-unit">${escapeHtml(it.unit || '')}</span></span>`
-        : `<span class="gm-fcard-price gm-item-empty">—</span>`;
-      return `<div class="gm-fcard ${dir}">
-        <span class="gm-fcard-name">${escapeHtml(it.nameZh || it.code)}</span>
-        ${priceHtml}
+      const priceTxt = it.price != null ? fmtPrice(it.price) : '—';
+      return `<div class="gm-fcard ${dir}" data-code="${escapeHtml(it.code)}">
+        <div class="gm-fcard-name">${escapeHtml(it.nameZh || it.code)}</div>
+        <div class="gm-fcard-price">${priceTxt}<span class="gm-fcard-unit">${escapeHtml(it.unit || '')}</span></div>
         ${changeHtml(it.changePct)}
       </div>`;
     }).join('');
   }
 
-  function renderCategory(catKey, catData) {
-    const items = (catData.items || []).filter(it => !it.featured);
-    if (!items.length) return '';
-    const label = catData.label || CATEGORY_LABELS[catKey] || catKey;
-    const itemsHtml = items.map(it => {
-      const priceHtml = it.price != null
-        ? `<span class="gm-item-price-value">${fmtPrice(it.price)}</span>`
-        : `<span class="gm-item-price-value gm-item-empty">—</span>`;
-      return `<div class="gm-item">
-        <span class="gm-item-name">${escapeHtml(it.nameZh || it.code)} <span class="gm-item-unit">${escapeHtml(it.unit || '')}</span></span>
-        <span class="gm-item-price">${priceHtml}${changeHtml(it.changePct)}</span>
-      </div>`;
-    }).join('');
-    return `<details class="gm-cat">
-      <summary class="gm-cat-label">${escapeHtml(label)}<span class="gm-cat-count">${items.length}</span></summary>
-      <div class="gm-cat-items">${itemsHtml}</div>
-    </details>`;
+  // ── Render: Cats container (tabs + active section + detail) ─────
+
+  function renderCatsContainer() {
+    if (!catsEl) return;
+    catsEl.innerHTML = `
+      <div class="gm-cat-tabs" id="gm-cat-tabs"></div>
+      <div class="gm-cat-section" id="gm-cat-section"></div>
+      <div class="gm-detail-panel" id="gm-detail-panel"></div>
+    `;
+    renderCategoryTabs();
+    renderActiveSection();
+    resetDetailPanel();
   }
 
+  function renderCategoryTabs() {
+    const tabsEl = document.getElementById('gm-cat-tabs');
+    if (!tabsEl || !currentPayload) return;
+    const cats = currentPayload.categories || {};
+    const html = CATEGORY_ORDER
+      .map(k => {
+        const cat = cats[k];
+        if (!cat || !cat.items || !cat.items.length) return '';
+        const label = cat.label || CATEGORY_LABELS[k] || k;
+        const isActive = k === activeCat;
+        return `<button type="button" class="gm-cat-tab${isActive ? ' active' : ''}" data-cat="${k}">${escapeHtml(label)}<span class="gm-cat-tab-count">${cat.items.length}</span></button>`;
+      })
+      .filter(Boolean)
+      .join('');
+    tabsEl.innerHTML = html;
+
+    tabsEl.querySelectorAll('.gm-cat-tab').forEach(tab => {
+      tab.addEventListener('click', () => switchCategory(tab.dataset.cat));
+    });
+  }
+
+  function renderActiveSection() {
+    const secEl = document.getElementById('gm-cat-section');
+    if (!secEl || !currentPayload) return;
+    const cats = currentPayload.categories || {};
+    const cat = cats[activeCat];
+    if (!cat || !cat.items || !cat.items.length) {
+      secEl.innerHTML = '<div class="gm-skeleton">该分类暂无数据</div>';
+      return;
+    }
+    const label = cat.label || CATEGORY_LABELS[activeCat] || activeCat;
+    secEl.innerHTML = `
+      <div class="gm-cat-section-title">
+        ${escapeHtml(label)}
+        <span class="gm-cat-section-count">${cat.items.length} 项</span>
+      </div>
+      <div class="gm-cat-buttons">
+        ${cat.items.map(it => {
+          const dir = dirOf(it.changePct);
+          const priceTxt = it.price != null ? fmtPrice(it.price) : '—';
+          const isActive = it.code === activeCode;
+          return `<button type="button" class="gm-cat-btn${isActive ? ' active' : ''}" data-code="${escapeHtml(it.code)}" data-cat="${activeCat}">
+            <span class="gm-cat-btn-name">${escapeHtml(it.nameZh || it.code)}</span>
+            <span class="gm-cat-btn-price ${dir}">${priceTxt}</span>
+          </button>`;
+        }).join('')}
+      </div>
+    `;
+
+    secEl.querySelectorAll('.gm-cat-btn').forEach(btn => {
+      btn.addEventListener('click', () => showItemDetail(btn.dataset.code));
+    });
+  }
+
+  function switchCategory(cat) {
+    if (!cat || cat === activeCat) return;
+    activeCat = cat;
+    activeCode = null;
+
+    // Update tab active state
+    document.querySelectorAll('.gm-cat-tab').forEach(tab => {
+      tab.classList.toggle('active', tab.dataset.cat === cat);
+    });
+
+    renderActiveSection();
+    resetDetailPanel();
+  }
+
+  function resetDetailPanel() {
+    const panel = document.getElementById('gm-detail-panel');
+    if (panel) {
+      panel.innerHTML = '<div class="gm-detail-placeholder">点击上方任意行情按钮查看详情</div>';
+    }
+  }
+
+  function showItemDetail(code) {
+    const item = findItem(code);
+    if (!item) return;
+    activeCode = code;
+
+    // Highlight active button (within current section)
+    document.querySelectorAll('.gm-cat-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.code === code);
+    });
+
+    const dir = dirOf(item.changePct);
+    const pctText = fmtChangePct(item.changePct);
+    const arrow = dir === 'up' ? '↑' : dir === 'down' ? '↓' : '—';
+    const panel = document.getElementById('gm-detail-panel');
+    if (panel) {
+      panel.innerHTML = `
+        <div class="gm-detail-cell">
+          <div class="gm-detail-label">名称</div>
+          <div class="gm-detail-value">${escapeHtml(item.nameZh || item.code)}</div>
+        </div>
+        <div class="gm-detail-cell">
+          <div class="gm-detail-label">价格</div>
+          <div class="gm-detail-value">${fmtPrice(item.price)}</div>
+        </div>
+        <div class="gm-detail-cell">
+          <div class="gm-detail-label">单位</div>
+          <div class="gm-detail-value" style="font-size: 0.88rem; font-weight: 500;">${escapeHtml(item.unit || '—')}</div>
+        </div>
+        <div class="gm-detail-cell">
+          <div class="gm-detail-label">涨跌</div>
+          <div class="gm-detail-value ${dir}">${arrow} ${escapeHtml(pctText || '—')}</div>
+        </div>
+      `;
+    }
+  }
+
+  // ── Render: top-level dispatch ──────────────────────────────────
+
   function render(payload) {
+    currentPayload = payload;
     const cats = payload.categories || {};
     const featured = [];
     for (const cat of Object.values(cats)) {
@@ -389,16 +623,20 @@ const CATEGORY_ORDER = ['energy', 'precious', 'metals', 'agriculture', 'us_index
         if (it.featured) featured.push(it);
       }
     }
+
     renderFeatured(featured);
 
     if (catsEl) {
-      const html = CATEGORY_ORDER.map(k => cats[k] ? renderCategory(k, cats[k]) : '').join('');
-      catsEl.innerHTML = html || '<div class="gm-error">暂无更多行情</div>';
+      if (!Object.keys(cats).length) {
+        catsEl.innerHTML = '<div class="gm-error">暂无更多行情</div>';
+      } else {
+        renderCatsContainer();
+      }
     }
 
     if (updatedEl) {
       const t = new Date(payload.asOf || Date.now());
-      updatedEl.textContent = t.toLocaleString('zh-CN', { hour12: false, timeZone: 'Asia/Shanghai' });
+      updatedEl.textContent = '快照 ' + t.toLocaleString('zh-CN', { hour12: false, timeZone: 'Asia/Shanghai' });
     }
   }
 
@@ -411,7 +649,7 @@ const CATEGORY_ORDER = ['energy', 'precious', 'metals', 'agriculture', 'us_index
       if (featuredGrid) {
         featuredGrid.innerHTML = `<div class="gm-error">行情获取失败：${escapeHtml(String(err && err.message || err))}</div>`;
       }
-      if (updatedEl) updatedEl.textContent = '—';
+      if (updatedEl) updatedEl.textContent = '快照：—';
     }
   }
 
