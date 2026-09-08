@@ -24,15 +24,26 @@ export interface Holding {
   cost: number;
 }
 
+export interface PriceSnapshot {
+  /** Latest price in CNY */
+  currentPrice: number;
+  /** Previous trading-day close in CNY (may be null if source didn't return it) */
+  prevClose: number | null;
+}
+
 export interface HoldingStats extends Holding {
   /** Latest price in CNY, or null if price unavailable */
   currentPrice: number | null;
+  /** Previous trading-day close in CNY (paired with currentPrice), null if unknown */
+  prevClose: number | null;
   /** shares × currentPrice, or null if price unavailable */
   marketValue: number | null;
   /** Position percentage (0-100), equal weight if all prices null */
   positionPct: number;
-  /** Return percentage (signed), 0 if no price */
+  /** Return percentage vs cost (signed), 0 if no price */
   returnPct: number;
+  /** Today's return percentage vs prev close (signed), 0 if no price or no prev close */
+  todayReturnPct: number;
 }
 
 /**
@@ -65,29 +76,44 @@ export function parseFrankInput(text: string): { name: string; shares: number; c
 }
 
 /**
- * Calculate holding statistics with current prices.
+ * Calculate holding statistics with current prices (and optional prev close).
+ *
+ * Prices input shape (per code):
+ *   - number  → legacy: currentPrice only (prevClose null)
+ *   - { currentPrice, prevClose } → full snapshot
+ *   - null    → price unknown
  *
  * - marketValue: shares × currentPrice (null if price missing)
  * - positionPct: marketValue / totalMarketValue × 100 (0 if no prices at all → equal weight)
  * - returnPct: (currentPrice - cost) / cost × 100 (0 if no price)
+ * - todayReturnPct: (currentPrice - prevClose) / prevClose × 100 (0 if no price or prevClose)
  *
  * Sorted by marketValue desc (null marketValue last).
- * Holdings with null prices get positionPct=0 (or equal share if all null) and returnPct=0.
+ * Holdings with null prices get positionPct=0 (or equal share if all null), returnPct=0,
+ * prevClose=null, todayReturnPct=0.
  */
 export function calcHoldingStats(
   holdings: Holding[],
-  prices: Record<string, number | null>,
+  prices: Record<string, number | PriceSnapshot | null>,
 ): HoldingStats[] {
   // Compute raw values per holding
   const computed: HoldingStats[] = holdings.map(h => {
-    const price = prices[h.code] ?? null;
+    const raw = prices[h.code];
+    const snap = normalizePriceSnapshot(raw);
+    const price = snap ? snap.currentPrice : null;
+    const prevClose = snap ? snap.prevClose : null;
     const marketValue = price != null ? h.shares * price : null;
     return {
       ...h,
       currentPrice: price,
+      prevClose,
       marketValue,
       positionPct: 0,
       returnPct: price != null ? ((price - h.cost) / h.cost) * 100 : 0,
+      todayReturnPct:
+        price != null && prevClose != null && prevClose > 0
+          ? ((price - prevClose) / prevClose) * 100
+          : 0,
     };
   });
   // Total market value (only those with prices)
@@ -113,6 +139,68 @@ export function calcHoldingStats(
     return b.marketValue - a.marketValue;
   });
   return computed;
+}
+
+/**
+ * Normalize the per-code price entry into a PriceSnapshot | null.
+ * Accepts either:
+ *   - legacy `number` (currentPrice only)
+ *   - `{ currentPrice, prevClose }`
+ *   - null
+ */
+function normalizePriceSnapshot(
+  raw: number | PriceSnapshot | null | undefined,
+): PriceSnapshot | null {
+  if (raw == null) return null;
+  if (typeof raw === 'number') {
+    return raw > 0 ? { currentPrice: raw, prevClose: null } : null;
+  }
+  if (typeof raw === 'object' && typeof raw.currentPrice === 'number' && raw.currentPrice > 0) {
+    return {
+      currentPrice: raw.currentPrice,
+      prevClose:
+        typeof raw.prevClose === 'number' && raw.prevClose > 0 ? raw.prevClose : null,
+    };
+  }
+  return null;
+}
+
+/**
+ * Account-level today's return percentage (weighted by yesterday's market value).
+ * = Σ(shares × (currentPrice - prevClose)) / Σ(shares × prevClose) × 100
+ *
+ * Returns 0 when no holding has both currentPrice and prevClose.
+ */
+export function accountTodayReturnPct(stats: HoldingStats[]): number {
+  let todayPnlAbs = 0;
+  let yesterdayValue = 0;
+  for (const s of stats) {
+    if (
+      s.currentPrice != null &&
+      s.prevClose != null &&
+      s.prevClose > 0 &&
+      s.currentPrice > 0
+    ) {
+      todayPnlAbs += s.shares * (s.currentPrice - s.prevClose);
+      yesterdayValue += s.shares * s.prevClose;
+    }
+  }
+  if (yesterdayValue <= 0) return 0;
+  return (todayPnlAbs / yesterdayValue) * 100;
+}
+
+/**
+ * Account-level today's absolute P&L (sum of (current - prev) × shares).
+ * Returns 0 when no holding has both prices.
+ */
+export function accountTodayPnlAbs(stats: HoldingStats[]): number {
+  let sum = 0;
+  for (const s of stats) {
+    if (s.currentPrice != null && s.prevClose != null && s.prevClose > 0 && s.currentPrice > 0) {
+      sum += s.shares * (s.currentPrice - s.prevClose);
+    }
+  }
+  return sum;
 }
 
 // ── Display formatters ────────────────────────────────────────────
