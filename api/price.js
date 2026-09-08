@@ -4,7 +4,11 @@
 //
 // Returns JSON:
 //   {
-//     "prices": { "600015": 7.85, "000001": null, ... },
+//     "prices": {
+//       "600015": { "currentPrice": 7.85, "prevClose": 7.80 },
+//       "000001": null,
+//       ...
+//     },
 //     "source": "eastmoney" | "tencent" | "sina" | "mixed" | "none",
 //     "fetchedAt": 1756420800000
 //   }
@@ -12,10 +16,13 @@
 // Strategy: Promise.race across 3 sources per code, 2s per-source timeout,
 // take first SUCCESSFUL result. Worst case 2.2s per code.
 //
-// Sources:
+// Sources (currentPrice + prevClose):
 //   1. 东方财富 — push2.eastmoney.com (primary, GBK not needed)
+//      f43 = current price (cents), f60 = prev close (cents); both ÷100
 //   2. 腾讯 — qt.gtimg.cn (GBK decode)
+//      parts[3] = current, parts[4] = prev close
 //   3. 新浪 — hq.sinajs.cn (GBK decode, needs Referer)
+//      parts[3] = current, parts[2] = prev close
 
 import https from 'node:https';
 
@@ -77,18 +84,41 @@ function fetchUrl(rawUrl, headers = {}, encoding = 'utf-8') {
   });
 }
 
+// Helpers ────────────────────────────────────────────────────────────
+
+/**
+ * Parse a cents-style eastmoney field into a price, returning null on
+ * missing/invalid input.
+ */
+function centsToPrice(value) {
+  return typeof value === 'number' && value > 0 ? value / 100 : null;
+}
+
+/**
+ * Normalize a parsed prev-close into null when the source didn't provide a
+ * usable value (NaN / <=0). Mirrors the legacy behaviour where unknown
+ * prevClose is rendered as `--` rather than `0.00`.
+ */
+function normalizePrev(value) {
+  return typeof value === 'number' && value > 0 && !Number.isNaN(value) ? value : null;
+}
+
+// Source fetchers ────────────────────────────────────────────────────
+
 async function fetchEastMoney(code) {
   const secid = marketSecid(code) + '.' + code;
   // `ut` is a required public token for the eastmoney web API; without it the
   // server returns an empty reply (curl 52) rather than JSON.
-  const url = 'https://push2.eastmoney.com/api/qt/stock/get?secid=' + secid + '&fields=f43&ut=fa5fd1943c7b386f172d6893dbfba10b';
+  // f43 = current price (cents), f60 = prev close (cents)
+  const url = 'https://push2.eastmoney.com/api/qt/stock/get?secid=' + secid + '&fields=f43,f60&ut=fa5fd1943c7b386f172d6893dbfba10b';
   try {
     const text = await fetchUrl(url, { Referer: 'https://quote.eastmoney.com/' });
     if (!text) return null;
     const json = JSON.parse(text);
-    const f43 = json && json.data && json.data.f43;
-    if (typeof f43 === 'number' && f43 > 0) return f43 / 100;
-    return null;
+    const currentPrice = centsToPrice(json && json.data && json.data.f43);
+    if (currentPrice == null) return null;
+    const prevClose = normalizePrev(centsToPrice(json && json.data && json.data.f60));
+    return { currentPrice, prevClose };
   } catch (err) {
     return null;
   }
@@ -103,8 +133,10 @@ async function fetchTencent(code) {
     const match = text.match(/="([^"]+)"/);
     if (!match) return null;
     const parts = match[1].split('~');
-    const price = parseFloat(parts[3]);
-    return isNaN(price) || price <= 0 ? null : price;
+    const current = parseFloat(parts[3]);
+    if (Number.isNaN(current) || current <= 0) return null;
+    const prevClose = normalizePrev(parseFloat(parts[4]));
+    return { currentPrice: current, prevClose };
   } catch (err) {
     return null;
   }
@@ -119,8 +151,10 @@ async function fetchSina(code) {
     const match = text.match(/"([^"]+)"/);
     if (!match) return null;
     const parts = match[1].split(',');
-    const price = parseFloat(parts[3]);
-    return isNaN(price) || price <= 0 ? null : price;
+    const current = parseFloat(parts[3]);
+    if (Number.isNaN(current) || current <= 0) return null;
+    const prevClose = normalizePrev(parseFloat(parts[2]));
+    return { currentPrice: current, prevClose };
   } catch (err) {
     return null;
   }
@@ -165,7 +199,7 @@ export default async function handler(req, res) {
     const prices = {};
     let anySuccess = false;
     codes.forEach((code, i) => {
-      prices[code] = results[i].price;
+      prices[code] = results[i].price; // { currentPrice, prevClose } | null
       if (results[i].source !== 'none') anySuccess = true;
     });
     const distinctSources = new Set(results.map((r) => r.source).filter((s) => s !== 'none'));
