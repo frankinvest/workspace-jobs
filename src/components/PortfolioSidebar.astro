@@ -84,6 +84,10 @@ const stats = calcHoldingStats(holdings, emptyPrices);
         <span class="portfolio-summary-label">持仓收益率</span>
         <strong class="portfolio-summary-value portfolio-return" id="portfolio-total-return">--</strong>
       </div>
+      <div class="portfolio-summary-cell">
+        <span class="portfolio-summary-label">今日盈亏</span>
+        <strong class="portfolio-summary-value portfolio-return" id="portfolio-total-today">--</strong>
+      </div>
     </div>
 
     <ul class="portfolio-list" id="portfolio-list">
@@ -112,6 +116,10 @@ const stats = calcHoldingStats(holdings, emptyPrices);
               <span class="portfolio-pnl-rate portfolio-return" data-field="returnPct">--</span>
               <span class="portfolio-pnl-amount" data-field="pnlAmount">***</span>
             </div>
+          </div>
+          <div class="portfolio-today">
+            <span class="portfolio-today-label">今日</span>
+            <span class="portfolio-today-value portfolio-return" data-field="todayReturnPct">--</span>
           </div>
         </li>
       ))}
@@ -328,7 +336,7 @@ const stats = calcHoldingStats(holdings, emptyPrices);
 
   .portfolio-summary {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(4, 1fr);
     gap: var(--space-2);
     margin-bottom: var(--space-4);
   }
@@ -475,6 +483,27 @@ const stats = calcHoldingStats(holdings, emptyPrices);
     white-space: nowrap;
   }
 
+  .portfolio-today {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    padding-top: var(--space-2);
+    margin-top: var(--space-2);
+    border-top: 1px solid var(--color-border-subtle);
+  }
+
+  .portfolio-today-label {
+    font-size: var(--font-size-xs);
+    color: var(--color-text-muted);
+  }
+
+  .portfolio-today-value {
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-semibold);
+    font-variant-numeric: tabular-nums;
+  }
+
   .portfolio-return.up {
     color: var(--color-danger); /* A 股红涨 */
   }
@@ -499,11 +528,36 @@ const stats = calcHoldingStats(holdings, emptyPrices);
 
   @media (max-width: 640px) {
     .portfolio-summary {
+      grid-template-columns: repeat(2, 1fr);
       gap: var(--space-2);
     }
 
     .portfolio-summary-value {
       font-size: var(--font-size-xs);
     }
+  }
+</style>
+
+<style is:global>
+  /* Frank 2026-09-08 15:25 提醒：JS 动态注入的「今日」DOM
+     (id=portfolio-total-today / [data-field="todayReturnPct"])
+     不会被 Astro scoped CSS 的 [data-astro-cid-...] 选择器命中。
+     这里用 is:global 兜底，颜色与 .portfolio-return.up/.down 一致。 */
+  #portfolio-total-today,
+  [data-field="todayReturnPct"] {
+    font-variant-numeric: tabular-nums;
+    transition: color var(--transition-fast);
+  }
+  #portfolio-total-today.up,
+  [data-field="todayReturnPct"].up {
+    color: var(--color-danger); /* A 股红涨 */
+  }
+  #portfolio-total-today.down,
+  [data-field="todayReturnPct"].down {
+    color: var(--color-success); /* A 股绿跌 */
+  }
+  #portfolio-total-today.flat,
+  [data-field="todayReturnPct"].flat {
+    color: var(--color-text-muted);
   }
 </style>
