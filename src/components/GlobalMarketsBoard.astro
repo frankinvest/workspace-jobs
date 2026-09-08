@@ -32,14 +32,14 @@ const CATEGORY_ORDER = ['energy', 'precious', 'metals', 'agriculture', 'us_index
 
 <style>
   .global-markets {
-    --gm-bg: #0d1117;
-    --gm-card: #12161f;
-    --gm-border: #1f2937;
-    --gm-text: #e5e7eb;
+    --gm-bg: #0f1115;
+    --gm-card: #171a21;
+    --gm-border: #232833;
+    --gm-text: #f5f7fa;
     --gm-muted: #8b93a1;
-    --gm-up: #f0554d;
-    --gm-down: #2eb872;
-    --gm-flat: #5b6472;
+    --gm-up: #ff6b6b;
+    --gm-down: #2dd4a0;
+    --gm-flat: #6b7280;
     --gm-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
 
     max-width: 1200px;
@@ -121,18 +121,20 @@ const CATEGORY_ORDER = ['energy', 'precious', 'metals', 'agriculture', 'us_index
     background: var(--gm-card);
     border: 1px solid var(--gm-border);
     border-left: 4px solid var(--gm-flat);
-    border-radius: 4px;
+    border-radius: 8px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
     min-width: 0;
   }
 
-  .gm-fcard.up { border-left-color: var(--gm-up); background: linear-gradient(90deg, rgba(240,85,77,0.10), var(--gm-card) 42%); }
-  .gm-fcard.down { border-left-color: var(--gm-down); background: linear-gradient(90deg, rgba(46,184,114,0.10), var(--gm-card) 42%); }
+  .gm-fcard.up { border-left-color: var(--gm-up); background: linear-gradient(90deg, rgba(255,107,107,0.10), var(--gm-card) 48%); }
+  .gm-fcard.down { border-left-color: var(--gm-down); background: linear-gradient(90deg, rgba(45,212,160,0.10), var(--gm-card) 48%); }
   .gm-fcard.flat { border-left-color: var(--gm-flat); }
 
   .gm-fcard-name {
     flex: 1;
     min-width: 0;
-    font-size: 0.78rem;
+    font-size: 0.82rem;
+    font-weight: 500;
     color: var(--gm-muted);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -143,12 +145,16 @@ const CATEGORY_ORDER = ['energy', 'precious', 'metals', 'agriculture', 'us_index
     flex-shrink: 0;
     font-family: var(--gm-mono);
     font-size: 1.35rem;
-    font-weight: 600;
+    font-weight: 700;
     line-height: 1.1;
     color: var(--gm-text);
     font-variant-numeric: tabular-nums;
     text-align: right;
   }
+
+  .gm-fcard.up .gm-fcard-price { color: var(--gm-up); }
+  .gm-fcard.down .gm-fcard-price { color: var(--gm-down); }
+  .gm-fcard.flat .gm-fcard-price { color: var(--gm-text); }
 
   .gm-fcard-unit {
     font-size: 0.68rem;
@@ -158,20 +164,20 @@ const CATEGORY_ORDER = ['energy', 'precious', 'metals', 'agriculture', 'us_index
 
   .gm-change {
     flex-shrink: 0;
-    min-width: 72px;
-    justify-content: flex-end;
     display: inline-flex;
     align-items: center;
-    gap: 4px;
+    gap: 3px;
+    padding: 3px 8px;
+    border-radius: 6px;
     font-family: var(--gm-mono);
-    font-size: 0.78rem;
+    font-size: 0.8rem;
+    font-weight: 600;
     font-variant-numeric: tabular-nums;
-    font-weight: 500;
   }
 
-  .gm-change.up { color: var(--gm-up); }
-  .gm-change.down { color: var(--gm-down); }
-  .gm-change.flat { color: var(--gm-muted); }
+  .gm-change.up { color: var(--gm-up); background: rgba(255,107,107,0.14); }
+  .gm-change.down { color: var(--gm-down); background: rgba(45,212,160,0.14); }
+  .gm-change.flat { color: var(--gm-muted); background: rgba(107,114,128,0.12); }
 
   /* 折叠分类 */
   .gm-cats {
@@ -333,7 +339,7 @@ const CATEGORY_ORDER = ['energy', 'precious', 'metals', 'agriculture', 'us_index
     const text = fmtChangePct(change);
     if (text == null) return `<span class="gm-change flat">—</span>`;
     const dir = dirOf(change);
-    const arrow = dir === 'up' ? '▲' : dir === 'down' ? '▼' : '—';
+    const arrow = dir === 'up' ? '↑' : dir === 'down' ? '↓' : '—';
     return `<span class="gm-change ${dir}">${arrow} ${escapeHtml(text)}</span>`;
   }
 
