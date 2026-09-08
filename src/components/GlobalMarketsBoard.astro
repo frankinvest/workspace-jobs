@@ -100,17 +100,9 @@ const CATEGORY_ORDER = ['energy', 'precious', 'metals', 'agriculture', 'us_index
   }
 
   .gm-featured-grid {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 8px;
-  }
-
-  @media (max-width: 1024px) {
-    .gm-featured-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  }
-
-  @media (max-width: 640px) {
-    .gm-featured-grid { grid-template-columns: 1fr; }
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
   }
 
   .gm-skeleton {
@@ -122,27 +114,24 @@ const CATEGORY_ORDER = ['energy', 'precious', 'metals', 'agriculture', 'us_index
   }
 
   .gm-fcard {
-    display: grid;
-    grid-template-columns: 1fr auto;
-    grid-template-areas:
-      "name price"
-      "change price";
+    display: flex;
     align-items: center;
-    gap: 2px 8px;
-    padding: 10px 12px;
+    gap: 12px;
+    padding: 9px 14px;
     background: var(--gm-card);
     border: 1px solid var(--gm-border);
-    border-left: 3px solid var(--gm-flat);
+    border-left: 4px solid var(--gm-flat);
     border-radius: 4px;
     min-width: 0;
   }
 
-  .gm-fcard.up { border-left-color: var(--gm-up); }
-  .gm-fcard.down { border-left-color: var(--gm-down); }
+  .gm-fcard.up { border-left-color: var(--gm-up); background: linear-gradient(90deg, rgba(240,85,77,0.10), var(--gm-card) 42%); }
+  .gm-fcard.down { border-left-color: var(--gm-down); background: linear-gradient(90deg, rgba(46,184,114,0.10), var(--gm-card) 42%); }
   .gm-fcard.flat { border-left-color: var(--gm-flat); }
 
   .gm-fcard-name {
-    grid-area: name;
+    flex: 1;
+    min-width: 0;
     font-size: 0.78rem;
     color: var(--gm-muted);
     overflow: hidden;
@@ -151,7 +140,7 @@ const CATEGORY_ORDER = ['energy', 'precious', 'metals', 'agriculture', 'us_index
   }
 
   .gm-fcard-price {
-    grid-area: price;
+    flex-shrink: 0;
     font-family: var(--gm-mono);
     font-size: 1.35rem;
     font-weight: 600;
@@ -168,7 +157,9 @@ const CATEGORY_ORDER = ['energy', 'precious', 'metals', 'agriculture', 'us_index
   }
 
   .gm-change {
-    grid-area: change;
+    flex-shrink: 0;
+    min-width: 72px;
+    justify-content: flex-end;
     display: inline-flex;
     align-items: center;
     gap: 4px;
