@@ -1,12 +1,12 @@
 ---
 // GlobalMarketsBoard.astro
-// 「纵横东西」模块（v5 — 2026-09-08 16:02 Frank 批准 Codex 6 推荐答案）：
-//   1. 顶部 featured 9 项：方块 grid (响应式 4/3/2/1)
-//   2. 分类：7 个 tab + 小按钮横纵向排列（item 全部出现，含 featured）
-//   3. 共用详情面板：tab 切换显示哪个分类的 items，点击按钮显示详情
-//   4. 默认 active = 能源
-//   5. featured 纯展示不可点
-//   6. 详情字段：名称 / 价格 / 单位 / 涨跌%
+// 「纵横东西」模块 (v6 — 2026-09-08 16:39 Frank 诉求: 分类 items 直接显示全部信息, 不再点击展开)
+// 改动 (v5 → v6):
+//   1. 分类 tab 切换后, 整个分类 items 用方块 grid 直接展示 (参考重点行情样式)
+//   2. 复用 .gm-fcard 样式 (重点行情 + 分类 items 视觉完全一致)
+//   3. 响应式 4/3/2/1, 和 featured grid 同步
+//   4. 删除: 共用详情面板 (.gm-detail-panel) + item 小按钮 (.gm-cat-btn) + 二次点击逻辑 (showItemDetail)
+//   5. featured 项目仍在分类 items 中出现 (Codex 推荐答案 #1)
 // 数据来源: /api/global-markets (Vercel serverless, 多源 + 5min 缓存)
 // 风格: Bloomberg Terminal — 深色 + monospace 等宽数字 + 涨跌色条
 // 边界: 只动本文件, 不碰 api/global-markets.js
@@ -21,7 +21,7 @@ const CATEGORY_ORDER = ['energy', 'precious', 'metals', 'agriculture', 'us_index
     <span class="gm-updated" id="global-markets-updated"></span>
   </header>
 
-  <!-- 重点行情：方块 grid (4/3/2/1 响应式, 纯展示不可点) -->
+  <!-- 重点行情: 方块 grid (4/3/2/1 响应式, 纯展示不可点) -->
   <div class="gm-featured">
     <div class="gm-featured-head">
       <h3 class="gm-featured-title">🔥 重点行情</h3>
@@ -32,11 +32,11 @@ const CATEGORY_ORDER = ['energy', 'precious', 'metals', 'agriculture', 'us_index
     </div>
   </div>
 
-  <!-- 分类 tab + 共用详情面板 (tab 切换 + item 按钮 + 共享 detail) -->
+  <!-- 分类 tab + 整个分类 items 方块 grid (v6: 一次显示全部, 不再点击展开) -->
   <div class="gm-cats" id="gm-cats"></div>
 
   <footer class="gm-footer">
-    <span>数据来源：腾讯财经 · 新浪财经 · Yahoo Finance · 缓存 5 分钟</span>
+    <span>数据来源: 腾讯财经 · 新浪财经 · Yahoo Finance · 缓存 5 分钟</span>
   </footer>
 </section>
 
@@ -123,23 +123,27 @@ const CATEGORY_ORDER = ['energy', 'precious', 'metals', 'agriculture', 'us_index
     color: var(--gm-muted);
   }
 
-  .gm-featured-grid {
+  .gm-featured-grid,
+  .gm-cat-grid {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 10px;
   }
   /* 响应式断点 (Codex 推荐答案 #2: 桌面 4 / 平板 3 / 手机 2 / 窄屏 1) */
   @media (max-width: 1024px) {
-    .gm-featured-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .gm-featured-grid,
+    .gm-cat-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   }
   @media (max-width: 640px) {
-    .gm-featured-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .gm-featured-grid,
+    .gm-cat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   }
   @media (max-width: 380px) {
-    .gm-featured-grid { grid-template-columns: 1fr; }
+    .gm-featured-grid,
+    .gm-cat-grid { grid-template-columns: 1fr; }
   }
 
-  /* Featured 方块 (column 布局, 顶部涨跌色条) */
+  /* Featured / Category 方块 (column 布局, 顶部涨跌色条) — 两处共用 */
   .gm-fcard {
     display: flex;
     flex-direction: column;
@@ -150,7 +154,7 @@ const CATEGORY_ORDER = ['energy', 'precious', 'metals', 'agriculture', 'us_index
     border: 1px solid var(--gm-border);
     border-top: 4px solid var(--gm-flat);
     border-radius: 8px;
-    cursor: default; /* 纯展示不可点 */
+    cursor: default;
     transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease;
     min-width: 0;
   }
@@ -248,120 +252,23 @@ const CATEGORY_ORDER = ['energy', 'precious', 'metals', 'agriculture', 'us_index
     opacity: 0.7;
   }
 
-  /* ===== Active Category Section (items as buttons) ===== */
-  .gm-cat-section { margin-bottom: 14px; }
-  .gm-cat-section-title {
-    font-size: 0.82rem;
-    font-weight: 600;
-    color: var(--gm-text);
-    margin-bottom: 8px;
+  /* v6: 当前激活分类的 grid 容器 (用 .gm-cat-grid class, 复用 .gm-featured-grid 样式) */
+  .gm-cat-section-head {
     display: flex;
     align-items: baseline;
-    gap: 8px;
+    justify-content: space-between;
+    margin-bottom: 10px;
+    padding: 0 2px;
+  }
+  .gm-cat-section-title {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--gm-text);
   }
   .gm-cat-section-count {
     font-family: var(--gm-mono);
     font-size: 0.72rem;
-    font-weight: 400;
     color: var(--gm-muted);
-  }
-
-  .gm-cat-buttons {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-  }
-  .gm-cat-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 12px;
-    border: 1px solid var(--gm-border);
-    background: var(--gm-card);
-    color: var(--gm-text);
-    border-radius: 6px;
-    font-size: 0.75rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: border-color 0.18s ease, background 0.18s ease;
-    font-family: inherit;
-    min-width: 0;
-  }
-  .gm-cat-btn:hover {
-    border-color: var(--gm-border-strong);
-    background: var(--gm-card-hover);
-  }
-  .gm-cat-btn.active {
-    border-color: var(--gm-text);
-    background: rgba(255, 255, 255, 0.06);
-  }
-  .gm-cat-btn-name {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    max-width: 110px;
-  }
-  .gm-cat-btn-price {
-    font-family: var(--gm-mono);
-    font-variant-numeric: tabular-nums;
-    font-size: 0.72rem;
-    font-weight: 600;
-  }
-  .gm-cat-btn-price.up { color: var(--gm-up); }
-  .gm-cat-btn-price.down { color: var(--gm-down); }
-  .gm-cat-btn-price.flat { color: var(--gm-muted); }
-
-  /* ===== Shared Detail Panel ===== */
-  .gm-detail-panel {
-    padding: 16px;
-    background: var(--gm-card);
-    border: 1px solid var(--gm-border);
-    border-radius: 8px;
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 16px;
-    align-items: center;
-    min-height: 84px;
-    margin-top: 4px;
-  }
-  @media (max-width: 640px) {
-    .gm-detail-panel {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 12px;
-    }
-  }
-  .gm-detail-cell {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    min-width: 0;
-  }
-  .gm-detail-label {
-    font-family: var(--gm-mono);
-    font-size: 0.7rem;
-    color: var(--gm-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-  }
-  .gm-detail-value {
-    font-family: var(--gm-mono);
-    font-size: 1.05rem;
-    font-weight: 600;
-    color: var(--gm-text);
-    font-variant-numeric: tabular-nums;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .gm-detail-value.up { color: var(--gm-up); }
-  .gm-detail-value.down { color: var(--gm-down); }
-  .gm-detail-value.flat { color: var(--gm-muted); }
-  .gm-detail-placeholder {
-    grid-column: 1 / -1;
-    text-align: center;
-    color: var(--gm-muted);
-    font-size: 0.85rem;
-    padding: 8px 0;
   }
 
   /* ===== Common ===== */
@@ -392,7 +299,7 @@ const CATEGORY_ORDER = ['energy', 'precious', 'metals', 'agriculture', 'us_index
 
   /* Reduced motion */
   @media (prefers-reduced-motion: reduce) {
-    .gm-fcard, .gm-cat-tab, .gm-cat-btn { transition: none; }
+    .gm-fcard, .gm-cat-tab { transition: none; }
     .gm-fcard:hover { transform: none; }
   }
 </style>
@@ -417,10 +324,9 @@ const CATEGORY_ORDER = ['energy', 'precious', 'metals', 'agriculture', 'us_index
 
   const DEFAULT_CAT = 'energy';
 
-  // Mutable state (in-module, not on window)
+  // Mutable state
   let currentPayload = null;
   let activeCat = DEFAULT_CAT;
-  let activeCode = null;
 
   // ── Helpers ────────────────────────────────────────────────────
 
@@ -457,15 +363,15 @@ const CATEGORY_ORDER = ['energy', 'precious', 'metals', 'agriculture', 'us_index
     return `<span class="gm-change ${dir}">${arrow} ${escapeHtml(text)}</span>`;
   }
 
-  function findItem(code) {
-    if (!currentPayload) return null;
-    const cats = currentPayload.categories || {};
-    for (const cat of Object.values(cats)) {
-      for (const it of (cat.items || [])) {
-        if (it.code === code) return it;
-      }
-    }
-    return null;
+  function cardHtml(it) {
+    // v6: 重点行情 + 分类 items 共用 .gm-fcard 模板
+    const dir = dirOf(it.changePct);
+    const priceTxt = it.price != null ? fmtPrice(it.price) : '—';
+    return `<div class="gm-fcard ${dir}" data-code="${escapeHtml(it.code)}" data-cat="${escapeHtml(it.category || '')}">
+      <div class="gm-fcard-name">${escapeHtml(it.nameZh || it.code)}</div>
+      <div class="gm-fcard-price">${priceTxt}<span class="gm-fcard-unit">${escapeHtml(it.unit || '')}</span></div>
+      ${changeHtml(it.changePct)}
+    </div>`;
   }
 
   // ── Render: Featured (方块 grid, 纯展示不可点) ────────────────
@@ -476,29 +382,20 @@ const CATEGORY_ORDER = ['energy', 'precious', 'metals', 'agriculture', 'us_index
       featuredGrid.innerHTML = '<div class="gm-skeleton">暂无重点行情数据</div>';
       return;
     }
-    featuredGrid.innerHTML = items.map(it => {
-      const dir = dirOf(it.changePct);
-      const priceTxt = it.price != null ? fmtPrice(it.price) : '—';
-      return `<div class="gm-fcard ${dir}" data-code="${escapeHtml(it.code)}">
-        <div class="gm-fcard-name">${escapeHtml(it.nameZh || it.code)}</div>
-        <div class="gm-fcard-price">${priceTxt}<span class="gm-fcard-unit">${escapeHtml(it.unit || '')}</span></div>
-        ${changeHtml(it.changePct)}
-      </div>`;
-    }).join('');
+    featuredGrid.innerHTML = items.map(cardHtml).join('');
   }
 
-  // ── Render: Cats container (tabs + active section + detail) ─────
+  // ── Render: Cats container (tabs + active section) ─────────────
 
   function renderCatsContainer() {
     if (!catsEl) return;
     catsEl.innerHTML = `
       <div class="gm-cat-tabs" id="gm-cat-tabs"></div>
-      <div class="gm-cat-section" id="gm-cat-section"></div>
-      <div class="gm-detail-panel" id="gm-detail-panel"></div>
+      <div class="gm-cat-section-head" id="gm-cat-section-head"></div>
+      <div class="gm-cat-grid" id="gm-cat-grid"></div>
     `;
     renderCategoryTabs();
     renderActiveSection();
-    resetDetailPanel();
   }
 
   function renderCategoryTabs() {
@@ -523,42 +420,32 @@ const CATEGORY_ORDER = ['energy', 'precious', 'metals', 'agriculture', 'us_index
   }
 
   function renderActiveSection() {
-    const secEl = document.getElementById('gm-cat-section');
-    if (!secEl || !currentPayload) return;
+    const headEl = document.getElementById('gm-cat-section-head');
+    const gridEl = document.getElementById('gm-cat-grid');
+    if (!headEl || !gridEl || !currentPayload) return;
     const cats = currentPayload.categories || {};
     const cat = cats[activeCat];
     if (!cat || !cat.items || !cat.items.length) {
-      secEl.innerHTML = '<div class="gm-skeleton">该分类暂无数据</div>';
+      headEl.innerHTML = '';
+      gridEl.innerHTML = '<div class="gm-skeleton">该分类暂无数据</div>';
       return;
     }
     const label = cat.label || CATEGORY_LABELS[activeCat] || activeCat;
-    secEl.innerHTML = `
-      <div class="gm-cat-section-title">
-        ${escapeHtml(label)}
-        <span class="gm-cat-section-count">${cat.items.length} 项</span>
-      </div>
-      <div class="gm-cat-buttons">
-        ${cat.items.map(it => {
-          const dir = dirOf(it.changePct);
-          const priceTxt = it.price != null ? fmtPrice(it.price) : '—';
-          const isActive = it.code === activeCode;
-          return `<button type="button" class="gm-cat-btn${isActive ? ' active' : ''}" data-code="${escapeHtml(it.code)}" data-cat="${activeCat}">
-            <span class="gm-cat-btn-name">${escapeHtml(it.nameZh || it.code)}</span>
-            <span class="gm-cat-btn-price ${dir}">${priceTxt}</span>
-          </button>`;
-        }).join('')}
-      </div>
+    headEl.innerHTML = `
+      <div class="gm-cat-section-title">${escapeHtml(label)}</div>
+      <div class="gm-cat-section-count">${cat.items.length} 项</div>
     `;
-
-    secEl.querySelectorAll('.gm-cat-btn').forEach(btn => {
-      btn.addEventListener('click', () => showItemDetail(btn.dataset.code));
-    });
+    // v6: 整个分类的 items 直接用方块 grid 渲染 (复用 .gm-fcard 模板)
+    gridEl.innerHTML = cat.items.map(it => {
+      // 标记 category 给 cardHtml (用于 dataset 追踪, 不影响视觉)
+      if (!it.category) it.category = activeCat;
+      return cardHtml(it);
+    }).join('');
   }
 
   function switchCategory(cat) {
     if (!cat || cat === activeCat) return;
     activeCat = cat;
-    activeCode = null;
 
     // Update tab active state
     document.querySelectorAll('.gm-cat-tab').forEach(tab => {
@@ -566,50 +453,6 @@ const CATEGORY_ORDER = ['energy', 'precious', 'metals', 'agriculture', 'us_index
     });
 
     renderActiveSection();
-    resetDetailPanel();
-  }
-
-  function resetDetailPanel() {
-    const panel = document.getElementById('gm-detail-panel');
-    if (panel) {
-      panel.innerHTML = '<div class="gm-detail-placeholder">点击上方任意行情按钮查看详情</div>';
-    }
-  }
-
-  function showItemDetail(code) {
-    const item = findItem(code);
-    if (!item) return;
-    activeCode = code;
-
-    // Highlight active button (within current section)
-    document.querySelectorAll('.gm-cat-btn').forEach(btn => {
-      btn.classList.toggle('active', btn.dataset.code === code);
-    });
-
-    const dir = dirOf(item.changePct);
-    const pctText = fmtChangePct(item.changePct);
-    const arrow = dir === 'up' ? '↑' : dir === 'down' ? '↓' : '—';
-    const panel = document.getElementById('gm-detail-panel');
-    if (panel) {
-      panel.innerHTML = `
-        <div class="gm-detail-cell">
-          <div class="gm-detail-label">名称</div>
-          <div class="gm-detail-value">${escapeHtml(item.nameZh || item.code)}</div>
-        </div>
-        <div class="gm-detail-cell">
-          <div class="gm-detail-label">价格</div>
-          <div class="gm-detail-value">${fmtPrice(item.price)}</div>
-        </div>
-        <div class="gm-detail-cell">
-          <div class="gm-detail-label">单位</div>
-          <div class="gm-detail-value" style="font-size: 0.88rem; font-weight: 500;">${escapeHtml(item.unit || '—')}</div>
-        </div>
-        <div class="gm-detail-cell">
-          <div class="gm-detail-label">涨跌</div>
-          <div class="gm-detail-value ${dir}">${arrow} ${escapeHtml(pctText || '—')}</div>
-        </div>
-      `;
-    }
   }
 
   // ── Render: top-level dispatch ──────────────────────────────────
@@ -647,9 +490,9 @@ const CATEGORY_ORDER = ['energy', 'precious', 'metals', 'agriculture', 'us_index
       render(await r.json());
     } catch (err) {
       if (featuredGrid) {
-        featuredGrid.innerHTML = `<div class="gm-error">行情获取失败：${escapeHtml(String(err && err.message || err))}</div>`;
+        featuredGrid.innerHTML = `<div class="gm-error">行情获取失败: ${escapeHtml(String(err && err.message || err))}</div>`;
       }
-      if (updatedEl) updatedEl.textContent = '快照：—';
+      if (updatedEl) updatedEl.textContent = '快照: —';
     }
   }
 
