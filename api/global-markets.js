@@ -151,6 +151,54 @@ const CATEGORIES = {
   },
 };
 
+// ── 时间解析 helpers (v10 — Frank 19:55 反馈: 美股时间错, 必须用 API 真实时间) ──
+
+// 腾讯 index parts[30] 解析:
+//   - 美股: '2026-09-04 16:33:06' (EDT, UTC-4 夏令时)
+//   - A 股: '20260907161402' (紧凑, Beijing UTC+8)
+function parseTencentDateTime(s) {
+  if (!s || typeof s !== 'string') return null;
+  try {
+    if (s.includes('-') && s.includes(':')) {
+      // 美股格式 — EDT (UTC-4)
+      return new Date(s.replace(' ', 'T') + '-04:00').getTime();
+    } else if (/^\d{14}$/.test(s)) {
+      // A 股格式 — Beijing (UTC+8)
+      const y = s.slice(0, 4);
+      const mo = s.slice(4, 6);
+      const d = s.slice(6, 8);
+      const h = s.slice(8, 10);
+      const mi = s.slice(10, 12);
+      const se = s.slice(12, 14);
+      return new Date(`${y}-${mo}-${d}T${h}:${mi}:${se}+08:00`).getTime();
+    }
+  } catch (e) {
+    return null;
+  }
+  return null;
+}
+
+// 新浪期货 parts[1] HHMMSS + parts[17] 日期 解析 (Beijing UTC+8)
+function parseSinaFuturesTime(dateStr, timeStr) {
+  if (!dateStr || !timeStr) return null;
+  try {
+    const t = String(timeStr).padStart(6, '0');
+    return new Date(`${dateStr}T${t.slice(0,2)}:${t.slice(2,4)}:${t.slice(4,6)}+08:00`).getTime();
+  } catch (e) {
+    return null;
+  }
+}
+
+// 新浪指数 parts[3] 解析 (GMT UTC+0)
+function parseSinaIndexTime(s) {
+  if (!s || typeof s !== 'string') return null;
+  try {
+    return new Date(s.replace(' ', 'T') + 'Z').getTime();
+  } catch (e) {
+    return null;
+  }
+}
+
 // ── 腾讯 qt.gtimg.cn 指数解析 ──
 // 真实返回结构（curl 18:25 验证 v_usINX / v_hkHSI）：
 //   parts[0]  = 200 (类型代码) 或 100 (港股)
@@ -183,7 +231,7 @@ async function fetchTencentIndex(code) {
       prevClose: !isNaN(prevClose) ? prevClose : null,
       changePct: !isNaN(changePct) ? changePct : null,
       source: 'tencent',
-      asOf: Date.now(),
+      asOf: parseTencentDateTime(parts[30]) || Date.now(),
     };
   } catch (err) {
     return null;
@@ -225,7 +273,7 @@ async function fetchSinaFutures(code) {
       prevClose: isNaN(prevClose) ? null : prevClose,
       changePct,
       source: 'sina',
-      asOf: Date.now(),
+      asOf: parseSinaFuturesTime(parts[17], parts[1]) || Date.now(),
     };
   } catch (err) {
     return null;
@@ -260,7 +308,7 @@ async function fetchSinaIndex(code) {
       prevClose: null,
       changePct: isNaN(changePct) ? null : changePct,
       source: 'sina',
-      asOf: Date.now(),
+      asOf: parseSinaIndexTime(parts[3]) || Date.now(),
     };
   } catch (err) {
     return null;
