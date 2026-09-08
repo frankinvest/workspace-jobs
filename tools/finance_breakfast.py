@@ -62,12 +62,13 @@ PUSHER = TOOLS_DIR / "system_api_pusher.py"
 
 GROUP_URL = "https://www.red-ring.cn/group/27593"  # 红运Dang投圈子
 
-STEP_NAMES = ["fetch", "format", "images", "guard", "push"]
+STEP_NAMES = ["fetch", "format", "images", "guard", "tldr", "push"]
 STEP_DESC = {
     "fetch":  "subprocess 调 cdp_get_innerhtml.py 抓 innerHTML",
     "format": "用 bs4 + markdownify 渲染 .md (含评论区)",
     "images": "跳过 (图片引用红圈原 URL, 不本地化)",
     "guard":  "用真实数据审计 (图片数/评论数/标题/时间)",
+    "tldr":   "codex exec 生成今日速递 5 分类并写回 frontmatter",
     "push":   "调 system_git_pusher.py 穿墙推送",
 }
 
@@ -452,6 +453,49 @@ def step_guard(date_str, dry_run=False):
     
     log(f"  ✅ 审计通过")
     return 0
+
+
+# ── Step 4.5: tldr (今日速递 5 分类生成) ─────────────────────────
+
+def step_tldr(date_str, dry_run=False):
+    """Step 4.5: 用 codex exec 生成「今日速递」tldr 并写回 frontmatter。
+
+    非阻断：codex 失败时只告警，不阻断后续 push（文章仍会发布，只是缺 tldr）。
+    """
+    log(f"[tldr] 生成今日速递 5 分类 {date_str}")
+
+    md_file = DOCS_DIR / f"JJC-{date_str}-001-原文.md"
+    if not md_file.exists():
+        log(f"  ❌ 缺少 .md: {md_file}")
+        return 1
+
+    if dry_run:
+        log("  [dry-run] 跳过 tldr 生成")
+        return 0
+
+    gen_script = TOOLS_DIR / "generate_tldr.py"
+    if not gen_script.exists():
+        log(f"  ❌ 缺少生成脚本: {gen_script}")
+        return 1
+
+    try:
+        rel_file = str(md_file.relative_to(WORKSPACE_JOBS))
+        cp = subprocess.run(
+            [sys.executable, str(gen_script), "--file", rel_file],
+            cwd=WORKSPACE_JOBS, capture_output=True, text=True, timeout=1200,
+        )
+        if cp.stderr:
+            for line in cp.stderr.split("\n")[-10:]:
+                if line.strip():
+                    log(f"  [tldr] {line}")
+        if cp.returncode != 0:
+            log(f"  ⚠️ tldr 生成失败 rc={cp.returncode}，不阻断 push（文章仍发布，缺今日速递）")
+            return 0  # 非阻断
+        log(f"  ✅ tldr 已写入 frontmatter")
+        return 0
+    except Exception as e:
+        log(f"  ⚠️ tldr 异常: {type(e).__name__}: {e}，不阻断 push")
+        return 0  # 非阻断
 
 
 # ── Step 5: push ─────────────────────────────────────────────────
