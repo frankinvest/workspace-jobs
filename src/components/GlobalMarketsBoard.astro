@@ -1,13 +1,14 @@
 ---
 // GlobalMarketsBoard.astro
-// 「纵横东西」模块 (v8 — 2026-09-08 19:48 Frank 诉求: 时间加上北京时间的月日)
-// 改动 (v7 → v8):
-//   1. fmtTime 输出 HH:MM → MM/DD HH:MM (如 09/08 10:30)
-//   2. 所有状态统一用 fmtTime(item.asOf) (盘中/收盘/盘前/24h 都显示数据时间 + 日期)
-//   3. CSS: .gm-fcard-time 加 white-space: nowrap 防长文本换行
-//   4. 零 API 改动 (18:21 Codex stop-API 纪律仍生效)
-// 边界: 只动本文件, 不碰 api/global-markets.js
-// 教训: scoped CSS 不命中 JS 动态注入的 DOM → 全用 <style is:global> + inline style 兜底
+// 「纵横东西」模块 (v9 — 2026-09-08 19:49 Codex 19:49 规格修正 v8)
+// 改动 (v8 → v9):
+//   1. fmtTime 分隔符 / → - (MM-DD HH:MM, 如 09-08 10:30) — Codex 19:49 规格
+//   2. 收盘态时间来源修正: fmtTime(item.asOf) → fmtTodayDate() + mh.close
+//      (当天北京日期 + 固定收盘时间, 如 09-08 15:00, 而非 asOf)
+//   3. sina 期货收盘态同步: 15:00 (固定, 不用 asOf 避免 Date.now() 失真)
+//   4. 新增 fmtTodayDate() helper 返回当天 MM-DD
+//   5. 盘中/24h 保持 fmtTime(item.asOf) (实时数据时间)
+// 边界: 只动本文件, 不碰 api/global-markets.js (19:51 + 18:21 stop-API 纪律仍生效)
 const CATEGORY_ORDER = ['energy', 'precious', 'metals', 'agriculture', 'us_index', 'asia_index', 'cn_index'];
 ---
 
@@ -434,7 +435,7 @@ const CATEGORY_ORDER = ['energy', 'precious', 'metals', 'agriculture', 'us_index
     }
   }
 
-  // v8: 工具函数 - 格式化 asOf 为 MM/DD HH:MM (Frank 19:48 诉求: 加上北京时间的月日)
+  // v9: 工具函数 - 格式化 asOf 为 MM-DD HH:MM (Codex 19:49 规格: 横杠分隔)
   function fmtTime(asOf) {
     if (asOf == null || typeof asOf !== 'number' || isNaN(asOf) || asOf <= 0) return '--';
     try {
@@ -448,14 +449,31 @@ const CATEGORY_ORDER = ['energy', 'precious', 'metals', 'agriculture', 'us_index
       });
       const parts = fmt.formatToParts(new Date(asOf));
       const get = (type) => (parts.find(p => p.type === type) || {}).value || '';
-      return `${get('month')}/${get('day')} ${get('hour')}:${get('minute')}`;
+      return `${get('month')}-${get('day')} ${get('hour')}:${get('minute')}`;
     } catch (e) {
       const d = new Date(asOf);
       const mo = String(d.getMonth() + 1).padStart(2, '0');
       const dy = String(d.getDate()).padStart(2, '0');
       const h = String(d.getHours()).padStart(2, '0');
       const mi = String(d.getMinutes()).padStart(2, '0');
-      return `${mo}/${dy} ${h}:${mi}`;
+      return `${mo}-${dy} ${h}:${mi}`;
+    }
+  }
+
+  // v9: 工具函数 - 返回当天北京日期 MM-DD (Codex 19:49 规格: 已收盘态用当天日期 + 固定收盘时间)
+  function fmtTodayDate() {
+    try {
+      const fmt = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'Asia/Shanghai',
+        month: '2-digit',
+        day: '2-digit',
+      });
+      const parts = fmt.formatToParts(new Date());
+      const get = (type) => (parts.find(p => p.type === type) || {}).value || '';
+      return `${get('month')}-${get('day')}`;
+    } catch (e) {
+      const d = new Date();
+      return `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     }
   }
 
@@ -481,13 +499,10 @@ const CATEGORY_ORDER = ['energy', 'precious', 'metals', 'agriculture', 'us_index
       const nightEnd = hhmmToMinutes('02:30'); // 次日凌晨
       const inDay = now >= dayOpen && now < dayClose;
       const inNight = now >= nightOpen || now < nightEnd;
-      // v8: 统一用 fmtTime(item.asOf) → MM/DD HH:MM
-      // 注意: sina fetcher asOf = Date.now() (非真实行情时间, v7 已闭环未修)
-      const time = fmtTime(item.asOf);
-      if (inDay) return { state: 'open', label: '日盘', time };
-      if (inNight) return { state: 'open', label: '夜盘', time };
-      // 收盘 → 显示数据时间 + 日期 (sina 限制: 实际是当前时间, 不是 15:00 收盘)
-      return { state: 'closed', label: '收盘', time };
+      // v9: 日盘/夜盘用 fmtTime(item.asOf) (实时), 收盘用 fmtTodayDate() + 15:00 (Codex 19:49 规格)
+      if (inDay) return { state: 'open', label: '日盘', time: fmtTime(item.asOf) };
+      if (inNight) return { state: 'open', label: '夜盘', time: fmtTime(item.asOf) };
+      return { state: 'closed', label: '收盘', time: `${fmtTodayDate()} 15:00` };
     }
 
     // 指数 → 用 code 匹配时段表
@@ -516,13 +531,11 @@ const CATEGORY_ORDER = ['energy', 'precious', 'metals', 'agriculture', 'us_index
     }
     const inPre = !inSession && now >= preOpenStart && now < openM;
 
-    // v8: 统一用 fmtTime(item.asOf) → MM/DD HH:MM, 所有状态显示数据时间 + 日期
-    // (v7 之前 closed/pre 用 mh.close/mh.open 固定时间, 会缺日期)
-    const time = fmtTime(item.asOf);
-    if (inSession) return { state: 'open', label: '盘中', time };
-    if (inPre) return { state: 'pre', label: '盘前', time };
-    // 收盘 → 显示最后数据时间 (= 收盘时间, 含日期)
-    return { state: 'closed', label: '收盘', time };
+    // v9: 盘中/盘前用 fmtTime(item.asOf) → MM-DD HH:MM (实时数据时间)
+    // 收盘用 fmtTodayDate() + mh.close (当天北京日期 + 固定收盘时间, Codex 19:49 规格)
+    if (inSession) return { state: 'open', label: '盘中', time: fmtTime(item.asOf) };
+    if (inPre) return { state: 'pre', label: '盘前', time: fmtTime(item.asOf) };
+    return { state: 'closed', label: '收盘', time: `${fmtTodayDate()} ${mh.close}` };
   }
 
   // v7: 渲染时间徽章 HTML
