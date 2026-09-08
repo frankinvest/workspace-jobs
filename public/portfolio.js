@@ -110,14 +110,25 @@ function initAmountGate() {
 
 function calcHoldingStats(holdings, prices) {
   const computed = holdings.map((h) => {
-    const price = prices[h.code] != null ? prices[h.code] : null;
+    const raw = prices[h.code];
+    const snap = raw == null ? null : (typeof raw === 'number'
+      ? (raw > 0 ? { currentPrice: raw, prevClose: null } : null)
+      : (raw && typeof raw.currentPrice === 'number' && raw.currentPrice > 0
+        ? { currentPrice: raw.currentPrice, prevClose: (typeof raw.prevClose === 'number' && raw.prevClose > 0) ? raw.prevClose : null }
+        : null));
+    const price = snap ? snap.currentPrice : null;
+    const prevClose = snap ? snap.prevClose : null;
     const marketValue = price != null ? h.shares * price : null;
     return {
       ...h,
       currentPrice: price,
+      prevClose,
       marketValue,
       positionPct: 0,
       returnPct: price != null ? ((price - h.cost) / h.cost) * 100 : 0,
+      todayReturnPct: (price != null && prevClose != null && prevClose > 0)
+        ? ((price - prevClose) / prevClose) * 100
+        : 0,
     };
   });
   const total = computed.reduce((sum, h) => sum + (h.marketValue != null ? h.marketValue : 0), 0);
@@ -136,6 +147,29 @@ function calcHoldingStats(holdings, prices) {
     return b.marketValue - a.marketValue;
   });
   return computed;
+}
+
+function accountTodayReturnPct(stats) {
+  let todayPnlAbs = 0;
+  let yesterdayValue = 0;
+  for (const s of stats) {
+    if (s.currentPrice != null && s.prevClose != null && s.prevClose > 0 && s.currentPrice > 0) {
+      todayPnlAbs += s.shares * (s.currentPrice - s.prevClose);
+      yesterdayValue += s.shares * s.prevClose;
+    }
+  }
+  if (yesterdayValue <= 0) return 0;
+  return (todayPnlAbs / yesterdayValue) * 100;
+}
+
+function accountTodayPnlAbs(stats) {
+  let sum = 0;
+  for (const s of stats) {
+    if (s.currentPrice != null && s.prevClose != null && s.prevClose > 0 && s.currentPrice > 0) {
+      sum += s.shares * (s.currentPrice - s.prevClose);
+    }
+  }
+  return sum;
 }
 
 function fmtPct(pct) {
@@ -221,8 +255,15 @@ function applyStats() {
   const prices = {};
   for (const el of itemEls) {
     const code = el.getAttribute('data-code') || '';
-    const raw = el.getAttribute('data-latest-price');
-    prices[code] = raw == null || raw === '' ? null : parseFloat(raw);
+    const rawPrice = el.getAttribute('data-latest-price');
+    const rawPrev = el.getAttribute('data-prev-close');
+    if (rawPrice == null || rawPrice === '') {
+      prices[code] = null;
+    } else {
+      const cp = parseFloat(rawPrice);
+      const pc = (rawPrev == null || rawPrev === '') ? null : parseFloat(rawPrev);
+      prices[code] = { currentPrice: cp, prevClose: pc };
+    }
   }
 
   const stats = calcHoldingStats(holdings, prices);
@@ -243,10 +284,13 @@ function applyStats() {
   const totalValue = stats.reduce((sum, s) => sum + (s.marketValue != null ? s.marketValue : 0), 0);
   const totalPnl = totalValue - totalCost;
   const totalReturnPct = totalCost > 0 ? (totalPnl / totalCost) * 100 : 0;
+  const todayPct = accountTodayReturnPct(stats);
+  const todayPnlAbs = accountTodayPnlAbs(stats);
 
   const totalValueEl = document.getElementById('portfolio-total-value');
   const totalPnlEl = document.getElementById('portfolio-total-pnl');
   const totalReturnEl = document.getElementById('portfolio-total-return');
+  const totalTodayEl = document.getElementById('portfolio-total-today');
 
   if (totalValueEl) {
     totalValueEl.textContent = amountsUnlocked ? fmtAmount(totalValue) : MASK;
@@ -259,6 +303,15 @@ function applyStats() {
     totalReturnEl.textContent = fmtPct(totalReturnPct);
     setReturnClass(totalReturnEl, totalReturnPct);
   }
+  if (totalTodayEl) {
+    totalTodayEl.textContent = fmtPct(todayPct);
+    setReturnClass(totalTodayEl, todayPct);
+    // Inline color fallback in case Astro scoped CSS class targeting fails
+    // for JS-injected DOM (defensive double-bind per Frank 15:25 warning).
+    if (todayPct > 0) totalTodayEl.style.color = '#ef4444';      // 红涨 (A 股惯例)
+    else if (todayPct < 0) totalTodayEl.style.color = '#22c55e'; // 绿跌 (A 股惯例)
+    else totalTodayEl.style.color = '';
+  }
 
   for (const el of itemEls) {
     const code = el.getAttribute('data-code') || '';
@@ -270,6 +323,7 @@ function applyStats() {
     const barEl = el.querySelector('[data-field="positionBar"]');
     const retEl = el.querySelector('[data-field="returnPct"]');
     const pnlEl = el.querySelector('[data-field="pnlAmount"]');
+    const todayEl = el.querySelector('[data-field="todayReturnPct"]');
 
     if (priceEl) priceEl.textContent = fmtPrice(stat.currentPrice);
     if (pctEl) pctEl.textContent = fmtPct(stat.positionPct);
@@ -285,6 +339,15 @@ function applyStats() {
       const pnl = stat.marketValue != null ? stat.marketValue - stat.shares * stat.cost : null;
       pnlEl.textContent = amountsUnlocked ? fmtSignedAmount(pnl) : MASK;
     }
+    if (todayEl) {
+      const tp = stat.todayReturnPct;
+      todayEl.textContent = fmtPct(tp);
+      setReturnClass(todayEl, tp);
+      // Inline color fallback (defensive: scoped CSS may not match JS-injected DOM)
+      if (tp > 0) todayEl.style.color = '#ef4444';      // 红涨 (A 股惯例)
+      else if (tp < 0) todayEl.style.color = '#22c55e'; // 绿跌 (A 股惯例)
+      else todayEl.style.color = '';
+    }
   }
 }
 
@@ -292,7 +355,13 @@ function storePrices(prices) {
   for (const el of itemEls) {
     const code = el.getAttribute('data-code') || '';
     const p = prices[code];
-    el.setAttribute('data-latest-price', p == null ? '' : String(p));
+    if (p == null) {
+      el.setAttribute('data-latest-price', '');
+      el.setAttribute('data-prev-close', '');
+    } else {
+      el.setAttribute('data-latest-price', String(p.currentPrice));
+      el.setAttribute('data-prev-close', p.prevClose != null ? String(p.prevClose) : '');
+    }
   }
 }
 
