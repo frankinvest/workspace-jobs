@@ -19,6 +19,7 @@ generate_tldr.py - 从财经早餐文章生成「今日速递」tldr (5 分类)�
 import argparse
 import json
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -29,6 +30,9 @@ WORKSPACE_JOBS = Path.home() / ".openclaw" / "workspace-jobs"
 DOCS_DIR = WORKSPACE_JOBS / "docs"
 
 CATEGORIES = ("macro", "military", "industry", "commodity", "stock")
+
+# codex CLI 绝对路径（launchd cron 的 PATH 不含它，不能依赖 which）
+CODEX_BIN = "/Applications/ChatGPT.app/Contents/Resources/codex"
 
 PROMPT = """你是财经速递编辑。从下方财经早餐文章正文里提取「今日速递」要点，5 个分类：
 - macro 宏观
@@ -77,8 +81,11 @@ def read_body(md_path):
 
 def run_codex(body_text):
     out_file = tempfile.mktemp(prefix="tldr_gen_", suffix=".json")
+    codex = shutil.which("codex") or (
+        CODEX_BIN if Path(CODEX_BIN).exists() else "codex"
+    )
     cmd = [
-        "codex", "exec", "--ephemeral", "--skip-git-repo-check",
+        codex, "exec", "--ephemeral", "--skip-git-repo-check",
         "-o", out_file, PROMPT,
     ]
     log("调用 codex exec 提炼 tldr …")
