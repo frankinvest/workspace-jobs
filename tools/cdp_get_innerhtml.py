@@ -246,7 +246,24 @@ def auto_find_latest_post(ws_url, group_url, timeout=30):
 
         today_candidates.sort(key=lambda p: post_id_from_url(p['href']), reverse=True)
         target = today_candidates[0]
-        print(f"[AUTO] 今日候选 {len(today_candidates)} 条，选定最新主帖: {target['href']}")
+
+        # 修复：ID 最大不一定是文字版（可能是稍后发的「有声版」）。
+        # 依次导航 top 候选，优先选标题含「财经早餐」且不含「有声版」的文字帖。
+        for cand in today_candidates[:4]:
+            try:
+                _navigate(ws, cand['href'], timeout=15)
+                time.sleep(1)
+                js = "JSON.stringify({t: document.body.innerText.slice(0,200)})"
+                data = _eval(ws, 777, js, timeout=10)
+                raw = json.loads(data['result']['result']['value'])
+                txt = raw.get('t', '')
+                if '财经早餐' in txt and '有声版' not in txt:
+                    target = cand
+                    break
+            except Exception:
+                continue
+
+        print(f"[AUTO] 今日候选 {len(today_candidates)} 条，选定主帖: {target['href']}")
 
         # 导航到目标帖子
         print(f"[AUTO] 导航到目标帖子 ...")
