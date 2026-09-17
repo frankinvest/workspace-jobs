@@ -4,6 +4,11 @@
 
 ---
 
+## 协作硬规则（Frank 2026-09-08 反复强调，最高优先级）
+
+- Codex 要给小秘（OpenClaw）发需要她响应的消息时，**必须用 `send_group.py` 发文本消息**（自带 `<at>` mention），不能只在 final answer 卡片里写纯文本 `@小秘`——卡片里的 @ 不会写入 mentions，小秘收不到触发。
+- 小秘 open_id（Codex 侧 app 上下文）：`ou_971ce940001d8281ee250dc47b4bc090`（不是 `ou_a051aff12fc5ccd6720fe9669daa1c4a`，后者是 OpenClaw 自己 app 的上下文）。
+
 ## About Frank
 
 - Telegram: lick789
@@ -158,3 +163,34 @@
 - 9:22 finance_breakfast.py push 步骤 system_git_pusher.py 超时 120s
 - Contents API fallback 救场成功
 - 建议: finance_breakfast.py step_push 默认改成 Contents API, 不要 git push 失败才 fallback
+
+## 【2026-09-18 财经早餐重试窗口 + 熔断分级】Frank 拍板后上线
+
+### 起因
+launchd 原来只在 08:00 跑一次 finance_breakfast.py。Mr Dang 常在 8:00 之后才发帖，
+08:00 抓不到就当天永不补，只能等 Frank 早上来问（09-12 / 09-14 / 09-17 连续三轮）。
+
+### 改动 1：launchd 指向新包装器
+- `~/Library/LaunchAgents/ai.finance-breakfast.daily.plist` 的 ProgramArguments
+  由 `tools/finance_breakfast.py` 改为 **`tools/finance_breakfast_retry.py`**（08:00 单次触发不变）
+- 原配置备份：`tools/_legacy/ai.finance-breakfast.daily.plist.bak-20260918`
+- 回滚：把 ProgramArguments 改回 finance_breakfast.py，再 `launchctl unload/load`
+- 包装器在窗口内（默认 08:00-11:00，每 30 分钟）反复调用原 pipeline，不改它的 6 个 step；
+  带 flock 锁（两个实例同时跑第二个直接退出）、成功后写 `/tmp/finance_breakfast_published_<date>.json` 标记
+
+### 改动 2：失败原因分级（原来「抓 0 条」一律被当成源端没发）
+| 现象 | 分类 | 退出码 |
+| -------- | -------- | -------- |
+| cdp 抓到的是前一天/别天的帖 → format「date 校验失败，拒绝写入」 | source_not_posted（源端还没发） | 3 |
+| 圈子页渲染出 N>0 条帖子但今天没帖（真熔断） | source_not_posted | 3 |
+| 页面一条帖子都渲染不出来（N=0）/ CDP 连不上 / 抓取异常 | fetch_failure（我们抓不到） | 4 |
+| 抓取+排版成功但推送失败 | push_failure | 5 |
+
+**实测（2026-09-18 00:28）**：今天没发时**并不会熔断**——cdp 把「昨天」的帖子当候选抓回来，
+format 的 date 校验拒绝写入，guard 再报「文件不存在」。这条路径以前一直被误判成抓取故障。
+状态文件：`/tmp/finance_breakfast_retry_status.json`；日志：`/tmp/finance_breakfast_retry.log`
+
+### 改动 3：send_group.py 发送后自检
+- 出过事故：shell 引号把消息截断成半句（「…而且Cookie」），没人发现
+- 现在发送后比对飞书回显（剥掉 @ 占位再比），不一致 / mentions 为空 → exit 2 并打印实际内容
+- 长文本建议走 stdin：`python3 send_group.py - <<'EOF'`，彻底绕开引号
