@@ -203,3 +203,43 @@ format 的 date 校验拒绝写入，guard 再报「文件不存在」。这条�
 - 出过事故：shell 引号把消息截断成半句（「…而且Cookie」），没人发现
 - 现在发送后比对飞书回显（剥掉 @ 占位再比），不一致 / mentions 为空 → exit 2 并打印实际内容
 - 长文本建议走 stdin：`python3 send_group.py - <<'EOF'`，彻底绕开引号
+
+## 2026-09-18 OpenClaw 自动化调度整体停摆（09-07 起）— 只读证据
+
+**症状**：7 个 cron job 全部 overdue，其中 6 个从未跑过（含 5 个每周 skill-collection-review）。
+`cron_run_receipts` 表 0 行。
+
+**只读证据**（`~/.openclaw/state/openclaw.sqlite`，表 `cron_jobs` / `cron_run_receipts`）：
+
+| job | name | agent_id | 状态 |
+| -------- | -------- | -------- | -------- |
+| `9e09f65a-87e8-41f9-b281-778e597b45fd` | daily_catch_8am | **NULL（两边都空）** | last=09-06 08:00（周日 skip），next=09-07 08:00 |
+| `ce064e9d-91ea-496d-97c8-151a1cadc4df` | daily_catch_8am | main | **从未运行**，next=09-08 08:00（agentTurn） |
+| `239ab413` / `2e2c1d23` / `bcb2d0f4` / `3d81db1c` / `1aefea4b` | skill-collection-review-* | main/lip/jobs/taizi/hubu | **全部从未运行** |
+
+- `openclaw cron status`：`enabled=true, triggersEnabled=true, jobs=7,`
+  `nextWakeAtMs=1788739200000`（= **2026-09-07 08:00，11 天前，从未前进**）
+- 7 个 job 里只有 `9e09f65a` 的 `agent_id` 与 `owner_agent_id` **都是 NULL**；其余 6 个
+  `owner_agent_id` 也空但 `agent_id` 有值 → `Agent-less cron job has no resolvable owner` 单指它
+- 网关 09-06 22:12 重启过（`logs/gateway-restart.log` + `gateway.log` startup outcomes），
+  09-07 08:00 那次 tick 之后日志里再没有任何调度动作
+
+**推断（未 100% 证实）**：09-07 08:00 的 tick 在给无主 job 解析 owner 时抛异常，
+`nextRunAtMs` 没推进 → 整个 scheduler 停摆，连带 5 个每周任务一起死。
+所以给这个 job 指定 owner 不只是「防双跑」，是解开全局停摆的钥匙。
+
+**CLI 语法（实跑 `--help` 确认，别再猜）**：
+- `openclaw cron edit` **有** `--agent <id>`；`openclaw cron show --help` 里没有（容易误判）
+- 改命令用 `--command "<shell>"`（payload 本身就以 `sh -lc` 跑），**没有** `--argv`；
+  cwd 用 `--command-cwd /Users/frank_bot/.openclaw/workspace-jobs`
+- 停用用 `openclaw cron disable <id>`；**没有** `--enabled false`
+- `cron list` 报 Agent-less 不影响 `cron get` / `cron status`（两者实测正常）
+
+**配置**：真正的 OpenClaw 配置是 `~/.openclaw/openclaw.json`（12698B），
+`agents.defaults` 只有 model/models/workspace/compaction/maxConcurrent/subagents/modelPolicy，
+**没有 `systemAgent` 键**；`agents.ownership` 是字符串 `"explicit"`。
+错误文案里那句 `or set agents.defaults.systemAgent.agentId` 与这份 schema 对不上 →
+**别照文案改 openclaw.json**；窄做法（每个 job 显式 owner）够用，且不用重启网关。
+
+**catch-up 风险**：`nextWakeAtMs` 停在过去，owner 修好后 scheduler 一恢复可能立刻补跑所有逾期 job
+（含 5 个 weekly review，每个一轮 LLM + 可能 announce）。出现补跑洪水就 `cron disable` 后白天再逐个 enable。
