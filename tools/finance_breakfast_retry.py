@@ -22,10 +22,11 @@ finance_breakfast_retry.py — 08:00 起按间隔重试的包装器 (v1)
 
 退出码:
   0  已发布（本次发布，或之前已确认发布）
+  0  另一个实例正在跑（正常跳过，说明有两个调度同时触发；详情见状态文件的 lock_contention）
   3  窗口结束：源端今天没发
   4  窗口结束：抓取通路有问题（需要我们处理）
   5  窗口结束：推送失败
-  1  参数/环境错误，或已有另一个实例在跑
+  1  参数/环境错误
 """
 import argparse
 import fcntl
@@ -150,8 +151,19 @@ def main():
     try:
         fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
-        log(f"另一个重试实例正在跑，本次退出（date={date_str}）")
-        return 1
+        # 正常跳过：launchd 和 OpenClaw cron 可能同时触发同一个窗口。
+        # 退出码给 0，避免被误判成故障；但写进状态文件，双调度仍然可见。
+        log(f"另一个重试实例正在跑，本次正常跳过（date={date_str}）")
+        prev = {}
+        if STATUS_FILE.exists():
+            try:
+                prev = json.loads(STATUS_FILE.read_text())
+            except Exception:
+                prev = {}
+        prev.setdefault("date", date_str)
+        prev.setdefault("lock_contention", []).append(now().strftime("%Y-%m-%d %H:%M:%S GMT+8"))
+        write_status(prev)
+        return 0
 
     if not PIPELINE.exists():
         log(f"❌ 找不到 {PIPELINE}")
