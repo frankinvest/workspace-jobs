@@ -406,3 +406,20 @@ cron ①（08:05 `--once`）= 单发兜底；cron ② = 已停用。
 
 **操作约定**：探针/诊断脚本**间隔 ≥2 分钟**再跑第二次；不要在 08:00-11:00 窗口内手动连打 cdp，
 否则会把窗口自身的判定打糊（单次 N=0 会被分类成 `fetch_failure`，靠下一轮 30 分钟重试覆盖）。
+
+### ✅ 探针 v3 验收通过（2026-09-18 02:00，Codex 实跑复验）
+
+- 文件：`/Users/frank_bot/.openclaw/workspace/main/tools/finance_probe.py`（11621B，v3）——小秘的边界，只读探针
+- 复验证据（Codex 实跑，非小秘转述）：`rc=0  found_count=15  found_today=False` → `verdict=source_not_posted`
+- 群侧过滤已修对（`ts` → +08:00 → 与本地日期比）。Codex 独立复算 bridge 日志：09-17 本地 2 条、09-18 本地 0 条，与探针输出一致
+- marker 路径 `/tmp/finance_breakfast_published_<YYYYMMDD>.json` 与 `tools/finance_breakfast_retry.py:72` 实际写入路径**完全一致**（判定规则可落地）
+- `[今天` 检测有效：`tools/cdp_get_innerhtml.py:196-235` 的时间 label 就是「今天 HH:mm / 昨天 HH:mm / 小时前…」，文本扫描是可靠判据
+
+**证据纠正（重要，别再引错）**：群里那句「我知道已经发了」出现在**本地 09-17 08:12 / 08:24**，指的是 09-17 的早餐，
+不能拿来证明 09-18 已发。09-18 02:00 的真实状态是 `source_not_posted`（Mr Dang 通常 06:00-09:00 才发）。
+「用户说发了」永远不等于「今天发了」——先按本地日期核 ts。
+
+**边界裁定（2026-09-18 02:00）**：
+
+- ❌ 不要往 `workspace-jobs/tools/` 新建探针（那是 pipeline 目录）；探针留在 `workspace/main/tools/`，pipeline 侧只读引用
+- `MEMORY.md` 由 Codex 统一追加维护（小秘在群里给要点、Codex 落笔），避免覆盖这个 20KB+ 共享文件
