@@ -288,3 +288,38 @@ cron 客户端改不了，只能让它补跑。
 
 **catch-up 风险**：`nextWakeAtMs` 停在过去，owner 修好后 scheduler 一恢复可能立刻补跑所有逾期 job
 （含 5 个 weekly review，每个一轮 LLM + 可能 announce）。出现补跑洪水就 `cron disable` 后白天再逐个 enable。
+
+**✅ catch-up 实测（01:09:09）**：7 个 overdue job 一次性补跑完，5 个 weekly review 全部 `ok`
+（1-33 秒），**没有发任何群消息**（delivery = not requested），不需要预先 disable。
+
+### ⚠️ gateway cron command payload 有 10 分钟执行上限（2026-09-18 01:47 实锤）
+
+我在 01:09 把 ① 改成**长驻窗口**（`finance_breakfast_retry.py --exit-zero`，内部循环到 11:00），
+结果被 gateway 打死并每 10 分钟重派一轮，收据原文：
+
+| 收据 | 起 | 止 | 结果 |
+| -------- | -------- | -------- | -------- |
+| 1 | 01:09:09 | 01:19:09 | error `cron: job execution timed out` |
+| 2 | 01:19:39 | 01:29:39 | error `cron: job execution timed out` |
+| 3 | 01:30:39 | 01:40:40 | error `cron: job execution timed out` |
+
+（每次超时后 5 分钟重派，每次都重跑一遍 fetch 并抢一次 flock；到 11:00 会白跑 50 多次，
+收据全 error 还会污染 08:00 的健康信号。）
+
+**修法**：cron 只派**单次**命令，长驻窗口交给 launchd（launchd 没有这个超时）：
+```bash
+openclaw cron edit 9e09f65a-87e8-41f9-b281-778e597b45fd \
+  --command "python3 tools/finance_breakfast_retry.py --once --exit-zero" \
+  --cron "5 8 * * *"
+```
+实测 01:45:40 用新 payload 一次跑完（约 1 分钟）→ 收据 `ok`、`next` 推进到 08:05、无常驻进程。
+
+**为什么把 08:00 挪到 08:05**：两条调度在 08:00 同时抢锁时，谁输了谁 `exit 0`——
+若 launchd 输，08:00-09:00 的窗口就无人守（要等 09:00 触发）。挪到 08:05 后
+launchd 08:00 先拿锁，① 只记一条 `lock_contention`；launchd 万一没起来，① 就是那一发兜底。
+
+**📌 最终分工**：launchd（08/09/10/11 触发 + 内部 30 分钟重试到 11:00）= 窗口主体；
+cron ①（08:05 `--once`）= 单发兜底；cron ② = 已停用。
+
+**📚 教训（我的验证漏洞）**：宣布「闭环」前要等**一次完整生命周期**跑完。
+我 01:09 只看到「收据有记录 + Next 列推进」就收工，漏掉了 10 分钟超时导致的反复重派。
