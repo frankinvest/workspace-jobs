@@ -235,11 +235,35 @@ format 的 date 校验拒绝写入，guard 再报「文件不存在」。这条�
 - 停用用 `openclaw cron disable <id>`；**没有** `--enabled false`
 - `cron list` 报 Agent-less 不影响 `cron get` / `cron status`（两者实测正常）
 
-**配置**：真正的 OpenClaw 配置是 `~/.openclaw/openclaw.json`（12698B），
-`agents.defaults` 只有 model/models/workspace/compaction/maxConcurrent/subagents/modelPolicy，
-**没有 `systemAgent` 键**；`agents.ownership` 是字符串 `"explicit"`。
-错误文案里那句 `or set agents.defaults.systemAgent.agentId` 与这份 schema 对不上 →
-**别照文案改 openclaw.json**；窄做法（每个 job 显式 owner）够用，且不用重启网关。
+**配置**：真正的 OpenClaw 配置是 `~/.openclaw/openclaw.json`（12698B）。`agents.ownership` = `"explicit"`。
+
+> ⚠️ **更正（2026-09-18 01:0x，我先前的判断是错的）**：我先前说「`agents.defaults` 没有
+> `systemAgent` 键 → 别照报错文案改 openclaw.json」——那是**把「当前文件里没有」误当成
+> 「schema 不允许」**。用 `openclaw config schema` 查实：`agents.defaults.systemAgent.agentId`
+> 是**有效键**（title `System Agent Target`），`openclaw config get agents.defaults.systemAgent`
+> 明确回 `Config path is valid but unset`。`agents.ownership="explicit"` 的 schema 原话是
+> 「ambient channels / heartbeat / Talk / cron / bare CLI 必须解析到显式 owner，否则 fail closed」。
+
+**根因（查 OpenClaw 源码 `dist/agent-id-C76WNTsz.js`）**：owner 解析顺序只有一层三元表达式——
+`job.agentId || sessionKey 里的 agentId || configuredDefaultAgentId`，三者皆空就抛
+`Agent-less cron job has no resolvable owner`。job ① 三者全空 → 必抛。
+而 `cron edit` 在应用 patch **之前**要先解析「已存在那个 job」的 owner 做权限判断
+（`dist/cron-Bygm2DMd.js`），所以 `--agent main` 救不了它自己（鸡生蛋）——**必须先设配置默认**。
+**同一个异常也是全局停摆的机制**：store 里有一个无主 job，每轮 tick 解析 owner 都抛错 →
+整轮 tick 挂掉 → 7 个 job 全不跑（不是 5 个 review 各自的问题）。
+
+**正确修法**（顺序不能反，先 disable 5 个 review 再设默认 owner，否则 tick 一恢复就一起补跑刷屏）：
+```bash
+openclaw config set agents.defaults.systemAgent.agentId main --dry-run
+openclaw config set agents.defaults.systemAgent.agentId main
+openclaw cron list     # 不再报 Agent-less
+openclaw cron edit 9e09f65a-87e8-41f9-b281-778e597b45fd --agent main \
+  --command "python3 tools/finance_breakfast_retry.py --exit-zero" \
+  --command-cwd /Users/frank_bot/.openclaw/workspace-jobs
+openclaw cron disable ce064e9d-91ea-496d-97c8-151a1cadc4df
+openclaw cron status   # nextWakeAtMs 往前推进 = scheduler 复活
+```
+回滚：`openclaw config unset agents.defaults.systemAgent.agentId`
 
 **catch-up 风险**：`nextWakeAtMs` 停在过去，owner 修好后 scheduler 一恢复可能立刻补跑所有逾期 job
 （含 5 个 weekly review，每个一轮 LLM + 可能 announce）。出现补跑洪水就 `cron disable` 后白天再逐个 enable。
