@@ -173,10 +173,15 @@ launchd 原来只在 08:00 跑一次 finance_breakfast.py。Mr Dang 常在 8:00 
 ### 改动 1：launchd 指向新包装器
 - `~/Library/LaunchAgents/ai.finance-breakfast.daily.plist` 的 ProgramArguments
   由 `tools/finance_breakfast.py` 改为 **`tools/finance_breakfast_retry.py`**（08:00 单次触发不变）
+  - ⚠️ 更正（同日 00:41）：触发点已从 08:00 一个改成 **08:00 / 09:00 / 10:00 / 11:00 四个看门狗**
+    （`StartCalendarInterval` 数组）。原因：若抢到锁的那个实例中途挂掉，当天 08:00 那次已经用掉，
+     没人再补跑；多挂几个触发点可以自愈。被锁挡住的触发 exit 0 跳过，不会重复推送。
 - 原配置备份：`tools/_legacy/ai.finance-breakfast.daily.plist.bak-20260918`
 - 回滚：把 ProgramArguments 改回 finance_breakfast.py，再 `launchctl unload/load`
 - 包装器在窗口内（默认 08:00-11:00，每 30 分钟）反复调用原 pipeline，不改它的 6 个 step；
-  带 flock 锁（两个实例同时跑第二个直接退出）、成功后写 `/tmp/finance_breakfast_published_<date>.json` 标记
+  带 flock 锁（两个实例同时跑，第二个 **exit 0 正常跳过**——launchd 和 OpenClaw cron 可能同时触发，
+  被锁挡住不算故障；跳过会记进状态文件的 `lock_contention` 字段，双调度仍然可见）、
+  成功后写 `/tmp/finance_breakfast_published_<date>.json` 标记
 
 ### 改动 2：失败原因分级（原来「抓 0 条」一律被当成源端没发）
 | 现象 | 分类 | 退出码 |
@@ -185,6 +190,10 @@ launchd 原来只在 08:00 跑一次 finance_breakfast.py。Mr Dang 常在 8:00 
 | 圈子页渲染出 N>0 条帖子但今天没帖（真熔断） | source_not_posted | 3 |
 | 页面一条帖子都渲染不出来（N=0）/ CDP 连不上 / 抓取异常 | fetch_failure（我们抓不到） | 4 |
 | 抓取+排版成功但推送失败 | push_failure | 5 |
+
+给调度器用的开关：`--exit-zero` —— 分类照写状态文件，但进程恒 exit 0。
+OpenClaw 的 job 跑这个包装器时必须加，否则「源端今天没发」(3) 每天都会被记成任务失败（周日必现）。
+实测（2026-09-18 00:38）：`--once --exit-zero` → exit 0，状态文件仍记录 `source_not_posted`。
 
 **实测（2026-09-18 00:28）**：今天没发时**并不会熔断**——cdp 把「昨天」的帖子当候选抓回来，
 format 的 date 校验拒绝写入，guard 再报「文件不存在」。这条路径以前一直被误判成抓取故障。
