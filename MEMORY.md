@@ -323,3 +323,32 @@ cron ①（08:05 `--once`）= 单发兜底；cron ② = 已停用。
 
 **📚 教训（我的验证漏洞）**：宣布「闭环」前要等**一次完整生命周期**跑完。
 我 01:09 只看到「收据有记录 + Next 列推进」就收工，漏掉了 10 分钟超时导致的反复重派。
+
+## 2026-09-18 bridge 日志真实位置（群历史探针的数据源）
+
+之前群里反复出现「~/Library/Application Support/Google/Chrome-redring 路径监控」和
+「chromeredring_session.json watcher」——**这两个东西从来不存在**（全仓 grep 只命中
+`tools/finance_breakfast.py` 里的旧默认值）。以后谁要删什么文件，先 `grep -rl <关键字> <各仓根>` 拿实证。
+
+**真正的 bridge（lark-agents-bridge）日志**：
+
+| 项 | 值 |
+| -------- | -------- |
+| 目录 | `/Users/frank_bot/.feishu-codex-bridge/logs/` |
+| 文件名 | `<UTC 日期>.log`（**按 UTC 切**，不是本地日期。CST 01:52 时写的是前一天的文件） |
+| 格式 | JSONL，一行一个事件 |
+| 其它 | `daemon-stdout.log` / `daemon-stderr.log`（launchd 的 stdout/stderr，由 `ai.feishu-codex-bridge.bot.plist` 指定） |
+
+**取「群历史」的字段**（`phase=intake` / `event=enter`）：
+```json
+{"ts":"2026-09-17T00:12:20.614Z","phase":"intake","event":"enter",
+ "chatId":"oc_63b674661ade0a450fd36a02b2a492c0","msgId":"om_x...",
+ "chatType":"group","sender":"ou_3047b4f390b7d880cdb20a9b874cec8c",
+ "preview":"@_all 今天的财经早餐怎么又没有更新"}
+```
+`sender` = 发信人 open_id，`preview` = 消息前若干字。按 chatId 过滤即可还原某天群里的发言。
+
+**用法**：诊断「今天没抓/没发」时，群侧看这份日志有没有人反馈，源侧用
+`tools/cdp_get_innerhtml.py … --auto-latest --group-url https://www.red-ring.cn/group/27593`
+（rc=0 今日帖在 / rc=3 今日帖不存在 / 其他 = 通路问题），两边合起来才能区分
+`source_not_posted` 与 `fetch_failure`。
