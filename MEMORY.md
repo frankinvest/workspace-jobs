@@ -265,5 +265,26 @@ openclaw cron status   # nextWakeAtMs 往前推进 = scheduler 复活
 ```
 回滚：`openclaw config unset agents.defaults.systemAgent.agentId`
 
+**✅ 执行结果（2026-09-18 01:05-01:10，Codex 接手执行，已生效）**：
+- 备份：`~/.openclaw/openclaw.json.bak-20260918-0105`、`~/.openclaw/backups/20260918-ownerfix/openclaw.sqlite.bak-0105`
+- `config set` 原文回：`Change will apply without restarting the gateway.`（dry-run 先过）
+- `cron list` 从报 Agent-less → 正常列出，① 的 Agent ID 立刻解析成 `main`
+- ① payload 变成 `["sh","-lc","python3 tools/finance_breakfast_retry.py --exit-zero"]`，cwd 保持；② `enabled=false`
+- **scheduler 立刻复活**：`cron_run_receipts` 0 行 → 7 行；01:09:09 一次性补跑所有 overdue job；
+  5 个 weekly review 全部 `ok` 且 Next 从「9~10 天前」变成 `in 7d`；② 收据 `error: Cron job disabled by operator.`（预期）
+- ① 补跑的第一次尝试 01:09:10：rc=1 → `source_not_posted`（可见 15 条），窗口到 11:00 → 今天由 gateway 这条实例持有 flock，launchd 08:00 等几枪撞锁跳过（预期）
+
+**❌ 作废的预案**：原计划「先 disable 5 个 weekly review 再设 owner」——CLI 拒绝：
+`Error: system-owned monitor jobs cannot be edited by cron clients`。
+这 5 个 job 由 memory/skills 声明托管（declaration_key = `skill-collection-review:<agent>`），
+cron 客户端改不了，只能让它补跑。
+
+**📌 判据别用错**：`cron status` 的 `nextWakeAtMs` 在「① 仍 running（窗口到 11:00）」期间不会推进，
+**不能**用它判断 scheduler 死活；应看 `cron_run_receipts` 有没有新行 + `cron list` 的 Next 列有没有从过去推到未来。
+
+**📚 教训（Codex 自己犯的，代价 22 分钟）**：「当前配置文件里没有这个键」≠「schema 不允许这个键」。
+要判断一个配置键是否有效，用 `openclaw config schema`（或 `openclaw config get <path>`，有效但未设会明确回
+`Config path is valid but unset`），**不要拿现有 openclaw.json 的键清单当 schema**。
+
 **catch-up 风险**：`nextWakeAtMs` 停在过去，owner 修好后 scheduler 一恢复可能立刻补跑所有逾期 job
 （含 5 个 weekly review，每个一轮 LLM + 可能 announce）。出现补跑洪水就 `cron disable` 后白天再逐个 enable。
