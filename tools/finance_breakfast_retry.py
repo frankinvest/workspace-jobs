@@ -19,6 +19,7 @@ finance_breakfast_retry.py — 08:00 起按间隔重试的包装器 (v1)
   python3 tools/finance_breakfast_retry.py                      # 跑完整窗口
   python3 tools/finance_breakfast_retry.py --once               # 只试一次（手动补抓 / 调试）
   python3 tools/finance_breakfast_retry.py --date 20260918 --interval-min 15 --end-hour 11
+  python3 tools/finance_breakfast_retry.py --exit-zero          # 给调度器用：分类照写状态文件，但恒 exit 0
 
 退出码:
   0  已发布（本次发布，或之前已确认发布）
@@ -144,8 +145,16 @@ def main():
     ap.add_argument("--end-minute", type=int, default=0, help="窗口结束分钟（默认 0）")
     ap.add_argument("--once", action="store_true", help="只尝试一次，不进入重试循环")
     ap.add_argument("--dry-run", action="store_true", help="透传给 finance_breakfast.py")
+    ap.add_argument("--exit-zero", action="store_true",
+                    help="总是 exit 0（真实分类仍写状态文件）；给调度器用——"
+                         "避免「源端今天没发」(3) 被 OpenClaw/launchd 记成任务失败")
     args = ap.parse_args()
 
+    rc = run_window(args)
+    return 0 if args.exit_zero else rc
+
+
+def run_window(args):
     date_str = args.date
     lock_fd = os.open(LOCK_FILE, os.O_CREAT | os.O_RDWR, 0o644)
     try:
