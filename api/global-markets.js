@@ -134,8 +134,9 @@ const CATEGORIES = {
     items: [
       // Frank 2026-09-18 16:51 要求新增。本机 curl Yahoo 被反爬挡，Vercel 侧 yahoo 通路已验证可用
       // ^IRX = 13 周美债贴现率（业内常当 3 个月期收益率用）；^TNX = 10 年期美债收益率
-      { code: '^IRX', nameZh: '3 个月期美债收益率', unit: '%', src: 'yahoo' },
-      { code: '^TNX', nameZh: '10 年期美债收益率',  unit: '%', src: 'yahoo' },
+      // Frank 2026-09-18 17:1x：进「重点行情」，换掉深证成指 / 创业板50
+      { code: '^IRX', nameZh: '3 个月期美债收益率', unit: '%', src: 'yahoo', featured: true },
+      { code: '^TNX', nameZh: '10 年期美债收益率',  unit: '%', src: 'yahoo', featured: true },
     ],
   },
   asia_index: {
@@ -154,8 +155,9 @@ const CATEGORIES = {
     items: [
       // A 股三大指数 — 腾讯 qt.gtimg.cn（Codex 2026-09-07 19:25 验证代码 + parts[3]=价格/parts[32]=涨跌幅）
       { code: 'sh000001', nameZh: '上证指数',   unit: '点', src: 'tencent', featured: true },
-      { code: 'sz399001', nameZh: '深证成指',   unit: '点', src: 'tencent', featured: true },
-      { code: 'sz399673', nameZh: '创业板50',   unit: '点', src: 'tencent', featured: true },
+      // 2026-09-18 17:1x Frank：深证成指 / 创业板50 退出「重点行情」（仍留在本分类里）
+      { code: 'sz399001', nameZh: '深证成指',   unit: '点', src: 'tencent' },
+      { code: 'sz399673', nameZh: '创业板50',   unit: '点', src: 'tencent' },
     ],
   },
 };
