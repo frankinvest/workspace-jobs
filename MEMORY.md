@@ -444,3 +444,20 @@ pbkdf2+aes-256-gcm，按候选种子（当前 hostname / `anonymous` / `localhos
 
 **根治**（可选，需要 Frank 的 sudo）：`sudo scutil --set HostName frank-bot-de-mac-mini` 把主机名固定，
 否则每次网络环境变化都可能再漂一次，届时所有**新起**的进程都取不到 secret（桥接 daemon 只要不重启就还活着）。
+
+### 📈 「纵横东西」新增美债收益率（2026-09-18 16:51-17:00，Frank 指令 → Codex 整单交付）
+
+- 需求：在「纵横东西」加 3 个月期 / 10 年期美债收益率
+- 落点（两处，都在 workspace-jobs）：
+  - `api/global-markets.js`：新增分类 `us_bond`（label「美债收益率」）+ 两条 item：`^IRX`（3 个月期，单位 %）、`^TNX`（10 年期，单位 %），源 yahoo（与 WTI / 黄金 / 日经同源）
+  - `src/components/GlobalMarketsBoard.astro`（v11）：`CATEGORY_ORDER` 两处（frontmatter + 客户端脚本）加 `us_bond`（排在 `us_index` 之后）；`MARKET_HOURS_BY_CODE` 加 `^IRX`/`^TNX` = 北京 20:00 → 次日 05:00（美债现货，夏令时近似），否则时间徽章显示「—」
+- 部署 + 验证（只看线上，不看本地）：`npm run build`（207 页）→ `tools/system_api_pusher.py`（Contents API）→ 线上 `https://frankofswing.com/api/global-markets?cb=<随机>` 返回 8 个分类 `[energy, precious, metals, agriculture, us_index, us_bond, asia_index, cn_index]`，`^IRX=3.965%(-0.126%)`、`^TNX=4.947%(-1.179%)`，source=yahoo；线上 `_astro/GlobalMarketsBoard.astro_astro_type_script_index_0_lang.*.js` 已含 `us_bond`/`^IRX`/`^TNX`
+- 口径：`^IRX` 是 13 周美债**贴现率**，业内通常就当 3M 收益率用；要严格 3M 常数到期收益率（CMT）得换财政部日频源（FRED `DTB3`/`DGS10` 备选，本次没用上）
+- 未定项（Frank 未表态，现维持）：① 独立 tab，不并进「美股指数」；② 不进「重点行情」（仍是 9 个）。两项都是「一行改动」
+- 数据刷新：API 缓存 5 分钟；`asOf` 要等美债开盘（北京 20:00）之后那一档才会跳到当日，之前一直是上一交易日尾盘（实测 09-17 14:59 ET = 09-18 02:59 CST）
+
+### 🧭 两次「skill 不存在」误判：两边 skill 根目录不同（2026-09-18 纠正）
+
+- 群里记的「`frankofswing-dev` skill 不存在」**只对 `~/.openclaw/skills/` 成立**——那是小秘（OpenClaw）侧的 skill 根目录
+- Codex 侧真实存在：`/Users/frank_bot/.codex/skills/frankofswing-dev/SKILL.md`（1541B，Sep 7 20:01）
+- 结论：引用 skill 前先**在自己那侧的根目录** `ls` 实锤；「我这边没有」不等于「不存在」，别写成「伪权威引语」
