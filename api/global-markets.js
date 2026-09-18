@@ -129,6 +129,15 @@ const CATEGORIES = {
       { code: 'usDJI', nameZh: '道琼斯工业',   unit: '点', src: 'tencent' },
     ],
   },
+  us_bond: {
+    label: '美债收益率',
+    items: [
+      // Frank 2026-09-18 16:51 要求新增。本机 curl Yahoo 被反爬挡，Vercel 侧 yahoo 通路已验证可用
+      // ^IRX = 13 周美债贴现率（业内常当 3 个月期收益率用）；^TNX = 10 年期美债收益率
+      { code: '^IRX', nameZh: '3 个月期美债收益率', unit: '%', src: 'yahoo' },
+      { code: '^TNX', nameZh: '10 年期美债收益率',  unit: '%', src: 'yahoo' },
+    ],
+  },
   asia_index: {
     label: '亚太指数',
     items: [
