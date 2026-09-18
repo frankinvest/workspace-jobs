@@ -1,5 +1,7 @@
 ---
 // GlobalMarketsBoard.astro
+// 「纵横东西」模块 (v11 — 2026-09-18 16:51 Frank: 新增「美债收益率」分类 = ^IRX 3M / ^TNX 10Y, 源 Yahoo)
+//   v11 改动: CATEGORY_ORDER 两处 + MARKET_HOURS_BY_CODE 补 ^IRX/^TNX (美债现货时段, 北京 20:00→次日 05:00)
 // 「纵横东西」模块 (v10 — 2026-09-08 19:55 Frank 反馈: 美股时间错, 必须用 API 真实时间)
 // 改动 (v9 → v10):
 //   1. api/global-markets.js 解析真实时间戳 (腾讯 parts[30] / 新浪期货 parts[1]+parts[17] / 新浪指数 parts[3])
@@ -7,7 +9,7 @@
 //   3. 删除 fmtTodayDate() helper (v9 hack 不再需要)
 //   4. 所有状态 (open/closed/pre/24h) 都用 fmtTime(item.asOf), 单一真相源
 // 边界: 19:51 边界覆盖 (Codex 19:56 明确: "这单是数据功能, 边界不适用")
-const CATEGORY_ORDER = ['energy', 'precious', 'metals', 'agriculture', 'us_index', 'asia_index', 'cn_index'];
+const CATEGORY_ORDER = ['energy', 'precious', 'metals', 'agriculture', 'us_index', 'us_bond', 'asia_index', 'cn_index'];
 ---
 
 <section class="global-markets" aria-label="纵横东西">
@@ -334,7 +336,7 @@ const CATEGORY_ORDER = ['energy', 'precious', 'metals', 'agriculture', 'us_index
   const updatedEl = document.getElementById('global-markets-updated');
   const REFRESH_MS = 5 * 60 * 1000;
 
-  const CATEGORY_ORDER = ['energy', 'precious', 'metals', 'agriculture', 'us_index', 'asia_index', 'cn_index'];
+  const CATEGORY_ORDER = ['energy', 'precious', 'metals', 'agriculture', 'us_index', 'us_bond', 'asia_index', 'cn_index'];
 
   const CATEGORY_LABELS = {
     energy: '能源',
@@ -405,6 +407,9 @@ const CATEGORY_ORDER = ['energy', 'precious', 'metals', 'agriculture', 'us_index
     '^N225': { open: '08:00', close: '14:00' },  // 日经
     '^KS11': { open: '08:00', close: '15:30' },  // 韩国 KOSPI
     '^TWII': { open: '08:00', close: '13:30' },  // 台湾加权
+    // 美债收益率 (Yahoo ^IRX/^TNX) — 美债现货 08:00-17:00 ET ≈ 北京 20:00-次日 05:00 (夏令时近似)
+    '^IRX': { open: '20:00', close: '05:00', nextDay: true },
+    '^TNX': { open: '20:00', close: '05:00', nextDay: true },
   };
 
   // v7: 工具函数 - 时分转分钟数
