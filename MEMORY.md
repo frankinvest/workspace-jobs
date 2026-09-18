@@ -461,3 +461,15 @@ pbkdf2+aes-256-gcm，按候选种子（当前 hostname / `anonymous` / `localhos
 - 群里记的「`frankofswing-dev` skill 不存在」**只对 `~/.openclaw/skills/` 成立**——那是小秘（OpenClaw）侧的 skill 根目录
 - Codex 侧真实存在：`/Users/frank_bot/.codex/skills/frankofswing-dev/SKILL.md`（1541B，Sep 7 20:01）
 - 结论：引用 skill 前先**在自己那侧的根目录** `ls` 实锤；「我这边没有」不等于「不存在」，别写成「伪权威引语」
+
+### 🚨 误报纠正：MEMORY.md「被第三方截断」其实是我自己的写脚本 bug（2026-09-18 17:03）
+
+- 现象：我 17:03 追加记录后，`workspace-jobs/MEMORY.md` 从 28226B 变成 2491B，只剩最后一段（「否则每次网络环境变化…」）
+- 我当时的判断：「有一次不是我的写入，把 28KB 历史压成 1.4KB」——**错**。已在群里发出，本条目撤回它
+- 真因：我的脚本写成 `new = old + """…"""`，而 `old` 只是「文件最后一段」那个字符串；正确应是 `new = d + """…"""`（`d` 才是读到的全文）。
+  证据：Codex session rollout `~/.codex/sessions/2026/09/06/rollout-2026-09-06T16-51-32-01a075ea-….jsonl` 第 12255 行保存了原始命令
+- 影响：只有本地文件被截断；我立刻从 GitHub 取回 28226B 版本（sha256 `9311eaad1991`，与远端逐字节一致）还原后重新追加，远端没有被破坏过
+- **教训（重要）**：宣布「被别人覆盖 / 第三方写入」之前，先复核自己的读写脚本。read-modify-write 脚本必须：
+  (a) 用「读到的全文」变量拼接，别拿锚点/末段字符串当基底；(b) 写前断言新内容更长（`len(new_bytes) > len(old_bytes)`）；(c) 写后回读逐字节校验
+- 顺带核实（本次无异常）：OpenClaw agent `jobs` 的 workspace 就是 `workspace-jobs`，理论上 memory-core 会写这个 `MEMORY.md`；
+  但 17:02–17:03 没有任何 cron 运行记录（`cron_run_receipts` 最新是 08:05 与 03:00），本地也没有别的写入进程持有该文件 → 与 OpenClaw 无关
