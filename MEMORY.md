@@ -423,3 +423,24 @@ cron ①（08:05 `--once`）= 单发兜底；cron ② = 已停用。
 
 - ❌ 不要往 `workspace-jobs/tools/` 新建探针（那是 pipeline 目录）；探针留在 `workspace/main/tools/`，pipeline 侧只读引用
 - `MEMORY.md` 由 Codex 统一追加维护（小秘在群里给要点、Codex 落笔），避免覆盖这个 20KB+ 共享文件
+
+### ⚠️ App Secret 取不到的老坑：hostname 漂移（2026-09-18 第二次翻车，已加兜底）
+
+**症状**：`lark-agents-bridge secrets get` 返回 `Unsupported state or unable to authenticate data`，
+`send_group.py` / `lark-cli` 全部拿不到 secret → 我 @小秘 的文本通道整个断掉（卡片不受影响，桥接 daemon 内存里有凭证）。
+
+**根因**：keystore 密钥 = `pbkdf2(f"{hostname}|{username}", .keystore.salt)`（见
+`lark-agents-bridge dist/cli.js:547`）。本机 hostname 会在 **`anonymous`** 和 **IP（如 192.168.1.6）** 之间漂移；
+漂到 IP 的那段时间，派生出的密钥和加密时不一致 → 解不开 `secrets.enc`。09-07 已经发生过一次同样的故障
+（小秘 memory 2026-09-07.md:516 有记录），当时靠重设 secret 恢复。
+
+**踩坑经验（重要）**：排查时不要用 `hostname` 命令的输出当种子——它和 node 的 `os.hostname()` 可能给出不同值
+（11:13 实测：shell 给 `192.168.1.6`，node 给 `anonymous`）。判断「当前种子是什么」要用 node：
+`node -e "console.log(require('os').hostname())"`。
+
+**已做兜底**：`send_group.py::_secret_from_keystore_fallback()` —— CLI 取不到值时，直接用 node 复刻同一套
+pbkdf2+aes-256-gcm，按候选种子（当前 hostname / `anonymous` / `localhost` × 当前用户 / `frank_bot`）逐个试解，
+只回明文给调用方、不打印。2026-09-18 16:50 实测（故意把 CLI 从 PATH 摘掉）发出成功。
+
+**根治**（可选，需要 Frank 的 sudo）：`sudo scutil --set HostName frank-bot-de-mac-mini` 把主机名固定，
+否则每次网络环境变化都可能再漂一次，届时所有**新起**的进程都取不到 secret（桥接 daemon 只要不重启就还活着）。
