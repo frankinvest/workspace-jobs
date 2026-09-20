@@ -198,7 +198,14 @@ def extract_title(html):
     """从 HTML 提取帖子标题
     """
     soup = BeautifulSoup(html, 'html.parser')
-    # 优先找带特定 class 的标题
+    # 2026-09-20: 优先取帖子自己的标题元素（红圈帖子标题 = .post-body 里第一行
+    # 「fz-lg ... text-darker」）。原来先找 <h1>，会命中圈子简介里那句
+    # 「知乎人气答主…你的定制财经早餐」，于是周末/特殊贴被误标成「财经早餐 YYYY-MM-DD」。
+    for el in soup.select('[class*=text-darker]'):
+        txt = el.get_text(strip=True)
+        if txt and len(txt) < 80:
+            return txt
+    # 退回: 找带特定 class 的标题
     h1 = soup.find('h1')
     if h1:
         return h1.get_text(strip=True)
@@ -318,8 +325,10 @@ def step_format(date_str, dry_run=False):
 
         # ⚠️ race condition 兑底: 即使 daily_catch.py 抓错 post, 这里也要校验
         # raw 标题里的日期必须等于 date_str, 否则拒绝写入 (2026-07-18 8AM cron 错抓 7/17 早餐事故)
+        # 2026-09-20: 去掉「标题必须含财经早餐」的前置条件——周末/特殊贴标题是
+        # 「大宗商品情况更新 2026年9月20日」这类，同样带日期，同样要校验。
         display_date = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:]}"
-        if title and '财经早餐' in title and re.search(r'\d', title):
+        if title and re.search(r'\d', title):
             m = re.search(r'(\d{4})[-/年](\d{1,2})[-/月](\d{1,2})', title)
             if m:
                 actual_date = f"{m.group(1)}-{int(m.group(2)):02d}-{int(m.group(3)):02d}"
@@ -346,7 +355,13 @@ def step_format(date_str, dry_run=False):
         comments_md = render_comments_md(comments)
 
         # 输出 .md (display_date 已在 date 校验时赋值)
-        normalized_title = f"财经早餐 {display_date}"  # Frank 拍板的标题格式 (Vercel 首页列靠这个识别)
+        # Frank 拍板的标题格式: 财经早餐类统一成「财经早餐 YYYY-MM-DD」;
+        # 非财经早餐的贴（周末「大宗商品情况更新 …」等）保留原贴标题，避免张冠李戴
+        # ——2026-09-20 Frank 指令：这类贴也走同一套标准流程发布。
+        if '财经早餐' in title or not title.strip():
+            normalized_title = f"财经早餐 {display_date}"
+        else:
+            normalized_title = title.strip()
         # ⚠️ 重要: 顶部必须严格 YAML frontmatter (Astro 首页靠 title 字段识别，不能出现"原文"等文件后缀)
         full_md = "---\n"
         full_md += f'title: "{normalized_title}"\n'
