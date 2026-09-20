@@ -248,16 +248,21 @@ def auto_find_latest_post(ws_url, group_url, timeout=30):
         target = today_candidates[0]
 
         # 修复：ID 最大不一定是文字版（可能是稍后发的「有声版」）。
-        # 依次导航 top 候选，优先选标题含「财经早餐」且不含「有声版」的文字帖。
+        # 2026-09-20 改判据：不再要求标题含「财经早餐」——周末/特殊贴的标题是
+        # 「大宗商品情况更新 …」「地阶功法卷十八…」等，原来的判据会把它们全部漏掉
+        # （09-20 就是这样退回了 09-18 的旧贴）。现在只按列表时间标签选今天最新的
+        # 那条，仅排除「有声版」音频帖。
         for cand in today_candidates[:4]:
             try:
                 _navigate(ws, cand['href'], timeout=15)
                 time.sleep(1)
-                js = "JSON.stringify({t: document.body.innerText.slice(0,200)})"
+                js = "JSON.stringify({t: document.body.innerText.slice(0,300)})"
                 data = _eval(ws, 777, js, timeout=10)
                 raw = json.loads(data['result']['result']['value'])
                 txt = raw.get('t', '')
-                if '财经早餐' in txt and '有声版' not in txt:
+                if '有声版' in txt or '.mp3' in txt.lower():
+                    continue            # 音频帖，跳过，继续看下一条
+                if txt.strip():
                     target = cand
                     break
             except Exception:
