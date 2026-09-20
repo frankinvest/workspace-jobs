@@ -520,3 +520,16 @@ images（按约定跳过）→ guard ✅ → tldr ✅（9 条：macro×3 / indus
   「当前 nodename / anonymous / localhost / 本机所有 IPv4 / scutil 的 ComputerName+LocalHostName+HostName」
   × 当前用户；CLI 挂掉也能发
 - 根治不变：`sudo scutil --set HostName frank-bot-de-mac-mini`
+
+
+### ✅ 2026-09-20 21:4x hostname 漂移**根治完成**（Frank 亲自跑了 sudo）
+
+- Frank 执行：`sudo scutil --set HostName frank-bot-de-mac-mini`
+- 验证：`scutil --get HostName` / `hostname` / `node -e "console.log(require('os').hostname())"` **三者现在一致**
+  都是 `frank-bot-de-mac-mini`（此前会漂成 `anonymous` 或 `192.168.1.x`）
+- 随后的收尾（Codex 做）：keystore 用**稳定种子** `frank-bot-de-mac-mini|frank_bot` 重新加密
+  （旧文件备份为 `~/.feishu-codex-bridge/secrets.enc.pre-rekey-20260920-anonymous-seed`），
+  然后实测 `lark-agents-bridge secrets get` **正常返回 32 字符**、`tenant_access_token` 返回 `code:0`
+- `send_group.py` 的多候选种子兜底**保留**（作为保险：万一 hostname 再被别的工具改回去也能发）
+- 结论：**这条反复复发 3 次（09-07 / 09-18 / 09-20）的「通道断线」问题到此根治**——
+  以后判断通道是否健康，先看 `scutil --get HostName` 是否仍是 `frank-bot-de-mac-mini`
