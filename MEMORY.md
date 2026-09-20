@@ -473,3 +473,50 @@ pbkdf2+aes-256-gcm，按候选种子（当前 hostname / `anonymous` / `localhos
   (a) 用「读到的全文」变量拼接，别拿锚点/末段字符串当基底；(b) 写前断言新内容更长（`len(new_bytes) > len(old_bytes)`）；(c) 写后回读逐字节校验
 - 顺带核实（本次无异常）：OpenClaw agent `jobs` 的 workspace 就是 `workspace-jobs`，理论上 memory-core 会写这个 `MEMORY.md`；
   但 17:02–17:03 没有任何 cron 运行记录（`cron_run_receipts` 最新是 08:05 与 03:00），本地也没有别的写入进程持有该文件 → 与 OpenClaw 无关
+
+### 📰 2026-09-20 早报：周末/特殊标题的贴也能走「财经早餐标准流程」（Frank 11:5x 指令）
+
+**背景**：09-19（周六）源端确实没发；09-20（周日）源端 08:01 发了「大宗商品情况更新 2026年9月20日」，
+但 08:00-11:00 窗口 5 枪全部判成 `source_not_posted` —— 真因不是源端没发，是流水线**选帖规则要求
+页面文本含「财经早餐」**，周末/特殊贴被漏掉后退回旧贴，再被日期校验拦下。
+
+**三处改动（都在 tools/，已推 GitHub）**：
+
+- `tools/cdp_get_innerhtml.py`：选「今日主帖」改成「按列表时间标签（今天/昨天/today）+ 帖子 ID 最大」，
+  仅排除「有声版/.mp3」，不再要求标题含「财经早餐」
+- `tools/finance_breakfast.py::extract_title`：优先取帖子自身标题元素（`.post-body` 里 `text-darker`）——
+  原来先找 `<h1>`，会命中圈子简介「知乎人气答主…你的定制财经早餐」，把标题带偏
+- `tools/finance_breakfast.py`：① 日期校验去掉「标题必须含财经早餐」前置条件（周末贴标题也带日期，照校）；
+  ② 标题归一化——财经早餐类仍统一成「财经早餐 YYYY-MM-DD」，**非财经早餐的贴保留原贴标题**（对齐 09-05 先例）
+
+**执行 + 验收（标准流程，非旁路工具）**：`finance_breakfast.py --date 20260920` 分步
+fetch ✅（选定 27593-2523314，今天 08:01）→ format ✅（标题「大宗商品情况更新」/ 37 图 / 19 评论）→
+images（按约定跳过）→ guard ✅ → tldr ✅（9 条：macro×3 / industry×3 / commodity×3）→ push ✅
+（本地 commit `c973cbf`，Contents API `9896a91d`）。线上 `https://frankofswing.com/docs/jjc-20260920-001-原文`
+→ 200；首页「今日速览」显示「从 2026-09-20 财经早餐提取」并链到该篇。
+
+**注意**：以后引用历史 docs 时，**「docs 里没有某天」只说明流水线当时没抓到，不等于源端没发**——
+判断源端一律直接看圈子列表（09-20 就是这么翻案的）。
+
+### 🔌 2026-09-20 机器重启（10:14:57）把早报窗口掐断
+
+- `kern.boottime` = 2026-09-20 10:14:57（上次开机 09-05 13:10，连续跑了 45 天）
+- 后果：/tmp 被清空（发布标记/raw/状态文件全没）；08:00-11:00 的重试循环在 10:01 那枪之后被 SIGTERM，
+  **10:30 与 11:00 两枪根本没跑**；OpenClaw 随重启复活后在 10:21:31 注册内置 `heartbeat-main`
+  cron（10:24 `skipped: no-route`，无害——**它不是任何人手动加的**）
+- 当天补救：11:53-11:58 手动按标准流程把 09-20 补发（见上条）
+- 待 Frank 拍板：给 `ai.finance-breakfast.daily.plist` 加 `RunAtLoad=true` + 包装器加「已过窗口结束就只记录不跑」，
+  以后重启也能把窗口补完（**未实现，等指令**）
+
+### 🔐 2026-09-20 keystore 二次漂移（重启后 daemon 用漂移中的种子重新加密）
+
+- 症状：11:5x 发消息时 `lark-agents-bridge secrets get` 报 `Unsupported state or unable to authenticate data`
+- 查因：`~/.feishu-codex-bridge/secrets.enc` 的 mtime 是**当天 10:23**（重启后桥接 daemon 重新加密），
+  当时 hostname 是漂移值（IP），事后 hostname 回到 `anonymous` 就再也解不开
+- 处置：从 `secrets.enc.broken_20260918`（09-18 被**误命名**成 broken、实际用 `anonymous|frank_bot` 能解开的那份）
+  取回 secret，按同一套 pbkdf2+aes-256-gcm 用当前种子重新加密回 `secrets.enc`，原文件备份为
+  `secrets.enc.pre-rekey-20260920`；`secrets get` 恢复正常（**文件名不可信，能解开才是真的**）
+- 加固：`send_group.py::_secret_from_keystore_fallback()` 的候选种子从 3 个 hostname 扩到
+  「当前 nodename / anonymous / localhost / 本机所有 IPv4 / scutil 的 ComputerName+LocalHostName+HostName」
+  × 当前用户；CLI 挂掉也能发
+- 根治不变：`sudo scutil --set HostName frank-bot-de-mac-mini`
