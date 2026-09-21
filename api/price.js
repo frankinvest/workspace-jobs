@@ -188,14 +188,28 @@ export default async function handler(req, res) {
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean)
-      .slice(0, 20);
+      // 2026-09-21: 上限从 20 提到 200 —— 持仓已经是 21 只，原来的 20 上限会把
+      // 最后一只（新增的昭衍新药）静默丢掉，前端拿不到价就显示成 0（Frank 报的
+      // 「昭衍新药持仓0」就是这个原因）。
+      .slice(0, 200);
 
     if (codes.length === 0) {
-      res.status(400).json({ error: 'codes param required (1-20 codes)' });
+      res.status(400).json({ error: 'codes param required (1-200 codes)' });
       return;
     }
 
-    const results = await Promise.all(codes.map((c) => fetchPriceRace(c)));
+    let results = await Promise.all(codes.map((c) => fetchPriceRace(c)));
+
+    // 补一轮：第一轮没拿到价的代码再试一次（单个源偶发超时/限流很常见，
+    // 多给一轮能把「一两只票突然没价」的概率压下去）
+    const missedIdx = results.map((r, i) => (r && r.price ? -1 : i)).filter((i) => i >= 0);
+    if (missedIdx.length > 0 && missedIdx.length < codes.length) {
+      await new Promise((r) => setTimeout(r, 400));
+      const retry = await Promise.all(missedIdx.map((i) => fetchPriceRace(codes[i])));
+      missedIdx.forEach((i, k) => {
+        if (retry[k] && retry[k].price) results[i] = retry[k];
+      });
+    }
     const prices = {};
     let anySuccess = false;
     codes.forEach((code, i) => {
