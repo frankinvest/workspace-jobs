@@ -326,25 +326,29 @@ function applyStats() {
     const todayEl = el.querySelector('[data-field="todayReturnPct"]');
 
     if (priceEl) priceEl.textContent = fmtPrice(stat.currentPrice);
-    if (pctEl) pctEl.textContent = fmtPct(stat.positionPct);
+    // 2026-09-21: 拿不到价格的持仓，仓位/盈亏/今日一律显示 "--"，
+    // 不再显示 0（原来的 0 会让人误以为「持仓为 0」，Frank 就是这么被误导的）
+    const noPrice = stat.currentPrice == null;
+    if (pctEl) pctEl.textContent = noPrice ? '--' : fmtPct(stat.positionPct);
     if (barEl) {
       const width = maxPct > 0 ? (stat.positionPct / maxPct) * 100 : 0;
       barEl.style.width = `${width.toFixed(2)}%`;
     }
     if (retEl) {
-      retEl.textContent = fmtPct(stat.returnPct);
+      retEl.textContent = noPrice ? '--' : fmtPct(stat.returnPct);
       setReturnClass(retEl, stat.returnPct);
     }
     if (pnlEl) {
       const pnl = stat.marketValue != null ? stat.marketValue - stat.shares * stat.cost : null;
-      pnlEl.textContent = amountsUnlocked ? fmtSignedAmount(pnl) : MASK;
+      pnlEl.textContent = noPrice ? '--' : (amountsUnlocked ? fmtSignedAmount(pnl) : MASK);
     }
     if (todayEl) {
       const tp = stat.todayReturnPct;
-      todayEl.textContent = fmtPct(tp);
+      todayEl.textContent = noPrice ? '--' : fmtPct(tp);
       setReturnClass(todayEl, tp);
       // Inline color fallback (defensive: scoped CSS may not match JS-injected DOM)
-      if (tp > 0) todayEl.style.color = '#ef4444';      // 红涨 (A 股惯例)
+      if (noPrice) todayEl.style.color = '';
+      else if (tp > 0) todayEl.style.color = '#ef4444'; // 红涨 (A 股惯例)
       else if (tp < 0) todayEl.style.color = '#22c55e'; // 绿跌 (A 股惯例)
       else todayEl.style.color = '';
     }
