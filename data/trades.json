@@ -1,0 +1,33 @@
+{
+  "note": "交易流水（Single Source of Truth）。持仓成本由本文件推算：摊薄成本 = (期初金额 + 累计买入金额 - 累计卖出金额) / 当前股数。改完跑 tools/recalc_holdings.py 生成 data/stock_holdings.json。",
+  "opening": {
+    "asOf": "2026-09-18",
+    "note": "期初持仓快照（成本来自券商 2026-09-18 口径），作为摊薄成本的起点",
+    "positions": [
+      {"code": "600015", "name": "华夏银行", "shares": 25900, "cost": 6.719},
+      {"code": "601963", "name": "重庆银行", "shares": 8900, "cost": 11.231},
+      {"code": "002170", "name": "芭田股份", "shares": 1800, "cost": 11.786},
+      {"code": "002749", "name": "国光股份", "shares": 2160, "cost": 10.244},
+      {"code": "600989", "name": "宝丰能源", "shares": 700, "cost": 21.067},
+      {"code": "600096", "name": "云天化", "shares": 500, "cost": 32.786},
+      {"code": "002064", "name": "华峰化学", "shares": 900, "cost": 11.136},
+      {"code": "603233", "name": "大参林", "shares": 1400, "cost": 18.198},
+      {"code": "600887", "name": "伊利股份", "shares": 900, "cost": 26.816},
+      {"code": "002563", "name": "森马服饰", "shares": 1700, "cost": 5.673},
+      {"code": "605299", "name": "舒华体育", "shares": 2200, "cost": 12.474},
+      {"code": "601899", "name": "紫金矿业", "shares": 900, "cost": 34.42},
+      {"code": "002379", "name": "宏桥控股", "shares": 2000, "cost": 18.559},
+      {"code": "600406", "name": "国电南瑞", "shares": 700, "cost": 26.811},
+      {"code": "159326", "name": "电网设备ETF华夏", "shares": 4200, "cost": 2.13},
+      {"code": "603596", "name": "伯特利", "shares": 400, "cost": 27.455},
+      {"code": "000960", "name": "锡业股份", "shares": 300, "cost": 33.757},
+      {"code": "603893", "name": "瑞芯微", "shares": 100, "cost": 180.52},
+      {"code": "600741", "name": "华域汽车", "shares": 700, "cost": 15.467}
+    ]
+  },
+  "trades": [
+    {"date": "2026-09-21", "code": "600015", "name": "华夏银行", "side": "sell", "shares": 3200, "price": 6.23},
+    {"date": "2026-09-21", "code": "603259", "name": "药明康德", "side": "buy", "shares": 100, "price": 163.2},
+    {"date": "2026-09-21", "code": "603127", "name": "昭衍新药", "side": "buy", "shares": 100, "price": 46.57}
+  ]
+}
