@@ -557,3 +557,11 @@ images（按约定跳过）→ guard ✅ → tldr ✅（9 条：macro×3 / indus
   药明康德 100@163.2、昭衍新药 100@46.57 = 成交价。线上实测（`data-cost`）三只都对，21 只
 - **以后流程**：Frank 只要发「日期 / 代码 / 买卖 / 股数 / 成交价」，我加进 trades.json → 跑 recalc → build → 推 → 线上核验；**不再手工改 `data/stock_holdings.json`**
 - **未做的选项**（等 Frank 要）：① 若他其实想用「加权平均（卖出不改成本）」口径，改一处公式即可；② 已有的流水可以直接扩展成「已实现盈亏」展示
+
+- ✅ **2026-09-21 Frank 拍板（两句话）**：
+  1. 「行」→ **摊薄成本口径定稿**（买卖都改成本），不再改公式
+  2. 「不用显示盈亏，还是按当前设置的字段去更新就行」→ **不加「已实现盈亏」UI**（不做这个展示）；
+     `data/stock_holdings.json` 的字段保持 `code / name / shares / cost` 四个不变
+- **定稿流程**（以后一律照此）：Frank 发「日期 / 买卖 / 代码 / 股数 / 成交价」→ Codex 追加到 `data/trades.json`
+  → 跑 `tools/recalc_holdings.py`（摊薄推算）→ `npm run build` → Contents API 推送 → 线上核验 `data-cost`
+  → **永不手工改 `data/stock_holdings.json`**（它是生成物）
