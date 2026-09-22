@@ -66,7 +66,7 @@ STEP_NAMES = ["fetch", "format", "images", "guard", "tldr", "push"]
 STEP_DESC = {
     "fetch":  "subprocess 调 cdp_get_innerhtml.py 抓 innerHTML",
     "format": "用 bs4 + markdownify 渲染 .md (含评论区)",
-    "images": "跳过 (图片引用红圈原 URL, 不本地化)",
+    "images": "图片本地化 (下载到 public/images/JJC-<date>/, md 改站内路径)",
     "guard":  "用真实数据审计 (图片数/评论数/标题/时间)",
     "tldr":   "codex exec 生成今日速递 5 分类并写回 frontmatter",
     "push":   "调 system_git_pusher.py 穿墙推送",
@@ -406,10 +406,37 @@ def step_format(date_str, dry_run=False):
 # ── Step 3: images (跳过) ────────────────────────────────────────
 
 def step_images(date_str, dry_run=False):
-    """Step 3: 按 MEMORY.md 约定, 图片直接引用红圈原 URL, 跳过本地化
+    """Step 3: 图片本地化（2026-09-22 改）
+
+    背景：红圈图片是 7 天有效的签名 URL，热链的文章过一周图就全黑
+    （Frank 2026-09-22 报的故障）。现在改成发布时就把图下载进仓库：
+      - 存 public/images/JJC-<date>/img-NN.<ext>（原图）
+      - md 里的红圈 URL 全部替换成站内路径
+      - 顺带推送这些图片文件（md 由 step_push 推）
+    非阻断：万一图片下载失败（限流/网络），只告警不中断发布，
+    之后可跑 tools/audit_local_images.py --fix 补。
     """
-    log(f"[images] 跳过 (按 MEMORY.md 约定: 图片引用红圈原 URL)")
-    return 0
+    script = TOOLS_DIR / "localize_images.py"
+    if not script.exists():
+        log("  ⚠️ 找不到 localize_images.py，跳过本地化（图片仍为红圈外链）")
+        return 0
+    cmd = [sys.executable, str(script), "--date", date_str]
+    if not dry_run:
+        cmd.append("--push")
+    else:
+        cmd.append("--dry-run")
+    log(f"  → {' '.join(cmd)}")
+    try:
+        cp = subprocess.run(cmd, cwd=WORKSPACE_JOBS, capture_output=True, text=True, timeout=900)
+        tail = [l for l in (cp.stdout or "").splitlines() if l.strip()][-4:]
+        for line in tail:
+            log(f"  [images] {line[:160]}")
+        if cp.returncode != 0:
+            log("  ⚠️ 图片本地化返回非 0（不阻断发布，可事后 audit 补推）")
+        return 0
+    except Exception as e:                              # noqa: BLE001
+        log(f"  ⚠️ 图片本地化异常（不阻断发布）: {e}")
+        return 0
 
 
 # ── Step 4: guard ────────────────────────────────────────────────
