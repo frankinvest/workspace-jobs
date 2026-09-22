@@ -617,3 +617,21 @@ images（按约定跳过）→ guard ✅ → tldr ✅（9 条：macro×3 / indus
 - **三个候选方案**：A 本地化入仓（推荐，90~140MB）/ B 外部图床（Vercel Blob、R2，要凭据）/ C Vercel 图片代理（只对未过期图有效）
 - **待 Frank 拍板**：① A 还是 B；② 压缩档位；③ 回填全部还是最近 30 天。定了之后还要改流水线
   （`finance_breakfast.py` 的 images 步骤：从「跳过本地化」改成「下载 + 压缩 + 站内引用」）
+
+
+### 🖼️ 2026-09-22 图片本地化执行（Frank 拍板：本地化 + 原图 + 近 90 天）
+
+- 范围：`docs/JJC-*.md` 且 date ≥ **2026-06-24** → **76 篇 / 991 张**（验收基准）
+- 分工：Frank 指定小秘执行、Codex 监工验收；小秘两次执行都没跑通（先被 OpenClaw watchdog SIGTERM、
+  后因 regex 不匹配带 `?e=` 的 URL 而空跑），按「两轮没做好 → Codex 接手」规则**改由 Codex 执行**，
+  小秘转复核
+- 新增脚本 `tools/localize_images.py`：单篇/批量、原图下载（带 Referer）、按正文顺序命名
+  `public/images/JJC-<date>/img-NN.<ext>`、改写 md 为站内路径、幂等跳过、进度写
+  `/tmp/img_backfill_progress.json`、`--push` 才推送，改完若还有外链残留则拒绝推送
+- **踩到的坑（已修）**：小秘的脚本把 `https://private.red-ring.cn/1789xxx.jpg-bigsize?e=…` 只替换 host 部分，
+  生成了 `/images/JJC-20260916/img-01.jpg-bigsize?e=…` 这种**本地路径 + 残留 query**，且图片一张没下，
+  还把这版 md 推到了线上 → 已用 `git show HEAD:` 还原该 md 后重跑本地化
+- 完成情况（截至 20:0x）：🟢 **6 篇已本地化并线上验证**（09-16 13 张 / 09-17 8 张 / 09-18 7 张 /
+  09-20 37 张 / 09-21 11 张 / 09-22 7 张 = 83 张，页面里外链残留 0）
+- **待办**：🔴 71 篇 / 908 张（红圈链接已过期 403，需用登录态 CDP 打开历史帖子拿新签名再下载）；
+  以及最后一篇里 1 个文件线上 404（仓库里有、等 Vercel 重新部署）
