@@ -77,6 +77,19 @@ function initCollapse() {
   portfolioCollapseBtn.setAttribute('aria-expanded', String(!collapsed));
 }
 
+// 2026-09-22 Frank：个股「持仓盈亏」金额默认折叠，一个全局开关一次展开/收起
+function initPnlToggle() {
+  if (!portfolioSidebar) return;
+  const btn = document.getElementById('portfolio-pnl-toggle');
+  if (!btn) return;
+  btn.addEventListener('click', () => {
+    const expanded = portfolioSidebar.classList.toggle('is-pnl-expanded');
+    btn.setAttribute('aria-expanded', String(expanded));
+    const icon = btn.querySelector('.portfolio-pnl-toggle-icon');
+    if (icon) icon.textContent = expanded ? '▾' : '▸';
+  });
+}
+
 function initAmountGate() {
   if (wasAmountsUnlocked()) {
     setAmountsUnlocked(true);
@@ -312,6 +325,15 @@ function applyStats() {
     else if (todayPct < 0) totalTodayEl.style.color = '#22c55e'; // 绿跌 (A 股惯例)
     else totalTodayEl.style.color = '';
   }
+  // 2026-09-22: 总账户「今日盈亏」金额（金额受密码锁，未解锁显示 ***）
+  const totalTodayAmountEl = document.getElementById('portfolio-total-today-amount');
+  if (totalTodayAmountEl) {
+    totalTodayAmountEl.textContent = amountsUnlocked ? fmtSignedAmount(todayPnlAbs) : MASK;
+    setReturnClass(totalTodayAmountEl, todayPnlAbs);
+    if (todayPnlAbs > 0) totalTodayAmountEl.style.color = '#ef4444';
+    else if (todayPnlAbs < 0) totalTodayAmountEl.style.color = '#22c55e';
+    else totalTodayAmountEl.style.color = '';
+  }
 
   for (const el of itemEls) {
     const code = el.getAttribute('data-code') || '';
@@ -351,6 +373,18 @@ function applyStats() {
       else if (tp > 0) todayEl.style.color = '#ef4444'; // 红涨 (A 股惯例)
       else if (tp < 0) todayEl.style.color = '#22c55e'; // 绿跌 (A 股惯例)
       else todayEl.style.color = '';
+    }
+    // 2026-09-22: 个股「今日盈亏」金额（Frank 要求突出今日盈亏）
+    const todayAmtEl = el.querySelector('[data-field="todayPnlAmount"]');
+    if (todayAmtEl) {
+      const prev = stat.prevClose;
+      const amt = (!noPrice && prev != null && prev > 0) ? (stat.currentPrice - prev) * stat.shares : null;
+      todayAmtEl.textContent = amt == null ? '--' : (amountsUnlocked ? fmtSignedAmount(amt) : MASK);
+      setReturnClass(todayAmtEl, amt == null ? 0 : amt);
+      if (amt == null) todayAmtEl.style.color = '';
+      else if (amt > 0) todayAmtEl.style.color = '#ef4444';
+      else if (amt < 0) todayAmtEl.style.color = '#22c55e';
+      else todayAmtEl.style.color = '';
     }
   }
 }
@@ -398,6 +432,7 @@ function handleResponse(resp) {
 }
 
 initCollapse();
+initPnlToggle();
 initAmountGate();
 
 if (codes.length > 0) {
