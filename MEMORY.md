@@ -635,3 +635,20 @@ images（按约定跳过）→ guard ✅ → tldr ✅（9 条：macro×3 / indus
   09-20 37 张 / 09-21 11 张 / 09-22 7 张 = 83 张，页面里外链残留 0）
 - **待办**：🔴 71 篇 / 908 张（红圈链接已过期 403，需用登录态 CDP 打开历史帖子拿新签名再下载）；
   以及最后一篇里 1 个文件线上 404（仓库里有、等 Vercel 重新部署）
+
+
+**✅ 2026-09-22 23:4x 图片本地化全部完成（验收通过）**
+
+- **范围**：date ≥ 2026-06-24 的 **77 篇**文章、**991 张**图片（原图，未压缩）
+- **结果（我独立验收）**：
+  1. 77 篇里 `private.red-ring.cn` 计数 **全部 = 0**
+  2. 本地 `public/images/JJC-*` 文件数 **= 991**，远端仓库同样 991
+  3. **线上全量实测 991 个图片 URL，全部 200**（16 并发跑完，失败 0）
+- **工具（都推了 GitHub）**：
+  - `tools/localize_images.py`：按日期本地化（原图 → `public/images/JJC-<date>/img-NN.<ext>` → md 改站内路径 → 逐篇推送），
+    索引走红圈列表 API（`index`+`lastTime` 翻页，需页面真实的 `access_token` 请求头），过期图用 CDP 打开历史帖拿新签名；
+    同一天多篇（001/002）会自动分目录；幂等可重跑
+  - `tools/audit_local_images.py`：全量审计「文章引用的站内图是否真在远端」，缺失可 `--fix` 补推（解决 GitHub secondary rate limit 静默失败）
+  - `tools/finance_breakfast.py::step_images`：**发布时自动本地化**（原来是「跳过本地化、热链红圈」）——从根上防止下周再烂
+- **踩坑记录**：① 早前那次失败执行把 09-16/09-22 的 md 写成「本地路径 + 残留 `-bigsize?e=…`」并推到线上 → 已还原/修正；
+  ② GitHub Contents API 在大量提交后会触发 secondary rate limit，图片会静默丢 → 用 audit 补推，之后所有批量推送都该跑一次 audit
