@@ -72,21 +72,30 @@ const stats = calcHoldingStats(holdings, emptyPrices);
 
   <div class="portfolio-body" id="portfolio-body">
     <div class="portfolio-summary">
-      <div class="portfolio-summary-cell">
-        <span class="portfolio-summary-label">总市值</span>
-        <strong class="portfolio-summary-value" id="portfolio-total-value">***</strong>
-      </div>
-      <div class="portfolio-summary-cell">
-        <span class="portfolio-summary-label">持仓盈亏</span>
-        <strong class="portfolio-summary-value portfolio-return" id="portfolio-total-pnl">***</strong>
-      </div>
-      <div class="portfolio-summary-cell">
-        <span class="portfolio-summary-label">持仓收益率</span>
-        <strong class="portfolio-summary-value portfolio-return" id="portfolio-total-return">--</strong>
-      </div>
-      <div class="portfolio-summary-cell">
+      <!-- 2026-09-22 Frank：突出「总账户今日盈亏」，其余弱化为一行小字 -->
+      <div class="portfolio-hero">
         <span class="portfolio-summary-label">今日盈亏</span>
-        <strong class="portfolio-summary-value portfolio-return" id="portfolio-total-today">--</strong>
+        <div class="portfolio-hero-values">
+          <strong class="portfolio-hero-amount portfolio-return" id="portfolio-total-today-amount">***</strong>
+          <span class="portfolio-hero-pct portfolio-return" id="portfolio-total-today">--</span>
+        </div>
+      </div>
+      <div class="portfolio-summary-minor">
+        <span class="portfolio-minor-item">
+          <span class="portfolio-summary-label">总市值</span>
+          <strong class="portfolio-minor-value" id="portfolio-total-value">***</strong>
+        </span>
+        <span class="portfolio-minor-item">
+          <span class="portfolio-summary-label">持仓盈亏</span>
+          <strong class="portfolio-minor-value portfolio-return" id="portfolio-total-pnl">***</strong>
+        </span>
+        <span class="portfolio-minor-item">
+          <span class="portfolio-summary-label">收益率</span>
+          <strong class="portfolio-minor-value portfolio-return" id="portfolio-total-return">--</strong>
+        </span>
+        <button type="button" class="portfolio-pnl-toggle" id="portfolio-pnl-toggle" aria-expanded="false">
+          持仓盈亏金额<span class="portfolio-pnl-toggle-icon">▸</span>
+        </button>
       </div>
     </div>
 
@@ -100,11 +109,18 @@ const stats = calcHoldingStats(holdings, emptyPrices);
             </span>
           </div>
 
+          <!-- 2026-09-22 Frank：个股「今日盈亏」提前且正常显示；「持仓盈亏」降级成末尾灰色小字 -->
+          <div class="portfolio-item-today">
+            <span class="portfolio-today-label">今日</span>
+            <span class="portfolio-today-rate portfolio-return" data-field="todayReturnPct">--</span>
+            <span class="portfolio-today-amount portfolio-return" data-field="todayPnlAmount">***</span>
+            <span class="portfolio-position-inline">
+              <span class="portfolio-position-label">仓位</span>
+              <span data-field="positionPct">--</span>
+            </span>
+          </div>
+
           <div class="portfolio-position">
-            <div class="portfolio-position-meta">
-              <span class="portfolio-position-label">仓位占比</span>
-              <span class="portfolio-position-value" data-field="positionPct">--</span>
-            </div>
             <div class="portfolio-position-track" aria-hidden="true">
               <div class="portfolio-position-fill" data-field="positionBar"></div>
             </div>
@@ -112,14 +128,8 @@ const stats = calcHoldingStats(holdings, emptyPrices);
 
           <div class="portfolio-pnl">
             <span class="portfolio-pnl-label">持仓盈亏</span>
-            <div class="portfolio-pnl-values">
-              <span class="portfolio-pnl-rate portfolio-return" data-field="returnPct">--</span>
-              <span class="portfolio-pnl-amount" data-field="pnlAmount">***</span>
-            </div>
-          </div>
-          <div class="portfolio-today">
-            <span class="portfolio-today-label">今日</span>
-            <span class="portfolio-today-value portfolio-return" data-field="todayReturnPct">--</span>
+            <span class="portfolio-pnl-rate portfolio-return" data-field="returnPct">--</span>
+            <span class="portfolio-pnl-amount" data-field="pnlAmount">***</span>
           </div>
         </li>
       ))}
@@ -335,18 +345,90 @@ const stats = calcHoldingStats(holdings, emptyPrices);
   }
 
   .portfolio-summary {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    display: flex;
+    flex-direction: column;
     gap: var(--space-2);
     margin-bottom: var(--space-4);
-  }
-
-  .portfolio-summary-cell {
+    padding: var(--space-3);
     background: var(--color-bg-secondary);
     border: 1px solid var(--color-border-subtle);
     border-radius: var(--radius-md);
-    padding: var(--space-3);
+  }
+
+  /* v12 (2026-09-22): 今日盈亏 = 主角，大字号 */
+  .portfolio-hero {
     min-width: 0;
+  }
+
+  .portfolio-hero-values {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+  }
+
+  .portfolio-hero-amount {
+    font-size: var(--font-size-2xl, 1.5rem);
+    font-weight: var(--font-weight-bold, 700);
+    letter-spacing: -0.01em;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  .portfolio-hero-pct {
+    font-size: var(--font-size-base, 1rem);
+    font-weight: var(--font-weight-semibold, 600);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  /* 其余指标弱化成一行小字 */
+  .portfolio-summary-minor {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-3);
+    padding-top: var(--space-2);
+    border-top: 1px solid var(--color-border-subtle);
+  }
+
+  .portfolio-minor-item {
+    display: inline-flex;
+    align-items: baseline;
+    gap: var(--space-1);
+    min-width: 0;
+  }
+
+  .portfolio-minor-item .portfolio-summary-label {
+    margin-bottom: 0;
+  }
+
+  .portfolio-minor-value {
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-medium, 500);
+    color: var(--color-text-secondary, var(--color-text-muted));
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  .portfolio-pnl-toggle {
+    margin-left: auto;
+    background: none;
+    border: none;
+    padding: 0;
+    font-size: var(--font-size-xs);
+    color: var(--color-text-muted);
+    cursor: pointer;
+    text-decoration: underline dotted;
+    text-underline-offset: 3px;
+  }
+
+  .portfolio-pnl-toggle:hover {
+    color: var(--color-text-secondary, var(--color-text-muted));
+  }
+
+  .portfolio-pnl-toggle-icon {
+    margin-left: 2px;
   }
 
   .portfolio-summary-label {
@@ -449,13 +531,46 @@ const stats = calcHoldingStats(holdings, emptyPrices);
     transition: width var(--transition-slow);
   }
 
+  /* v12 (2026-09-22): 个股「今日盈亏」提前 + 正常显示 */
+  .portfolio-item-today {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    margin-top: var(--space-2);
+  }
+
+  .portfolio-today-rate {
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-semibold);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .portfolio-today-amount {
+    font-size: var(--font-size-xs);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  .portfolio-position-inline {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: baseline;
+    gap: var(--space-1);
+    font-size: var(--font-size-xs);
+    color: var(--color-text-muted);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
   .portfolio-pnl {
     display: flex;
     align-items: center;
-    justify-content: space-between;
     gap: var(--space-2);
     padding-top: var(--space-2);
+    margin-top: var(--space-2);
     border-top: 1px solid var(--color-border-subtle);
+    font-size: var(--font-size-xs);
   }
 
   .portfolio-pnl-label {
@@ -463,45 +578,29 @@ const stats = calcHoldingStats(holdings, emptyPrices);
     color: var(--color-text-muted);
   }
 
-  .portfolio-pnl-values {
-    display: flex;
-    align-items: baseline;
-    gap: var(--space-2);
-    min-width: 0;
-  }
-
   .portfolio-pnl-rate {
-    font-size: var(--font-size-sm);
-    font-weight: var(--font-weight-semibold);
+    font-size: var(--font-size-xs);
+    color: var(--color-text-muted);
     font-variant-numeric: tabular-nums;
   }
 
   .portfolio-pnl-amount {
+    display: none;
+    margin-left: auto;
     font-size: var(--font-size-xs);
     color: var(--color-text-muted);
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
   }
 
-  .portfolio-today {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-2);
-    padding-top: var(--space-2);
-    margin-top: var(--space-2);
-    border-top: 1px solid var(--color-border-subtle);
+  /* 全局开关：展开后显示个股持仓盈亏金额 */
+  .portfolio-sidebar.is-pnl-expanded .portfolio-pnl-amount {
+    display: inline;
   }
 
   .portfolio-today-label {
     font-size: var(--font-size-xs);
     color: var(--color-text-muted);
-  }
-
-  .portfolio-today-value {
-    font-size: var(--font-size-sm);
-    font-weight: var(--font-weight-semibold);
-    font-variant-numeric: tabular-nums;
   }
 
   .portfolio-return.up {
