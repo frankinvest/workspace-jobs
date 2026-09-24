@@ -30,6 +30,7 @@
     {"date": "2026-09-21", "code": "603259", "name": "药明康德", "side": "buy", "shares": 100, "price": 163.2},
     {"date": "2026-09-21", "code": "603127", "name": "昭衍新药", "side": "buy", "shares": 100, "price": 46.57},
     {"date": "2026-09-24", "code": "600015", "name": "华夏银行", "side": "sell", "shares": 1700, "price": 6.23},
-    {"date": "2026-09-24", "code": "601118", "name": "海南橡胶", "side": "buy", "shares": 1500, "price": 6.68}
+    {"date": "2026-09-24", "code": "601118", "name": "海南橡胶", "side": "buy", "shares": 1500, "price": 6.68},
+    {"date": "2026-09-24", "code": "600015", "name": "华夏银行", "side": "sell", "shares": 500, "price": 6.23}
   ]
 }
