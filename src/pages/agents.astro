@@ -181,6 +181,9 @@
     .lg { display:inline-flex; align-items:center; gap:6px; font-size:11.5px; color:var(--text-2); }
     .lg i { width:8px; height:8px; border-radius:3px; flex:none; }
     .arch-hint { font-size:11.5px; color:var(--text-3); }
+    .flowlegend { display:flex; flex-wrap:wrap; gap:6px 14px; margin:0 0 14px; padding:9px 12px; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; }
+    .flowlegend span { display:inline-flex; align-items:center; gap:6px; font-size:11.5px; color:var(--text-2); }
+    .flowlegend i { width:14px; height:2.5px; border-radius:2px; flex:none; }
     .arch-canvas { position:relative; padding:2px 0; }
     .arch-layers { display:flex; flex-direction:column; gap:12px; }
     .arch-layer { background:var(--surface-2); border:1px solid var(--border); border-radius:var(--r); padding:12px; display:grid; grid-template-columns:112px minmax(0,1fr); gap:14px; }
@@ -188,27 +191,40 @@
     .arch-layer-head i { width:8px; height:8px; border-radius:3px; margin-top:4px; flex:none; }
     .arch-layer-head .n { font-size:12.5px; font-weight:600; color:var(--text-2); line-height:1.35; }
     .arch-layer-head .c { font-size:11px; color:var(--text-3); }
-    .arch-nodes { display:flex; gap:12px; flex-wrap:wrap; }
-    .arch-node { position:relative; z-index:3; flex:1 1 210px; max-width:340px; text-align:left; font:inherit; cursor:pointer; background:#fff; border:1px solid var(--border); border-radius:10px; padding:12px; transition:border-color .15s, box-shadow .15s, opacity .15s; }
+    .arch-nodes { display:flex; gap:12px; flex-wrap:wrap; align-items:stretch; }
+    .arch-node { position:relative; z-index:3; flex:1 1 210px; max-width:340px; min-height:96px; text-align:left; font:inherit; cursor:pointer; background:#fff; border:1px solid var(--border); border-radius:10px; padding:12px; transition:border-color .15s, box-shadow .15s, opacity .15s; }
     .arch-node:hover { border-color:var(--accent-line); }
     .arch-node:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
     .arch-node .top { display:flex; align-items:center; gap:8px; }
     .arch-node .ic { width:26px; height:26px; border-radius:8px; background:var(--surface-3); color:var(--text-2); display:grid; place-items:center; flex:none; }
     .arch-node .nm { font-size:13px; font-weight:600; letter-spacing:-.005em; }
     .arch-node .tech { font-family:var(--mono); font-size:11px; color:var(--accent-2); margin-top:7px; line-height:1.45; }
-    .arch-node .role { font-size:11.5px; color:var(--text-2); margin-top:3px; line-height:1.45; }
+    .arch-node .role { font-size:11.5px; color:var(--text-2); margin-top:3px; line-height:1.45; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+    .arch-node.is-hub { border-color:var(--accent-line); background:var(--accent-soft); }
+    .arch-node.is-hub .ic { background:var(--accent-soft); color:var(--accent-2); }
     .arch-node.is-selected { border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
     .arch-node.is-linked { border-color:var(--accent-line); }
     .arch-node.is-dim { opacity:.32; }
     .arch-edges { position:absolute; inset:0; width:100%; height:100%; z-index:2; pointer-events:none; overflow:visible; }
-    .arch-edges path { fill:none; stroke:#cbd5e1; stroke-width:1.5; transition:stroke .15s, opacity .15s, stroke-width .15s; }
-    .arch-edges path.is-active { stroke:var(--accent); stroke-width:2; }
+    .arch-edges path { fill:none; stroke:#94a3b8; stroke-width:2.2; transition:stroke .15s, opacity .15s, stroke-width .15s; }
+    .arch-edges path.k-msg { stroke:#f79009; }
+    .arch-edges path.k-call { stroke:#4f46e5; }
+    .arch-edges path.k-handoff { stroke:#7c3aed; }
+    .arch-edges path.k-write { stroke:#64748b; }
+    .arch-edges path.k-deliver { stroke:#0ea5e9; }
+    .arch-edges path.is-active { stroke:var(--accent); stroke-width:3.2; }
     .arch-edges path.is-dim { opacity:.15; }
-    .arch-edges circle { fill:#fff; stroke:#cbd5e1; stroke-width:1.5; transition:stroke .15s, opacity .15s; }
+    .arch-edges circle { fill:#fff; stroke:#94a3b8; stroke-width:2; transition:stroke .15s, opacity .15s; }
     .arch-edges circle.is-active { stroke:var(--accent); }
     .arch-edges circle.is-dim { opacity:.15; }
     #arch-labels { position:absolute; inset:0; z-index:4; pointer-events:none; }
-    .elabel { position:absolute; transform:translate(-50%,-50%); background:#fff; border:1px solid var(--border); border-radius:999px; padding:2px 9px; font-family:var(--mono); font-size:10.5px; color:var(--text-2); white-space:nowrap; transition:all .15s; }
+    .elabel { position:absolute; transform:translate(-50%,-50%); display:inline-flex; align-items:center; gap:5px; background:#fff; border:1px solid var(--border-2); border-radius:999px; padding:2.5px 9px; font-family:var(--mono); font-size:11px; color:var(--text-2); white-space:nowrap; transition:all .15s; }
+    .elabel::before { content:''; width:6px; height:6px; border-radius:50%; background:#94a3b8; flex:none; }
+    .elabel[data-kind="msg"]::before { background:#f79009; }
+    .elabel[data-kind="call"]::before { background:#4f46e5; }
+    .elabel[data-kind="handoff"]::before { background:#7c3aed; }
+    .elabel[data-kind="write"]::before { background:#64748b; }
+    .elabel[data-kind="deliver"]::before { background:#0ea5e9; }
     .elabel.is-active { border-color:var(--accent); color:var(--accent-2); background:var(--accent-soft); }
     .elabel.is-dim { opacity:.22; }
     .arch-detail { margin-top:14px; border:1px dashed var(--border-2); border-radius:var(--r); background:var(--surface-2); padding:14px 16px; }
@@ -322,7 +338,7 @@
       { id:'xiaomi', icon:'sparkle', name:'小秘 agent:main', tech:'OpenClaw agent · 本地模型（额度足）', role:'按方案落地 + 写测试 + 交证据' },
     ]},
     { id:'state', name:'④ 共享状态', color:'#7c3aed', nodes:[
-      { id:'bus', icon:'db', name:'agent-bus', tech:'自建状态总线 · runs/ + JSONL', role:'任务产物 / 委派记录 / 看护日志' },
+      { id:'bus', icon:'db', hub:true, name:'agent-bus', tech:'自建状态总线 · runs/ + JSONL', role:'任务产物 / 委派记录 / 看护日志（全流程枢纽）' },
       { id:'snapshot', icon:'lock', name:'看板密文快照', tech:'PBKDF2 + AES-256-GCM', role:'采集 → 加密 → 推送 GitHub' },
     ]},
     { id:'delivery', name:'⑤ 交付', color:'#0ea5e9', nodes:[
@@ -332,15 +348,22 @@
 
   /* 连线：route 'v' = 出下方进上方；'h' = 出右侧进左侧。x1/x2 或 y1/y2 是锚点在边上的位置(0~1)。 */
   const EDGES = [
-    { from:'frank',    to:'bridge',   route:'v', x1:.50, x2:.35, label:'@Codex 群消息' },
-    { from:'frank',    to:'gateway',  route:'v', x1:.50, x2:.65, label:'@小秘 群消息' },
-    { from:'bridge',   to:'codex',    route:'v', x1:.50, x2:.50, label:'codex exec' },
-    { from:'gateway',  to:'xiaomi',   route:'v', x1:.50, x2:.50, label:'openclaw agent --json' },
-    { from:'codex',    to:'xiaomi',   route:'h', y1:.50, y2:.50, label:'委派 / 回执' },
-    { from:'codex',    to:'bus',      route:'v', x1:.32, x2:.30, label:'写 plan / verify-report' },
-    { from:'xiaomi',   to:'bus',      route:'v', x1:.30, x2:.70, label:'写 status.json / exec-log' },
-    { from:'bus',      to:'snapshot', route:'h', y1:.50, y2:.50, label:'采集 + 加密' },
-    { from:'snapshot', to:'site',     route:'v', x1:.50, x2:.50, label:'密文 push' },
+    { from:'frank',    to:'bridge',   route:'v', x1:.50, x2:.35, kind:'msg',     label:'@Codex 群消息' },
+    { from:'frank',    to:'gateway',  route:'v', x1:.50, x2:.65, kind:'msg',     label:'@小秘 群消息' },
+    { from:'bridge',   to:'codex',    route:'v', x1:.50, x2:.50, kind:'call',    label:'codex exec' },
+    { from:'gateway',  to:'xiaomi',   route:'v', x1:.50, x2:.50, kind:'call',    label:'openclaw agent --json' },
+    { from:'codex',    to:'xiaomi',   route:'h', y1:.50, y2:.50, kind:'handoff', label:'委派 / 回执' },
+    { from:'codex',    to:'bus',      route:'v', x1:.32, x2:.30, kind:'write',   label:'写 plan / verify-report' },
+    { from:'xiaomi',   to:'bus',      route:'v', x1:.30, x2:.70, kind:'write',   label:'写 status.json / exec-log' },
+    { from:'bus',      to:'snapshot', route:'h', y1:.50, y2:.50, kind:'write',   label:'采集 + 加密' },
+    { from:'snapshot', to:'site',     route:'v', x1:.50, x2:.50, kind:'deliver', label:'密文 push' },
+  ];
+  const FLOW_KINDS = [
+    { k:'msg',     c:'#f79009', t:'群消息触发' },
+    { k:'call',    c:'#4f46e5', t:'调用 agent' },
+    { k:'handoff', c:'#7c3aed', t:'委派 / 回执' },
+    { k:'write',   c:'#64748b', t:'落盘 / 采集' },
+    { k:'deliver', c:'#0ea5e9', t:'发布' },
   ];
 
   const ICONS = {
@@ -738,8 +761,9 @@
   function renderArch(data) {
     const arch = data.architecture || {};
     const layersHtml = LAYERS.map((L) => {
-      const nodes = L.nodes.map((n) => '<button class="arch-node" type="button" data-node-id="' + n.id + '">'
-        + '<span class="top"><span class="ic">' + icon(n.icon) + '</span><span class="nm">' + esc(n.name) + '</span></span>'
+      const nodes = L.nodes.map((n) => '<button class="arch-node' + (n.hub ? ' is-hub' : '') + '" type="button" data-node-id="' + n.id + '">'
+        + '<span class="top"><span class="ic">' + icon(n.icon) + '</span><span class="nm">' + esc(n.name) + '</span>'
+        + (n.hub ? '<span class="tag default" style="margin-left:auto">枢纽</span>' : '') + '</span>'
         + '<div class="tech">' + esc(n.tech) + '</div>'
         + '<div class="role">' + esc(n.role) + '</div>'
         + '</button>').join('');
@@ -750,20 +774,26 @@
 
     const legend = LAYERS.map((L) => '<span class="lg"><i style="background:' + L.color + '"></i>' + esc(L.name) + '</span>').join('');
 
-    const dot = '<svg class="arch-edges" id="arch-svg"><defs>'
-      + '<marker id="ah" markerWidth="9" markerHeight="9" refX="7.5" refY="3" orient="auto"><path d="M0 0 L8 3 L0 6 z" fill="#cbd5e1" stroke="none"/></marker>'
-      + '<marker id="ah-on" markerWidth="9" markerHeight="9" refX="7.5" refY="3" orient="auto"><path d="M0 0 L8 3 L0 6 z" fill="#4f46e5" stroke="none"/></marker>'
-      + '</defs></svg><div id="arch-labels"></div>';
+    /* 每种连线一个箭头色（marker 不能继承 stroke，只能各配一个） */
+    const MK = 'markerWidth="11" markerHeight="11" refX="9.5" refY="3.6" orient="auto" markerUnits="userSpaceOnUse"';
+    const markers = FLOW_KINDS.map((f) => '<marker id="ah-' + f.k + '" ' + MK + '>'
+      + '<path d="M0 0 L10 3.6 L0 7.2 z" fill="' + f.c + '" stroke="none"/></marker>').join('')
+      + '<marker id="ah-on" ' + MK + '><path d="M0 0 L10 3.6 L0 7.2 z" fill="#4f46e5" stroke="none"/></marker>';
+    const dot = '<svg class="arch-edges" id="arch-svg"><defs>' + markers + '</defs></svg><div id="arch-labels"></div>';
+
+    const flowLegend = FLOW_KINDS.map((f) => '<span><i style="background:' + f.c + '"></i>' + esc(f.t) + '</span>').join('');
 
     $('panel-arch').innerHTML = '<div class="card">'
       + '<div class="arch-head"><p class="sec" style="margin:0">架构地图 · ' + LAYERS.length + ' 层 / ' + LAYERS.reduce((a, l) => a + l.nodes.length, 0) + ' 个组件 / ' + EDGES.length + ' 条连接</p>'
       + '<span class="spacer" style="flex:1"></span><span class="arch-hint">点任意组件 → 高亮它的上下游</span></div>'
       + '<div class="arch-legend" style="margin-bottom:14px">' + legend + '</div>'
+      + '<div class="flowlegend">' + flowLegend + '</div>'
       + '<div class="arch-canvas" id="arch-canvas"><div class="arch-layers">' + layersHtml + '</div>' + dot + '</div>'
       + '</div>'
       + '<div class="arch-detail" id="arch-detail"><span class="muted" style="font-size:12.5px">点上面的任意组件，这里会显示它的项目、启动方式、关键文件和实时状态。</span></div>'
       + renderCatalog()
-      + '<div class="cols-3" style="margin-top:14px">' + renderMemory() + renderSkills(arch) + renderPatches(arch) + '</div>';
+      + '<div class="cols" style="margin-top:14px">' + renderMemory() + renderSkills(arch) + '</div>'
+      + renderPatches(arch);
 
     requestAnimationFrame(() => { drawEdges(); syncSelection(); });
   }
@@ -819,7 +849,7 @@
       + (p.env && p.env.length ? '<div class="pe">' + p.env.map(esc).join(' · ') + '</div>' : '')
       + (p.note ? '<div class="pn">' + esc(p.note) + '</div>' : '')
       + '</div>').join('') : '<div class="empty">暂无</div>';
-    return '<div class="card"><p class="sec">本地补丁（' + patches.length + '）</p>' + body
+    return '<div class="card" style="margin-top:14px"><p class="sec">本地补丁（' + patches.length + '）· 升级后需重打</p>' + body
       + '<p class="dim" style="font-size:11.5px;margin:8px 0 0">补丁清单与还原方式见 za/CODEX-CONTEXT.md。</p></div>';
   }
 
@@ -875,7 +905,8 @@
 
       const p = document.createElementNS(NS, 'path');
       p.setAttribute('d', d);
-      p.setAttribute('marker-end', 'url(#ah)');
+      p.setAttribute('class', 'k-' + (e.kind || 'write'));
+      p.setAttribute('marker-end', 'url(#ah-' + (e.kind || 'write') + ')');
       p.dataset.from = e.from; p.dataset.to = e.to;
       svg.appendChild(p);
 
@@ -884,9 +915,10 @@
       lab.textContent = e.label;
       lab.style.left = lx + 'px';
       lab.style.top = ly + 'px';
+      lab.dataset.kind = e.kind || 'write';
       lab.dataset.from = e.from; lab.dataset.to = e.to;
       labels.appendChild(lab);
-      link[e.from + '>' + e.to] = { p, dot, lab };
+      link[e.from + '>' + e.to] = { p, dot, lab, kind: e.kind || 'write' };
     });
 
     canvas.querySelectorAll('.arch-node').forEach((n) => {
@@ -921,7 +953,7 @@
       const l = links[k];
       l.p.classList.toggle('is-active', hit);
       l.p.classList.toggle('is-dim', !!sel && !hit);
-      l.p.setAttribute('marker-end', hit ? 'url(#ah-on)' : 'url(#ah)');
+      l.p.setAttribute('marker-end', hit ? 'url(#ah-on)' : 'url(#ah-' + (l.kind || 'write') + ')');
       l.dot.classList.toggle('is-active', hit);
       l.dot.classList.toggle('is-dim', !!sel && !hit);
       l.lab.classList.toggle('is-active', hit);
