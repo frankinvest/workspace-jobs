@@ -158,6 +158,52 @@ def put_file(repo_path, local_path, commit_msg, dry_run=False):
     }
 
 
+def list_path(repo_path):
+    """GET /repos/{owner}/{repo}/contents/{path}
+    返回 entries 列表; 路径不存在返回 []; 单文件返回单元素列表.
+    Contents API 对目录返回 list, 对文件返回单 dict."""
+    get_session(TOKEN)  # 同 put_file, 避免 server 端 stale HEAD 校验冲突
+    url = f"{API_BASE}/repos/{REPO}/contents/{repo_path}"
+    r = SESSION.get(url, params={"ref": BRANCH}, timeout=15)
+    if r.status_code == 404:
+        return []
+    r.raise_for_status()
+    data = r.json()
+    if isinstance(data, list):
+        return data
+    return [data]
+
+
+def delete_file(repo_path, commit_msg, dry_run=False):
+    """DELETE /repos/{owner}/{repo}/contents/{path}
+    需要先 GET 拿 sha. Contents API 不支持递归删目录, --delete 模式会先 list 再逐个删."""
+    get_session(TOKEN)
+    existing_sha = get_existing_sha(repo_path)
+    if not existing_sha:
+        return {"status": "not_found", "path": repo_path}
+    if dry_run:
+        return {"status": "dry_run_deleted", "commit_msg": commit_msg, "sha": existing_sha[:8]}
+    body = {
+        "message": commit_msg,
+        "sha": existing_sha,
+        "branch": BRANCH,
+        "author": {"name": AUTHOR_NAME, "email": AUTHOR_EMAIL},
+    }
+    url = f"{API_BASE}/repos/{REPO}/contents/{repo_path}"
+    t0 = time.time()
+    r = SESSION.delete(url, data=json.dumps(body), timeout=30)
+    elapsed = time.time() - t0
+    if r.status_code not in (200, 204):
+        raise RuntimeError(f"[DELETE] {repo_path} HTTP {r.status_code}: {r.text[:500]}")
+    resp = r.json() if r.text else {}
+    return {
+        "status": "deleted",
+        "commit_sha": resp.get("commit", {}).get("sha", "?"),
+        "elapsed_sec": round(elapsed, 2),
+        "commit_msg": commit_msg,
+    }
+
+
 # ── 默认 5 文件清单 (按 Frank 拍板) ──────────────────────────────
 
 DEFAULT_FILES = [
@@ -174,6 +220,8 @@ def main():
     ap.add_argument("--file", help="单文件推送模式 (相对仓根路径)")
     ap.add_argument("--local", help="单文件模式下的本地路径 (默认: <file>)")
     ap.add_argument("--commit-msg", help="单文件模式的 commit message")
+    ap.add_argument("--delete", help="删除模式 (相对仓根路径; 若是目录会 list 后逐个删)")
+    ap.add_argument("--delete-commit-msg", help="--delete 模式的 commit message")
     ap.add_argument("--dry-run", action="store_true", help="不实际推送")
     args = ap.parse_args()
     
@@ -188,6 +236,44 @@ def main():
     print()
     # NOTE: 不在 main 里 pre-build SESSION — 每次 put_file 入口重建避免 409 复用
     
+    if args.delete:
+        target = args.delete
+        msg = args.delete_commit_msg or f"delete {target} via Contents API"
+        items = list_path(target)
+        if not items:
+            print(f"[delete] 路径不存在或为空: {target}")
+            return 0
+        files = [it for it in items if it.get("type") == "file"]
+        if not files:
+            print(f"[delete] {target} 下无可删文件")
+            return 0
+        print(f"[delete] 目标: {target} ({len(files)} 个文件)")
+        results = []
+        for i, item in enumerate(files, 1):
+            rp = item["path"]
+            print(f"\n[{i}/{len(files)}] DELETE {rp}")
+            try:
+                r = delete_file(rp, msg, dry_run=args.dry_run)
+                print(f"  ✅ {r['status']}: commit {r.get('commit_sha', '?')[:8]}")
+                if "elapsed_sec" in r:
+                    print(f"     耗时: {r['elapsed_sec']}s")
+                results.append({"path": rp, **r})
+            except Exception as e:
+                print(f"  ❌ 失败: {type(e).__name__}: {str(e)[:200]}")
+                results.append({"path": rp, "status": "error", "error": str(e)[:200]})
+        print(f"\n{'='*60}")
+        print(f"[delete] 完成: {len(results)} 个文件")
+        success = sum(1 for r in results if r.get("status") in ("deleted", "dry_run_deleted", "not_found"))
+        print(f"  成功: {success}/{len(results)}")
+        for r in results:
+            ok_status = r.get("status") in ("deleted", "not_found", "dry_run_deleted")
+            marker = "✅" if ok_status else "❌"
+            print(f"  {marker} {r.get('path', '?')}: {r.get('status', '?')}")
+        print(f"{'='*60}\n")
+        if args.dry_run:
+            print("[delete] 这是 dry-run, 实际删除请去掉 --dry-run")
+        return 0 if success == len(results) else 1
+
     if args.file:
         repo_path = args.file
         local_path = Path(args.local) if args.local else Path(repo_path)
