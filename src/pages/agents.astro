@@ -1,7 +1,8 @@
 ---
 // src/pages/agents.astro
-// 密码保护的可视化: 任务进度盘 + 架构地图
+// 密码保护的可视化: 任务进度 v2 + 架构地图 v2
 // 数据从 /data/agent-dashboard.enc.json (密文) 浏览器端解密
+// 架构连接与模块为站点固定结构 (写死), 任务数据从解密的 JSON 来
 ---
 <!DOCTYPE html>
 <html lang="zh">
@@ -11,95 +12,135 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Agent Dashboard</title>
   <style>
-    :root { color-scheme: dark; }
+    :root { color-scheme: dark; --bg:#0d0f12; --panel:#14171c; --line:#1f2329; --text:#e0e0e0; --muted:#888; --dim:#666; }
     * { box-sizing: border-box; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      margin: 0; padding: 24px; background: #0d0f12; color: #e0e0e0;
-      min-height: 100vh;
-    }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin: 0; padding: 16px; background: var(--bg); color: var(--text); min-height: 100vh; }
     #login { max-width: 360px; margin: 80px auto; }
-    #login h1 { margin-top: 0; font-size: 22px; }
-    #login .hint { color: #888; font-size: 13px; margin-bottom: 16px; }
-    #login input {
-      width: 100%; padding: 12px; font-size: 15px; margin-bottom: 12px;
-      background: #1a1d22; color: #fff; border: 1px solid #2a2e35; border-radius: 6px;
-      outline: none;
-    }
+    #login h1 { margin: 0 0 4px; font-size: 22px; }
+    #login .hint { color: var(--muted); font-size: 13px; margin-bottom: 16px; }
+    #login input { width: 100%; padding: 12px; font-size: 15px; margin-bottom: 12px; background: var(--panel); color: #fff; border: 1px solid var(--line); border-radius: 6px; outline: none; }
     #login input:focus { border-color: #2a6df4; }
-    #login button {
-      width: 100%; padding: 12px; background: #2a6df4; color: #fff;
-      border: 0; border-radius: 6px; cursor: pointer; font-size: 15px;
-    }
+    #login button { width: 100%; padding: 12px; background: #2a6df4; color: #fff; border: 0; border-radius: 6px; cursor: pointer; font-size: 15px; }
     #login button:hover { background: #1a5bd4; }
+    #login button:disabled { background: #555; cursor: not-allowed; }
     #error { color: #f44; margin-top: 8px; min-height: 20px; font-size: 13px; }
-    #app { display: none; max-width: 1100px; margin: 0 auto; }
-    .header {
-      display: flex; justify-content: space-between; align-items: baseline;
-      margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid #1a1d22;
-    }
-    .header h1 { margin: 0; font-size: 20px; }
-    .meta { color: #666; font-size: 12px; font-family: 'SF Mono', Menlo, monospace; }
-    .tabs { display: flex; gap: 4px; border-bottom: 1px solid #2a2e35; margin-bottom: 20px; }
-    .tab {
-      padding: 8px 16px; cursor: pointer; border: 0; background: none;
-      color: #888; font-size: 14px; border-bottom: 2px solid transparent;
-      margin-bottom: -1px;
-    }
+    #app { display: none; max-width: 1200px; margin: 0 auto; }
+    .header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 16px; padding-bottom: 10px; border-bottom: 1px solid var(--line); flex-wrap: wrap; gap: 8px; }
+    .header h1 { margin: 0; font-size: 18px; }
+    .meta { color: var(--dim); font-size: 12px; font-family: 'SF Mono', Menlo, monospace; }
+    .meta b { color: var(--muted); }
+    .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 16px; overflow-x: auto; }
+    .tab { padding: 8px 16px; cursor: pointer; border: 0; background: none; color: var(--muted); font-size: 14px; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
     .tab:hover { color: #ddd; }
     .tab.active { color: #fff; border-bottom-color: #2a6df4; }
     .tab-panel { display: none; }
     .tab-panel.active { display: block; }
-    .task {
-      padding: 14px 16px; margin-bottom: 10px; background: #14171c;
-      border-radius: 8px; border-left: 4px solid #555;
-    }
-    .task.planning { border-left-color: #4a8df4; }
-    .task.executing { border-left-color: #fb0; }
-    .task.verifying { border-left-color: #c4f; }
-    .task.done { border-left-color: #4a4; }
-    .task-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-    .task-row strong { font-family: 'SF Mono', Menlo, monospace; font-size: 13px; }
-    .task-desc { color: #b0b0b0; margin-top: 6px; font-size: 14px; }
-    .task-meta { color: #666; font-size: 11px; margin-top: 6px; font-family: 'SF Mono', Menlo, monospace; }
-    .task-note { color: #888; font-size: 12px; margin-top: 6px; padding: 6px 10px; background: #0d0f12; border-radius: 4px; }
-    .pill { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; background: #2a2e35; color: #ccc; font-family: 'SF Mono', Menlo, monospace; }
+    /* === 任务进度 v2 === */
+    .current-task { padding: 18px; background: var(--panel); border-radius: 10px; margin-bottom: 16px; border: 1px solid var(--line); }
+    .current-task h2 { margin: 0 0 4px; font-size: 18px; word-break: break-all; }
+    .current-task .task-id { color: var(--dim); font-family: 'SF Mono', Menlo, monospace; font-size: 12px; }
+    .phase-stepper { display: flex; gap: 4px; margin: 14px 0; flex-wrap: wrap; }
+    .step { padding: 6px 12px; border-radius: 6px; background: #1a1d22; color: var(--dim); font-size: 12px; }
+    .step.done { background: #143614; color: #4f4; }
+    .step.active { background: #14283a; color: #4af; animation: pulse 2s ease-in-out infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    .who-working { display: flex; align-items: center; gap: 14px; padding: 14px; border-radius: 10px; margin: 12px 0; }
+    .who-working[data-owner="xiaomi"] { background: #fb923c; color: #1a0a00; }
+    .who-working[data-owner="codex"] { background: #4a8df4; color: #001226; }
+    .who-working[data-owner="none"] { background: #2a2e35; color: #888; }
+    .who-label { font-size: 11px; opacity: 0.85; text-transform: uppercase; letter-spacing: 1px; }
+    .who-name { font-size: 22px; font-weight: 700; }
+    .who-meta { font-size: 12px; opacity: 0.85; margin-left: auto; font-family: 'SF Mono', Menlo, monospace; }
+    .task-note { color: var(--muted); font-size: 13px; margin: 8px 0 0; padding: 8px 12px; background: var(--bg); border-radius: 6px; }
+    .panel { padding: 16px; background: var(--panel); border-radius: 10px; margin-bottom: 14px; border: 1px solid var(--line); }
+    .panel h3 { margin: 0 0 10px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+    .timeline-event { display: flex; gap: 10px; padding: 6px 0; border-bottom: 1px dashed var(--line); font-size: 13px; align-items: center; flex-wrap: wrap; }
+    .timeline-event:last-child { border-bottom: 0; }
+    .timeline-event .ts { color: var(--dim); font-family: 'SF Mono', Menlo, monospace; font-size: 11px; flex-shrink: 0; }
+    .timeline-event .who { padding: 1px 6px; border-radius: 3px; font-size: 10px; flex-shrink: 0; }
+    .timeline-event .who[data-w="codex"] { background: #14283a; color: #4af; }
+    .timeline-event .who[data-w="xiaomi"] { background: #3a2814; color: #fb0; }
+    .timeline-event .what { color: var(--text); flex: 1; min-width: 0; }
+    .res-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-bottom: 12px; }
+    .stat-box { padding: 10px 12px; background: var(--bg); border-radius: 6px; }
+    .stat-label { font-size: 10px; color: var(--dim); text-transform: uppercase; letter-spacing: 1px; }
+    .stat-value { font-size: 20px; color: #fff; margin-top: 2px; font-family: 'SF Mono', Menlo, monospace; }
+    .stat-unit { font-size: 11px; color: var(--muted); margin-left: 2px; }
+    .bar-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 12px; }
+    .bar-label { width: 160px; flex-shrink: 0; color: var(--muted); font-family: 'SF Mono', Menlo, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .bar-track { flex: 1; background: var(--bg); height: 8px; border-radius: 4px; overflow: hidden; }
+    .bar-fill { height: 100%; background: linear-gradient(90deg, #2a6df4, #4a8df4); }
+    .bar-value { width: 80px; text-align: right; color: #fff; font-family: 'SF Mono', Menlo, monospace; font-size: 11px; flex-shrink: 0; }
+    .service-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 12px; }
+    .service-row .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .service-row .dot.up { background: #4f4; box-shadow: 0 0 6px #4f4; }
+    .service-row .dot.down { background: #f44; box-shadow: 0 0 6px #f44; }
+    .service-row .dot.unknown { background: #888; }
+    .service-row .label { font-family: 'SF Mono', Menlo, monospace; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .service-row .pid { color: var(--dim); font-family: 'SF Mono', Menlo, monospace; font-size: 10px; }
+    .wd-line { padding: 4px 0; font-size: 11px; color: var(--muted); border-bottom: 1px dashed var(--line); font-family: 'SF Mono', Menlo, monospace; }
+    .wd-line:last-child { border-bottom: 0; }
+    .history-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .history-table th, .history-table td { padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--line); }
+    .history-table th { color: var(--muted); font-weight: normal; font-size: 10px; text-transform: uppercase; }
+    .history-table td { font-family: 'SF Mono', Menlo, monospace; }
+    .pill { display: inline-block; padding: 1px 6px; border-radius: 10px; font-size: 10px; background: #2a2e35; color: #ccc; }
     .pill.pass { background: #143614; color: #4f4; }
     .pill.fail { background: #3a1414; color: #f66; }
-    .pill.phase-planning { background: #14283a; color: #4af; }
-    .pill.phase-executing { background: #3a2814; color: #fb0; }
-    .pill.phase-verifying { background: #2a143a; color: #c4f; }
-    .pill.phase-done { background: #143614; color: #4f4; }
-    .stats {
-      display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-      gap: 10px; margin-bottom: 20px;
+    .pill.exec { background: #3a2814; color: #fb0; }
+    .pill.done { background: #14283a; color: #4af; }
+    .empty { color: var(--dim); font-style: italic; padding: 16px; text-align: center; font-size: 13px; }
+    /* === 架构地图 v2 === */
+    .arch-wrap { position: relative; padding: 8px 0; }
+    .arch-svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
+    .arch-svg .conn-line { stroke: #555; stroke-width: 1.5; transition: stroke 0.2s, opacity 0.2s; }
+    .arch-svg .conn-line.highlighted { stroke: #fb923c; stroke-width: 2.5; }
+    .arch-svg .conn-line.dimmed { stroke: #2a2e35; opacity: 0.3; }
+    .arch-svg .conn-label { fill: var(--muted); font-size: 10px; font-family: 'SF Mono', Menlo, monospace; transition: fill 0.2s, opacity 0.2s; pointer-events: auto; cursor: default; }
+    .arch-svg .conn-label.highlighted { fill: #fb923c; font-weight: 600; }
+    .arch-svg .conn-label.dimmed { opacity: 0.3; }
+    .arch-svg .conn-label-bg { fill: var(--bg); stroke: var(--line); stroke-width: 0.5; rx: 3; }
+    .arch-svg .conn-label-bg.highlighted { stroke: #fb923c; }
+    .arch-svg .conn-label-bg.dimmed { opacity: 0.3; }
+    .layer { position: relative; z-index: 2; margin-bottom: 14px; padding: 12px; background: var(--panel); border-radius: 10px; border-left: 4px solid var(--layer-color, #555); }
+    .layer h3 { margin: 0 0 10px; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; display: flex; align-items: center; gap: 8px; }
+    .layer h3 .layer-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--layer-color, #555); }
+    .layer-cards { display: flex; gap: 10px; flex-wrap: wrap; }
+    .module-card { flex: 1 1 200px; min-width: 180px; max-width: 280px; padding: 12px; background: var(--bg); border-radius: 8px; border: 1px solid var(--line); cursor: pointer; transition: border-color 0.2s, transform 0.2s, box-shadow 0.2s; }
+    .module-card:hover { border-color: #4a8df4; transform: translateY(-1px); }
+    .module-card.highlighted { border-color: #fb923c; box-shadow: 0 0 0 1px #fb923c, 0 4px 12px rgba(251, 146, 60, 0.15); }
+    .module-card .emoji { font-size: 22px; margin-right: 6px; vertical-align: middle; }
+    .module-card .name { font-size: 13px; font-weight: 600; color: #fff; }
+    .module-card .stack { display: block; font-size: 11px; color: var(--dim); font-family: 'SF Mono', Menlo, monospace; margin: 4px 0; }
+    .module-card .role { font-size: 12px; color: var(--muted); margin-top: 4px; line-height: 1.4; }
+    .arch-legend { display: flex; flex-wrap: wrap; gap: 10px; padding: 10px 14px; background: var(--panel); border-radius: 8px; margin-bottom: 14px; font-size: 11px; border: 1px solid var(--line); }
+    .arch-legend .lg-item { display: flex; align-items: center; gap: 6px; color: var(--muted); }
+    .arch-legend .lg-dot { width: 10px; height: 10px; border-radius: 50%; }
+    .arch-info { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 14px; }
+    .arch-info .panel { margin-bottom: 0; }
+    .arch-info .panel h3 { color: var(--muted); }
+    .arch-info ul { list-style: none; padding: 0; margin: 0; font-size: 12px; }
+    .arch-info li { padding: 5px 0; border-bottom: 1px dashed var(--line); color: var(--text); display: flex; justify-content: space-between; gap: 8px; }
+    .arch-info li:last-child { border-bottom: 0; }
+    .arch-info li .name { font-family: 'SF Mono', Menlo, monospace; font-size: 11px; }
+    .arch-info li .desc { color: var(--dim); font-size: 10px; text-align: right; }
+    .arch-info .patch-card { padding: 8px 10px; background: var(--bg); border-radius: 6px; border-left: 3px solid #fb0; margin-bottom: 6px; }
+    .arch-info .patch-card .purpose { font-size: 12px; color: #fff; }
+    .arch-info .patch-card .files { font-size: 10px; color: #4af; font-family: 'SF Mono', Menlo, monospace; margin-top: 4px; }
+    .arch-info .patch-card .env { font-size: 10px; color: #c4f; font-family: 'SF Mono', Menlo, monospace; }
+    .arch-info .mem-col h4 { margin: 0 0 6px; font-size: 11px; color: #4af; text-transform: uppercase; }
+    .arch-info .mem-col { padding: 0; background: transparent; border: 0; }
+    .arch-info .mem-col li .desc { color: var(--dim); }
+    .group-h { font-size: 10px; color: var(--dim); text-transform: uppercase; letter-spacing: 1px; margin: 8px 0 4px; }
+    @media (max-width: 768px) {
+      .arch-info { grid-template-columns: 1fr; }
+      .arch-svg { display: none; }
+      .module-card { flex-basis: 100%; max-width: 100%; }
+      .header h1 { font-size: 16px; }
+      .current-task h2 { font-size: 16px; }
+      .who-name { font-size: 18px; }
+      body { padding: 12px; }
     }
-    .stat {
-      padding: 12px 14px; background: #14171c; border-radius: 8px;
-      border: 1px solid #1f2329;
-    }
-    .stat-label { color: #888; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
-    .stat-value { color: #fff; font-size: 18px; margin-top: 4px; font-family: 'SF Mono', Menlo, monospace; }
-    pre {
-      background: #14171c; padding: 16px; border-radius: 8px;
-      overflow: auto; border: 1px solid #1f2329;
-    }
-    pre code { font-family: 'SF Mono', Menlo, monospace; font-size: 12px; color: #d0d0d0; }
-    .arch-section { margin-bottom: 24px; }
-    .arch-section h3 { color: #ccc; font-size: 14px; margin: 0 0 8px 0; padding-bottom: 6px; border-bottom: 1px solid #1f2329; }
-    .arch-list { list-style: none; padding: 0; margin: 0; }
-    .arch-list li {
-      padding: 8px 12px; background: #14171c; margin-bottom: 4px;
-      border-radius: 4px; font-size: 13px; display: flex; justify-content: space-between; align-items: center;
-    }
-    .arch-list .name { color: #fff; font-family: 'SF Mono', Menlo, monospace; }
-    .arch-list .desc { color: #888; font-size: 11px; }
-    .patch-card { padding: 12px 14px; background: #14171c; border-left: 3px solid #fb0; border-radius: 4px; margin-bottom: 8px; }
-    .patch-purpose { color: #fff; font-size: 13px; font-weight: 500; }
-    .patch-files { color: #4af; font-family: 'SF Mono', Menlo, monospace; font-size: 11px; margin-top: 6px; }
-    .patch-env { color: #c4f; font-family: 'SF Mono', Menlo, monospace; font-size: 11px; margin-top: 2px; }
-    .patch-note { color: #888; font-size: 11px; margin-top: 6px; }
-    .empty { color: #666; font-style: italic; padding: 20px; text-align: center; }
   </style>
 </head>
 <body>
@@ -115,44 +156,98 @@
     <div class="header">
       <h1>Agent Dashboard</h1>
       <div class="meta">
-        <span id="meta-update">last update: --</span>
-        ·
-        <span id="meta-poll">polling: 10s</span>
+        <span><b>上次更新:</b> <span id="meta-update">暂无</span></span> · <span><b>10 秒自动刷新</b></span>
       </div>
     </div>
 
     <div class="tabs" id="tabs">
       <button class="tab active" data-tab="tasks" type="button">任务进度</button>
       <button class="tab" data-tab="arch" type="button">架构地图</button>
-      <button class="tab" data-tab="health" type="button">健康</button>
     </div>
 
     <div id="panel-tasks" class="tab-panel active"></div>
     <div id="panel-arch" class="tab-panel"></div>
-    <div id="panel-health" class="tab-panel"></div>
   </div>
 
   <script is:inline>
+    // === 站点固定结构: 架构地图的模块与连线 ===
+    const ARCH_LAYERS = [
+      { id: 'people', name: '① 人层', color: '#f4a261',
+        modules: [
+          { id: 'frank', emoji: '👤', name: 'Frank', stack: '人类操作员', role: '发任务 / 看进度 / 验收' },
+        ]},
+      { id: 'entry', name: '② 入口层', color: '#2a9d8f',
+        modules: [
+          { id: 'bridge', emoji: '🌉', name: 'lark-agents-bridge', stack: '飞书 WS 长连接', role: '群里 @Codex / @小秘 路由到对应 agent' },
+          { id: 'gateway', emoji: '🚪', name: 'OpenClaw 网关', stack: 'agent:main (MiniMax-M3)', role: '本地会话 / 工具 / 委派' },
+        ]},
+      { id: 'engine', name: '③ 引擎层', color: '#e76f51',
+        modules: [
+          { id: 'codex-cli', emoji: '🤖', name: 'Codex CLI', stack: 'Codex 0.155 alpha + gpt-5', role: '出方案 / 验收 / 监控' },
+          { id: 'agent-main', emoji: '🧠', name: '小秘 (agent main)', stack: 'OpenClaw + MiniMax-M3', role: '执行任务 / 推密文 / 操作文件' },
+        ]},
+      { id: 'shared', name: '④ 共享层', color: '#264653',
+        modules: [
+          { id: 'agent-bus', emoji: '📦', name: 'agent-bus', stack: 'runs/ + delegations/ + watchdog.log', role: '任务记录 / 委派日志 / 健康监控' },
+          { id: 'dashboard-snapshot', emoji: '🔒', name: '看板密文快照', stack: 'PBKDF2+AES-GCM, 200k iter', role: '采集 → 加密 → 推送 GitHub' },
+        ]},
+      { id: 'delivery', name: '⑤ 交付层', color: '#8e7dbe',
+        modules: [
+          { id: 'frankofswing', emoji: '🌐', name: 'frankofswing.com', stack: 'Astro static + Vercel', role: '公开站点 + 密码门 /agents/' },
+        ]},
+    ];
+
+    const CONNECTIONS = [
+      { from: 'frank', to: 'bridge', label: '@Codex 群消息' },
+      { from: 'frank', to: 'gateway', label: '@小秘 群消息' },
+      { from: 'bridge', to: 'codex-cli', label: 'codex exec' },
+      { from: 'gateway', to: 'agent-main', label: 'openclaw agent --json' },
+      { from: 'codex-cli', to: 'agent-main', label: '委派 / 回执' },
+      { from: 'agent-main', to: 'agent-bus', label: '写 status.json / delegations' },
+      { from: 'agent-bus', to: 'dashboard-snapshot', label: '采集 + 加密' },
+      { from: 'dashboard-snapshot', to: 'frankofswing', label: '密文 push' },
+    ];
+
     const POLL_MS = 10000;
     const ENC_URL = '/data/agent-dashboard.enc.json';
     let currentPassword = '';
     let lastBlobHash = '';
     let pollTimer = null;
+    let currentData = null;
 
-    // ── WebCrypto helpers ──
+    // === 工具 ===
+    function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]); }
+    function fmtTime(iso) {
+      if (!iso) return '暂无';
+      try { const d = new Date(iso); if (isNaN(d.getTime())) return esc(iso); return d.toLocaleTimeString('zh-CN', { hour12: false }); }
+      catch { return esc(iso); }
+    }
+    function fmtDate(iso) {
+      if (!iso) return '暂无';
+      try { const d = new Date(iso); if (isNaN(d.getTime())) return esc(iso); return d.toLocaleString('zh-CN', { hour12: false }); }
+      catch { return esc(iso); }
+    }
+    function elapsedSince(iso) {
+      if (!iso) return '暂无';
+      try {
+        const d = new Date(iso); if (isNaN(d.getTime())) return '暂无';
+        const ms = Date.now() - d.getTime();
+        if (ms < 60000) return Math.floor(ms / 1000) + ' 秒';
+        if (ms < 3600000) return Math.floor(ms / 60000) + ' 分钟';
+        return Math.floor(ms / 3600000) + ' 小时';
+      } catch { return '暂无'; }
+    }
+    function safeNum(n, suffix = '') { return (typeof n === 'number' && isFinite(n)) ? n.toFixed(4) + suffix : '暂无'; }
+
+    // === WebCrypto ===
     async function deriveKey(password, salt, iter) {
       const enc = new TextEncoder();
-      const baseKey = await crypto.subtle.importKey(
-        'raw', enc.encode(password), 'PBKDF2', false, ['deriveKey']
-      );
+      const baseKey = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveKey']);
       return crypto.subtle.deriveKey(
         { name: 'PBKDF2', salt, iterations: iter, hash: 'SHA-256' },
-        baseKey,
-        { name: 'AES-GCM', length: 256 },
-        false, ['decrypt']
+        baseKey, { name: 'AES-GCM', length: 256 }, false, ['decrypt']
       );
     }
-
     async function decryptBlob(blob, password) {
       const salt = Uint8Array.from(atob(blob.salt), c => c.charCodeAt(0));
       const nonce = Uint8Array.from(atob(blob.nonce), c => c.charCodeAt(0));
@@ -161,215 +256,378 @@
       const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: nonce }, key, ct);
       return JSON.parse(new TextDecoder().decode(pt));
     }
-
     async function fetchBlob() {
       const r = await fetch(ENC_URL + '?t=' + Date.now(), { cache: 'no-store' });
       if (!r.ok) throw new Error('HTTP ' + r.status);
       return await r.json();
     }
-
     async function blobHash(blob) {
       const s = JSON.stringify({ s: blob.salt, n: blob.nonce, c: blob.ct, i: blob.iter });
       const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
       return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
     }
 
-    function esc(s) {
-      return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
-        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-      })[c]);
-    }
-
-    function pillFor(phase) {
-      const map = {
-        planning: 'phase-planning', executing: 'phase-executing',
-        verifying: 'phase-verifying', done: 'phase-done'
-      };
-      return `<span class="pill ${map[phase] || ''}">${esc(phase || '?')}</span>`;
-    }
-
-    function verdictPill(verdict) {
-      if (verdict === 'PASS') return '<span class="pill pass">PASS</span>';
-      if (verdict === 'FAIL') return '<span class="pill fail">FAIL</span>';
-      return '';
-    }
-
-    // ── Renderers ──
+    // === 任务进度渲染 ===
     function renderTasks(data) {
       const tasks = data.tasks || [];
-      const res = data.resources || {};
+      const resources = data.resources || {};
+      const health = data.health || {};
       const el = document.getElementById('panel-tasks');
 
-      const statsHtml = `
-        <div class="stats">
-          <div class="stat">
-            <div class="stat-label">今日花费</div>
-            <div class="stat-value">$${(res.todayCostUsd || 0).toFixed(4)}</div>
-          </div>
-          <div class="stat">
-            <div class="stat-label">今日委派</div>
-            <div class="stat-value">${(res.recentDelegations || []).length}</div>
-          </div>
-          <div class="stat">
-            <div class="stat-label">Codex 会话 (今日)</div>
-            <div class="stat-value">${res.codexSessionsToday || 0}</div>
-          </div>
-          <div class="stat">
-            <div class="stat-label">活跃 run</div>
-            <div class="stat-value">${tasks.filter(t => t.phase !== 'done').length}</div>
-          </div>
-        </div>`;
+      // 当前任务 = updated_at 最新的非 done 任务; 若都 done 取最新
+      const active = tasks.filter(t => t.phase !== 'done').sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''));
+      const cur = active[0] || tasks.slice().sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''))[0];
 
-      if (!tasks.length) {
-        el.innerHTML = statsHtml + '<div class="empty">无任务记录</div>';
-        return;
-      }
+      const curHtml = cur ? renderCurrentTask(cur) : `<div class="panel"><h3>当前任务</h3><div class="empty">暂无</div></div>`;
+      const timelineHtml = renderTimeline(cur);
+      const resHtml = renderResources(resources);
+      const healthHtml = renderHealth(health);
+      const histHtml = renderHistory(tasks);
 
-      const tasksHtml = tasks.map(t => `
-        <div class="task ${esc(t.phase || 'unknown')}">
-          <div class="task-row">
-            <strong>${esc(t.run_id || '?')}</strong>
-            ${verdictPill(t.verdict)}
-            ${pillFor(t.phase)}
-            <span class="pill">owner: ${esc(t.owner || '?')}</span>
-            <span class="pill">attempts: ${t.attempts || 0}</span>
-          </div>
-          ${t.task_one_liner ? `<div class="task-desc">${esc(t.task_one_liner)}</div>` : ''}
-          <div class="task-meta">
-            started: ${esc(t.started_at || '--')} ·
-            updated: ${esc(t.updated_at || '--')}
-          </div>
-          ${t.note ? `<div class="task-note">${esc(t.note)}</div>` : ''}
-        </div>
-      `).join('');
-
-      el.innerHTML = statsHtml + tasksHtml;
+      el.innerHTML = curHtml + timelineHtml + resHtml + healthHtml + histHtml;
     }
 
-    function renderArch(arch) {
+    function renderCurrentTask(t) {
+      const phase = t.phase || 'planning';
+      const stepIdx = { planning: 0, executing: 1, verifying: 2, done: 3 }[phase] ?? 0;
+      const steps = ['规划', '执行', '验收', '完成'];
+      const stepHtml = steps.map((s, i) => {
+        const cls = i < stepIdx ? 'done' : i === stepIdx ? 'active' : '';
+        return `<div class="step ${cls}">${s}</div>`;
+      }).join('');
+      const owner = t.owner || 'none';
+      const ownerName = { xiaomi: '小秘', codex: 'Codex', none: '无人' }[owner] || '无人';
+      const elapsed = elapsedSince(t.started_at);
+      const attempts = (typeof t.attempts === 'number') ? t.attempts : 0;
+      const verdict = t.verdict;
+      const verdictPill = verdict === 'PASS' ? '<span class="pill pass">PASS</span>' : verdict === 'FAIL' ? '<span class="pill fail">FAIL</span>' : '';
+      const note = t.note || '';
+      const oneLiner = t.task_one_liner || '(无任务描述)';
+
+      return `<div class="current-task">
+        <h2>${esc(oneLiner)} ${verdictPill}</h2>
+        <div class="task-id">${esc(t.run_id || '')} · <span class="pill done">${esc(phase)}</span></div>
+        <div class="phase-stepper">${stepHtml}</div>
+        <div class="who-working" data-owner="${esc(owner)}">
+          <div>
+            <div class="who-label">现在谁在干活</div>
+            <div class="who-name">${esc(ownerName)}</div>
+          </div>
+          <div class="who-meta">已耗时 ${esc(elapsed)} · 第 ${attempts} 次尝试</div>
+        </div>
+        ${note ? `<div class="task-note">${esc(note)}</div>` : ''}
+      </div>`;
+    }
+
+    function renderTimeline(cur) {
+      const events = (cur && cur.events) || [];
+      if (!events.length) {
+        return `<div class="panel"><h3>阶段时间线</h3><div class="empty">暂无</div></div>`;
+      }
+      const items = events.slice().reverse().map(e => {
+        const ts = (e.ts || '').slice(11, 19);
+        const who = e.who || '?';
+        const what = e.what || '';
+        return `<div class="timeline-event">
+          <span class="ts">${esc(ts)}</span>
+          <span class="who" data-w="${esc(who)}">${esc(who)}</span>
+          <span class="what">${esc(what)}</span>
+        </div>`;
+      }).join('');
+      return `<div class="panel"><h3>阶段时间线</h3>${items}</div>`;
+    }
+
+    function renderResources(res) {
+      const today = safeNum(res.todayCostUsd, '');
+      const totalCost = (typeof res.todayCostUsd === 'number') ? res.todayCostUsd : 0;
+      const calls = (Array.isArray(res.recentDelegations)) ? res.recentDelegations.length : 0;
+      const codex = (typeof res.codexSessionsToday === 'number') ? res.codexSessionsToday : 0;
+
+      const byModel = res.todayByModel || {};
+      const modelEntries = Object.entries(byModel).sort((a, b) => b[1] - a[1]);
+      const maxCost = modelEntries.length ? modelEntries[0][1] : 0;
+      const bars = modelEntries.length ? modelEntries.map(([m, c]) => {
+        const pct = maxCost > 0 ? (c / maxCost * 100) : 0;
+        const label = m.replace(/^minimax-portal\//, '');
+        return `<div class="bar-row">
+          <span class="bar-label" title="${esc(m)}">${esc(label)}</span>
+          <div class="bar-track"><div class="bar-fill" style="width: ${pct.toFixed(1)}%"></div></div>
+          <span class="bar-value">$${safeNum(c)}</span>
+        </div>`;
+      }).join('') : '<div class="empty">暂无</div>';
+
+      return `<div class="panel">
+        <h3>资源</h3>
+        <div class="res-stats">
+          <div class="stat-box"><div class="stat-label">今日成本</div><div class="stat-value">$${today || '暂无'}</div></div>
+          <div class="stat-box"><div class="stat-label">今日委派</div><div class="stat-value">${calls} <span class="stat-unit">次</span></div></div>
+          <div class="stat-box"><div class="stat-label">Codex 会话</div><div class="stat-value">${codex} <span class="stat-unit">/ 今日</span></div></div>
+        </div>
+        ${modelEntries.length ? modelEntries.map(([m, c]) => '').join('') + bars : ''}
+      </div>`;
+    }
+
+    function renderHealth(health) {
+      const services = health.services || [];
+      const wd = (health.watchdog_tail || []).slice().reverse();
+      const svcHtml = services.length ? services.map(s => {
+        const label = s.label || s.raw || '?';
+        const pid = s.pid || '?';
+        const up = pid && pid !== '-' && pid !== '?';
+        return `<div class="service-row">
+          <span class="dot ${up ? 'up' : 'down'}"></span>
+          <span class="label" title="${esc(label)}">${esc(label)}</span>
+          <span class="pid">pid=${esc(pid)}</span>
+        </div>`;
+      }).join('') : '<div class="empty">暂无</div>';
+
+      const wdHtml = wd.length ? wd.slice(0, 5).map(e => {
+        const ts = (e.ts || '').slice(11, 19);
+        const evt = e.event || e.raw || JSON.stringify(e).slice(0, 80);
+        return `<div class="wd-line">${esc(ts)} · ${esc(evt)}</div>`;
+      }).join('') : '<div class="empty">暂无</div>';
+
+      return `<div class="panel">
+        <h3>健康</h3>
+        <div class="group-h">Launchd 服务</div>
+        ${svcHtml}
+        <div class="group-h">Watchdog 最近 5 条</div>
+        ${wdHtml}
+      </div>`;
+    }
+
+    function renderHistory(tasks) {
+      const sorted = tasks.slice().sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''));
+      if (!sorted.length) {
+        return `<div class="panel"><h3>历史任务</h3><div class="empty">暂无</div></div>`;
+      }
+      const rows = sorted.map(t => {
+        const verdict = t.verdict || '';
+        const pill = verdict === 'PASS' ? '<span class="pill pass">PASS</span>' : verdict === 'FAIL' ? '<span class="pill fail">FAIL</span>' : '<span class="pill">—</span>';
+        const attempts = (typeof t.attempts === 'number') ? t.attempts : 0;
+        const elapsed = elapsedSince(t.started_at);
+        return `<tr>
+          <td>${esc(t.run_id || '?')}</td>
+          <td>${pill}</td>
+          <td>${attempts}</td>
+          <td>${esc(elapsed)}</td>
+        </tr>`;
+      }).join('');
+      return `<div class="panel">
+        <h3>历史任务</h3>
+        <table class="history-table">
+          <thead><tr><th>任务</th><th>结论</th><th>尝试</th><th>耗时</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
+    }
+
+    // === 架构地图渲染 ===
+    function renderArch(data) {
       const el = document.getElementById('panel-arch');
-      const agents = arch.agents || [];
-      const channels = arch.channels || [];
+      const arch = data.architecture || {};
+
+      const legendHtml = `<div class="arch-legend">${
+        ARCH_LAYERS.map(l => `<div class="lg-item"><span class="lg-dot" style="background:${l.color}"></span>${esc(l.name)}</span></div>`).join('')
+      }</div>`;
+
+      const layersHtml = ARCH_LAYERS.map(layer => {
+        const cards = layer.modules.map(m => `
+          <div class="module-card" data-module-id="${esc(m.id)}">
+            <span class="emoji">${esc(m.emoji)}</span><span class="name">${esc(m.name)}</span>
+            <span class="stack">${esc(m.stack)}</span>
+            <div class="role">${esc(m.role)}</div>
+          </div>
+        `).join('');
+        return `<div class="layer" style="--layer-color: ${layer.color}">
+          <h3><span class="layer-dot"></span>${esc(layer.name)}</h3>
+          <div class="layer-cards">${cards}</div>
+        </div>`;
+      }).join('');
+
+      const archSvg = `<svg class="arch-svg" id="arch-svg" preserveAspectRatio="none"></svg>`;
+
+      // Skills (按需/默认) + 记忆系统 + 补丁
       const skills = arch.skills || [];
       const scripts = arch.scripts || [];
       const patches = arch.patches || [];
 
-      const agentsHtml = agents.length ? `
-        <ul class="arch-list">${agents.map(a => `
-          <li>
-            <span><span class="name">${esc(a.id)}</span> · ${esc(a.name || '')}</span>
-            <span class="desc">${esc((a.model || '').replace('minimax-portal/', ''))}</span>
-          </li>`).join('')}</ul>` : '<div class="empty">无 agent</div>';
+      const skillsHtml = `<div class="panel">
+        <h3>Skills</h3>
+        <div class="group-h">默认加载 (内置)</div>
+        <ul>${skills.slice(0, 20).map(s => `<li><span class="name">${esc(s.name)}</span><span class="desc">${esc(s.description || '')}</span></li>`).join('') || '<div class="empty">暂无</div>'}</ul>
+        <div class="group-h">按需拉起 (scripts/)</div>
+        <ul>${scripts.slice(0, 12).map(s => `<li><span class="name">${esc(s.replace(/^\/Users\/frank_bot\//, '~/'))}</span></li>`).join('') || '<div class="empty">暂无</div>'}</ul>
+      </div>`;
 
-      const channelsHtml = channels.length ? `
-        <ul class="arch-list">${channels.map(c => `
-          <li>
-            <span><span class="name">${esc(c.name)}</span>${c.accounts && c.accounts.length ? ' · accounts: ' + c.accounts.map(esc).join(', ') : ''}</span>
-            <span class="desc">${c.enabled ? 'enabled' : 'disabled'}</span>
-          </li>`).join('')}</ul>` : '<div class="empty">无 channel</div>';
+      const memHtml = `<div class="panel">
+        <h3>记忆系统</h3>
+        <div class="arch-info">
+          <div class="mem-col">
+            <h4>Codex 的</h4>
+            <ul>
+              <li><span class="name">~/.codex/sessions/**/rollout-*.jsonl</span></li>
+              <li><span class="name">~/.codex/skills/</span></li>
+              <li><span class="name">~/.codex/plugins/cache/</span></li>
+            </ul>
+          </div>
+          <div class="mem-col">
+            <h4>小秘 的</h4>
+            <ul>
+              <li><span class="name">~/.openclaw/workspace/main/IDENTITY.md</span></li>
+              <li><span class="name">~/.openclaw/workspace/main/USER.md</span></li>
+              <li><span class="name">~/.openclaw/workspace/main/MEMORY.md</span></li>
+              <li><span class="name">~/.openclaw/workspace/main/memory/*.md</span></li>
+            </ul>
+          </div>
+          <div class="mem-col">
+            <h4>共享的</h4>
+            <ul>
+              <li><span class="name">~/.openclaw/agent-bus/runs/*/status.json</span></li>
+              <li><span class="name">~/.openclaw/agent-bus/runs.jsonl</span></li>
+              <li><span class="name">~/.openclaw/agent-bus/delegations/*.json</span></li>
+              <li><span class="name">~/.openclaw/agent-bus/watchdog.log</span></li>
+            </ul>
+          </div>
+        </div>
+      </div>`;
 
-      const skillsHtml = skills.length ? `
-        <ul class="arch-list">${skills.slice(0, 50).map(s => `
-          <li>
-            <span class="name">${esc(s.name)}</span>
-            <span class="desc">${esc(s.description || '')}</span>
-          </li>`).join('')}</ul>
-        ${skills.length > 50 ? `<div class="meta" style="margin-top:8px;">... 还有 ${skills.length - 50} 个</div>` : ''}`
-        : '<div class="empty">无 skill</div>';
+      const patchesHtml = `<div class="panel">
+        <h3>本地补丁</h3>
+        ${patches.slice(0, 6).map(p => `
+          <div class="patch-card">
+            <div class="purpose">${esc(p.purpose || '(无说明)')}</div>
+            ${p.files && p.files.length ? `<div class="files">📁 ${p.files.map(esc).join(', ')}</div>` : ''}
+            ${p.env && p.env.length ? `<div class="env">🔑 ${p.env.map(esc).join(', ')}</div>` : ''}
+            ${p.note ? `<div class="desc">${esc(p.note)}</div>` : ''}
+          </div>
+        `).join('') || '<div class="empty">暂无</div>'}
+      </div>`;
 
-      const scriptsHtml = scripts.length ? `
-        <ul class="arch-list">${scripts.map(s => `
-          <li><span class="name">${esc(s)}</span></li>`).join('')}</ul>` : '<div class="empty">无 script</div>';
+      const infoHtml = `<div class="arch-info">${skillsHtml}${memHtml}${patchesHtml}</div>`;
 
-      const patchesHtml = patches.length ? patches.map(p => `
-        <div class="patch-card">
-          <div class="patch-purpose">${esc(p.purpose)}</div>
-          ${p.files && p.files.length ? `<div class="patch-files">📁 ${p.files.map(esc).join(', ')}</div>` : ''}
-          ${p.env && p.env.length ? `<div class="patch-env">🔑 ${p.env.map(esc).join(', ')}</div>` : ''}
-          ${p.note ? `<div class="patch-note">${esc(p.note)}</div>` : ''}
-        </div>`).join('') : '<div class="empty">无补丁</div>';
+      el.innerHTML = legendHtml + `<div class="arch-wrap" id="arch-wrap">${layersHtml}${archSvg}</div>` + infoHtml;
 
-      el.innerHTML = `
-        <div class="arch-section"><h3>Agents (${agents.length})</h3>${agentsHtml}</div>
-        <div class="arch-section"><h3>Channels (${channels.length})</h3>${channelsHtml}</div>
-        <div class="arch-section"><h3>Skills (${skills.length})</h3>${skillsHtml}</div>
-        <div class="arch-section"><h3>Scripts (${scripts.length})</h3>${scriptsHtml}</div>
-        <div class="arch-section"><h3>Patches (${patches.length})</h3>${patchesHtml}</div>
-      `;
+      // 画连线
+      requestAnimationFrame(() => drawConnections());
+      setupCardClick();
     }
 
-    function renderHealth(health) {
-      const el = document.getElementById('panel-health');
-      const wd = (health.watchdog_tail || []).slice().reverse();
-      const svc = health.services || [];
+    function drawConnections() {
+      const svg = document.getElementById('arch-svg');
+      const wrap = document.getElementById('arch-wrap');
+      if (!svg || !wrap) return;
+      svg.innerHTML = '<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#888"/></marker></defs>';
+      const wrapRect = wrap.getBoundingClientRect();
 
-      const wdHtml = wd.length ? `
-        <ul class="arch-list">${wd.slice(0, 10).map(e => `
-          <li>
-            <span class="name">${esc(e.event || e.raw || JSON.stringify(e).slice(0, 60))}</span>
-            <span class="desc">${esc(e.ts || e.component || '')}</span>
-          </li>`).join('')}</ul>` : '<div class="empty">无 watchdog 记录</div>';
+      CONNECTIONS.forEach((conn) => {
+        const fromEl = wrap.querySelector(`[data-module-id="${conn.from}"]`);
+        const toEl = wrap.querySelector(`[data-module-id="${conn.to}"]`);
+        if (!fromEl || !toEl) return;
+        const fr = fromEl.getBoundingClientRect();
+        const tr = toEl.getBoundingClientRect();
 
-      const svcHtml = svc.length ? `
-        <ul class="arch-list">${svc.map(s => `
-          <li>
-            <span class="name">${esc(s.label || s.raw || '?')}</span>
-            <span class="desc">pid=${esc(s.pid || '?')} status=${esc(s.status || '?')}</span>
-          </li>`).join('')}</ul>` : '<div class="empty">无服务</div>';
+        const fromX = fr.left + fr.width / 2 - wrapRect.left;
+        const fromY = fr.bottom - wrapRect.top;
+        const toX = tr.left + tr.width / 2 - wrapRect.left;
+        const toY = tr.top - wrapRect.top;
+        const midX = (fromX + toX) / 2;
+        const midY = (fromY + toY) / 2;
 
-      el.innerHTML = `
-        <div class="arch-section"><h3>Launchd Services (${svc.length})</h3>${svcHtml}</div>
-        <div class="arch-section"><h3>Watchdog Tail (${wd.length})</h3>${wdHtml}</div>
-      `;
+        // 折线: 从 source 底部向下, 水平到 mid, 再向下到 target 顶部
+        const dy1 = (fromY + toY) / 2 - fromY;
+        const dy2 = toY - (fromY + toY) / 2;
+        const path = `M ${fromX} ${fromY} L ${fromX} ${fromY + dy1 / 2} L ${toX} ${fromY + dy1 / 2} L ${toX} ${toY}`;
+
+        const NS = 'http://www.w3.org/2000/svg';
+        const pathEl = document.createElementNS(NS, 'path');
+        pathEl.setAttribute('d', path);
+        pathEl.setAttribute('class', 'conn-line');
+        pathEl.setAttribute('data-from', conn.from);
+        pathEl.setAttribute('data-to', conn.to);
+        pathEl.setAttribute('fill', 'none');
+        pathEl.setAttribute('marker-end', 'url(#arrow)');
+        svg.appendChild(pathEl);
+
+        // Label 背景
+        const labelText = conn.label;
+        const labelW = Math.max(labelText.length * 7 + 14, 60);
+        const labelH = 18;
+        const bg = document.createElementNS(NS, 'rect');
+        bg.setAttribute('x', midX - labelW / 2);
+        bg.setAttribute('y', midY - labelH / 2);
+        bg.setAttribute('width', labelW);
+        bg.setAttribute('height', labelH);
+        bg.setAttribute('class', 'conn-label-bg');
+        bg.setAttribute('data-from', conn.from);
+        bg.setAttribute('data-to', conn.to);
+        svg.appendChild(bg);
+
+        const txt = document.createElementNS(NS, 'text');
+        txt.setAttribute('x', midX);
+        txt.setAttribute('y', midY + 3);
+        txt.setAttribute('text-anchor', 'middle');
+        txt.setAttribute('class', 'conn-label');
+        txt.setAttribute('data-from', conn.from);
+        txt.setAttribute('data-to', conn.to);
+        txt.textContent = labelText;
+        svg.appendChild(txt);
+      });
     }
 
-    function renderAll(data) {
-      renderTasks(data);
-      renderArch(data.architecture || {});
-      renderHealth(data.health || {});
+    function setupCardClick() {
+      const cards = document.querySelectorAll('.module-card');
+      cards.forEach(card => {
+        card.addEventListener('click', () => {
+          const id = card.dataset.moduleId;
+          const wasHighlighted = card.classList.contains('highlighted');
+          // 清所有
+          document.querySelectorAll('.module-card.highlighted').forEach(c => c.classList.remove('highlighted'));
+          document.querySelectorAll('.conn-line, .conn-label, .conn-label-bg').forEach(l => {
+            l.classList.remove('highlighted', 'dimmed');
+          });
+          if (wasHighlighted) return;
+          card.classList.add('highlighted');
+          document.querySelectorAll(`.conn-line[data-from="${id}"], .conn-line[data-to="${id}"]`).forEach(l => l.classList.add('highlighted'));
+          document.querySelectorAll(`.conn-label[data-from="${id}"], .conn-label[data-to="${id}"], .conn-label-bg[data-from="${id}"], .conn-label-bg[data-to="${id}"]`).forEach(l => l.classList.add('highlighted'));
+          document.querySelectorAll('.conn-line:not(.highlighted), .conn-label:not(.highlighted), .conn-label-bg:not(.highlighted)').forEach(l => l.classList.add('dimmed'));
+        });
+      });
     }
 
-    function switchTab(name) {
-      document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
-      document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + name));
-    }
-
-    // ── Polling loop ──
+    // === Polling ===
     async function refresh() {
       if (!currentPassword) return;
       try {
         const blob = await fetchBlob();
         const hash = await blobHash(blob);
-        if (hash === lastBlobHash) return;  // 内容未变, 跳过
+        if (hash === lastBlobHash) return;
         lastBlobHash = hash;
-        const data = await decryptBlob(blob, currentPassword);
-        renderAll(data);
+        currentData = await decryptBlob(blob, currentPassword);
+        renderAll(currentData);
         const tsEl = document.getElementById('meta-update');
-        if (tsEl) tsEl.textContent = 'last update: ' + (data.generatedAt || '--');
+        if (tsEl) tsEl.textContent = currentData.generatedAt ? fmtDate(currentData.generatedAt) : '暂无';
       } catch (e) {
         console.error('refresh failed:', e);
-        if (String(e).includes('decrypt') || String(e).includes('OperationError')) {
-          // 密码可能变了, 退回登录
+        if (String(e).includes('OperationError') || String(e).includes('decrypt')) {
           sessionStorage.removeItem('dashboard-pw');
           location.reload();
         }
       }
     }
-
     function startPolling() {
       if (pollTimer) clearInterval(pollTimer);
       pollTimer = setInterval(refresh, POLL_MS);
     }
+    function switchTab(name) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + name));
+      if (name === 'arch' && currentData) requestAnimationFrame(drawConnections);
+    }
 
-    // ── Login flow ──
-    async function tryLogin(pw) {
-      try {
-        const blob = await fetchBlob();
-        const data = await decryptBlob(blob, pw);
-        return { ok: true, blob, data };
-      } catch (e) {
-        return { ok: false, error: e };
-      }
+    function renderAll(data) {
+      renderTasks(data);
+      renderArch(data);
     }
 
     async function doLogin() {
@@ -379,35 +637,35 @@
       const btn = document.getElementById('btn');
       btn.disabled = true;
       errEl.textContent = '解密中... (PBKDF2 200k 轮, 约 1-2 秒)';
-      // 强制让 UI 更新一次
       await new Promise(r => setTimeout(r, 10));
-      const r = await tryLogin(pw);
-      btn.disabled = false;
-      if (!r.ok) {
+      try {
+        const blob = await fetchBlob();
+        const data = await decryptBlob(blob, pw);
+        currentPassword = pw;
+        sessionStorage.setItem('dashboard-pw', pw);
+        lastBlobHash = await blobHash(blob);
+        document.getElementById('login').style.display = 'none';
+        document.getElementById('app').style.display = 'block';
+        renderAll(data);
+        const tsEl = document.getElementById('meta-update');
+        if (tsEl) tsEl.textContent = data.generatedAt ? fmtDate(data.generatedAt) : '暂无';
+        startPolling();
+        errEl.textContent = '';
+      } catch (e) {
         errEl.textContent = '密码不正确 (解密失败)';
-        return;
+      } finally {
+        btn.disabled = false;
       }
-      currentPassword = pw;
-      sessionStorage.setItem('dashboard-pw', pw);
-      lastBlobHash = await blobHash(r.blob);
-      document.getElementById('login').style.display = 'none';
-      document.getElementById('app').style.display = 'block';
-      renderAll(r.data);
-      const tsEl = document.getElementById('meta-update');
-      if (tsEl) tsEl.textContent = 'last update: ' + (r.data.generatedAt || '--');
-      startPolling();
     }
 
-    // ── Boot ──
+    // === Boot ===
     document.getElementById('btn').addEventListener('click', doLogin);
-    document.getElementById('pw').addEventListener('keydown', e => {
-      if (e.key === 'Enter') doLogin();
-    });
-    document.querySelectorAll('.tab').forEach(t => {
-      t.addEventListener('click', () => switchTab(t.dataset.tab));
+    document.getElementById('pw').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+    document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => switchTab(t.dataset.tab)));
+    window.addEventListener('resize', () => {
+      if (document.getElementById('panel-arch').classList.contains('active')) drawConnections();
     });
 
-    // 自动登录 (如果 sessionStorage 有)
     (function () {
       const saved = sessionStorage.getItem('dashboard-pw');
       if (saved) {
