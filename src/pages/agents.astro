@@ -81,6 +81,8 @@
     .sec { font-size:11px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--text-3); margin:0 0 12px; }
     .cols { display:grid; grid-template-columns:minmax(0,1.55fr) minmax(0,1fr); gap:14px; align-items:start; }
     .cols-3 { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; align-items:start; }
+    .stack { display:flex; flex-direction:column; gap:14px; }
+    .stack > .card { margin-top:0; flex:1; }
     .muted { color:var(--text-3); }
     .empty { color:var(--text-3); font-size:13px; padding:10px 0; }
 
@@ -601,7 +603,7 @@
 
     html += '<div class="cols" style="margin-top:14px">'
       + '<div class="card"><p class="sec">活动流（最近 ' + Math.min(9, events.length) + ' 条）</p><div class="feed">' + feed + '</div></div>'
-      + '<div>' + renderResources(res) + renderHealth(health) + '</div>'
+      + '<div class="stack">' + renderResources(res) + renderHealth(health) + '</div>'
       + '</div>';
 
     html += renderHistory(tasks);
@@ -652,11 +654,19 @@
     const services = (health.services || []).filter((s) => s.label);
     const mine = services.filter((s) => SVC_LABEL[s.label]);
     const other = services.filter((s) => !SVC_LABEL[s.label]);
+    /* 常驻进程看 pid；定时任务(StartInterval)跑完就退出，pid 恒为 '-' —— 要看上次退出码，
+       否则 watchdog / 看板推送 会长期显示假警报（2026-10-09 修） */
     const svc = mine.length ? mine.map((s) => {
-      const up = s.pid && s.pid !== '-' && s.pid !== '?';
-      return '<div class="svc"><span class="dot ' + (up ? 'up' : 'down') + '"></span>'
+      const alive = s.pid && s.pid !== '-' && s.pid !== '?';
+      const interval = s.kind === 'interval';
+      const okExit = String(s.status) === '0';
+      const good = interval ? okExit : alive;
+      const detail = interval
+        ? (okExit ? '定时任务 · 上次正常' : '定时任务 · 上次退出码 ' + esc(s.status))
+        : (alive ? 'pid ' + esc(s.pid) : '未运行');
+      return '<div class="svc"><span class="dot ' + (good ? 'up' : 'down') + '"></span>'
         + '<span class="lb">' + esc(SVC_LABEL[s.label]) + '</span>'
-        + '<span class="pd">' + (up ? 'pid ' + esc(s.pid) : '未运行') + '</span></div>';
+        + '<span class="pd">' + detail + '</span></div>';
     }).join('') : '<div class="empty">暂无服务信息</div>';
 
     const wd = (health.watchdog_tail || []).slice(-4).reverse().map((e) => {
@@ -665,7 +675,7 @@
       return '<div class="wd-row"><span class="tt">' + esc(ts2hm(e.ts)) + '</span> ' + esc(t) + esc(c) + '</div>';
     }).join('');
 
-    return '<div class="card" style="margin-top:14px"><p class="sec">健康</p>' + svc
+    return '<div class="card"><p class="sec">健康</p>' + svc
       + (other.length ? '<div class="svc"><span class="dot up" style="background:var(--text-3);box-shadow:none"></span><span class="lb muted">其它 ai.* 任务 ' + other.length + ' 个（与本工作流无关）</span></div>' : '')
       + (wd ? '<div class="wd"><p class="sec" style="margin:0 0 4px">看护最近事件</p>' + wd + '</div>' : '')
       + '</div>';
