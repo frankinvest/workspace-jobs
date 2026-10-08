@@ -1,8 +1,15 @@
 ---
-// src/pages/agents.astro
-// 密码保护的可视化: 任务进度 v2 + 架构地图 v2
-// 数据从 /data/agent-dashboard.enc.json (密文) 浏览器端解密
-// 架构连接与模块为站点固定结构 (写死), 任务数据从解密的 JSON 来
+// src/pages/agents.astro —— Agent 控制台（密码门 + 浏览器端解密）
+//
+// 两个视图：① 任务进度（谁在干活 / 到哪一步 / 花了多少） ② 架构地图（用了什么项目 / 怎么连 / 怎么起）
+//
+// 关键实现说明（改之前先读）：
+//  1) <style is:global> 必须是 global —— 页面内容几乎全是运行期用 JS 渲染的，
+//     Astro 默认会给 <style> 加 [data-astro-cid-*] 作用域，而 JS 创建的节点没有那个属性，
+//     导致所有样式静默失效（v2 页面"难看"的真正原因）。
+//  2) 静态 HTML 里**不得出现**任何基建明文（模型名、run_id、密码、密钥、字段名 costUsd）。
+//     检查见 ~/.openclaw/agent-dashboard/check_dashboard.py 的 C8/C9。
+//  3) 数据是密文，浏览器解密后渲染；无人打开页面 = 不发任何请求；打开时每 10 秒刷新。
 ---
 <!DOCTYPE html>
 <html lang="zh">
@@ -10,669 +17,1010 @@
   <meta charset="utf-8" />
   <meta name="robots" content="noindex, nofollow" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Agent Dashboard</title>
-  <style>
-    :root { color-scheme: dark; --bg:#0d0f12; --panel:#14171c; --line:#1f2329; --text:#e0e0e0; --muted:#888; --dim:#666; }
-    * { box-sizing: border-box; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin: 0; padding: 16px; background: var(--bg); color: var(--text); min-height: 100vh; }
-    #login { max-width: 360px; margin: 80px auto; }
-    #login h1 { margin: 0 0 4px; font-size: 22px; }
-    #login .hint { color: var(--muted); font-size: 13px; margin-bottom: 16px; }
-    #login input { width: 100%; padding: 12px; font-size: 15px; margin-bottom: 12px; background: var(--panel); color: #fff; border: 1px solid var(--line); border-radius: 6px; outline: none; }
-    #login input:focus { border-color: #2a6df4; }
-    #login button { width: 100%; padding: 12px; background: #2a6df4; color: #fff; border: 0; border-radius: 6px; cursor: pointer; font-size: 15px; }
-    #login button:hover { background: #1a5bd4; }
-    #login button:disabled { background: #555; cursor: not-allowed; }
-    #error { color: #f44; margin-top: 8px; min-height: 20px; font-size: 13px; }
-    #app { display: none; max-width: 1200px; margin: 0 auto; }
-    .header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 16px; padding-bottom: 10px; border-bottom: 1px solid var(--line); flex-wrap: wrap; gap: 8px; }
-    .header h1 { margin: 0; font-size: 18px; }
-    .meta { color: var(--dim); font-size: 12px; font-family: 'SF Mono', Menlo, monospace; }
-    .meta b { color: var(--muted); }
-    .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 16px; overflow-x: auto; }
-    .tab { padding: 8px 16px; cursor: pointer; border: 0; background: none; color: var(--muted); font-size: 14px; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
-    .tab:hover { color: #ddd; }
-    .tab.active { color: #fff; border-bottom-color: #2a6df4; }
-    .tab-panel { display: none; }
-    .tab-panel.active { display: block; }
-    /* === 任务进度 v2 === */
-    .current-task { padding: 18px; background: var(--panel); border-radius: 10px; margin-bottom: 16px; border: 1px solid var(--line); }
-    .current-task h2 { margin: 0 0 4px; font-size: 18px; word-break: break-all; }
-    .current-task .task-id { color: var(--dim); font-family: 'SF Mono', Menlo, monospace; font-size: 12px; }
-    .phase-stepper { display: flex; gap: 4px; margin: 14px 0; flex-wrap: wrap; }
-    .step { padding: 6px 12px; border-radius: 6px; background: #1a1d22; color: var(--dim); font-size: 12px; }
-    .step.done { background: #143614; color: #4f4; }
-    .step.active { background: #14283a; color: #4af; animation: pulse 2s ease-in-out infinite; }
-    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
-    .who-working { display: flex; align-items: center; gap: 14px; padding: 14px; border-radius: 10px; margin: 12px 0; }
-    .who-working[data-owner="xiaomi"] { background: #fb923c; color: #1a0a00; }
-    .who-working[data-owner="codex"] { background: #4a8df4; color: #001226; }
-    .who-working[data-owner="none"] { background: #2a2e35; color: #888; }
-    .who-label { font-size: 11px; opacity: 0.85; text-transform: uppercase; letter-spacing: 1px; }
-    .who-name { font-size: 22px; font-weight: 700; }
-    .who-meta { font-size: 12px; opacity: 0.85; margin-left: auto; font-family: 'SF Mono', Menlo, monospace; }
-    .task-note { color: var(--muted); font-size: 13px; margin: 8px 0 0; padding: 8px 12px; background: var(--bg); border-radius: 6px; }
-    .panel { padding: 16px; background: var(--panel); border-radius: 10px; margin-bottom: 14px; border: 1px solid var(--line); }
-    .panel h3 { margin: 0 0 10px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
-    .timeline-event { display: flex; gap: 10px; padding: 6px 0; border-bottom: 1px dashed var(--line); font-size: 13px; align-items: center; flex-wrap: wrap; }
-    .timeline-event:last-child { border-bottom: 0; }
-    .timeline-event .ts { color: var(--dim); font-family: 'SF Mono', Menlo, monospace; font-size: 11px; flex-shrink: 0; }
-    .timeline-event .who { padding: 1px 6px; border-radius: 3px; font-size: 10px; flex-shrink: 0; }
-    .timeline-event .who[data-w="codex"] { background: #14283a; color: #4af; }
-    .timeline-event .who[data-w="xiaomi"] { background: #3a2814; color: #fb0; }
-    .timeline-event .what { color: var(--text); flex: 1; min-width: 0; }
-    .res-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-bottom: 12px; }
-    .stat-box { padding: 10px 12px; background: var(--bg); border-radius: 6px; }
-    .stat-label { font-size: 10px; color: var(--dim); text-transform: uppercase; letter-spacing: 1px; }
-    .stat-value { font-size: 20px; color: #fff; margin-top: 2px; font-family: 'SF Mono', Menlo, monospace; }
-    .stat-unit { font-size: 11px; color: var(--muted); margin-left: 2px; }
-    .bar-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 12px; }
-    .bar-label { width: 160px; flex-shrink: 0; color: var(--muted); font-family: 'SF Mono', Menlo, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .bar-track { flex: 1; background: var(--bg); height: 8px; border-radius: 4px; overflow: hidden; }
-    .bar-fill { height: 100%; background: linear-gradient(90deg, #2a6df4, #4a8df4); }
-    .bar-value { width: 80px; text-align: right; color: #fff; font-family: 'SF Mono', Menlo, monospace; font-size: 11px; flex-shrink: 0; }
-    .service-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 12px; }
-    .service-row .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-    .service-row .dot.up { background: #4f4; box-shadow: 0 0 6px #4f4; }
-    .service-row .dot.down { background: #f44; box-shadow: 0 0 6px #f44; }
-    .service-row .dot.unknown { background: #888; }
-    .service-row .label { font-family: 'SF Mono', Menlo, monospace; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .service-row .pid { color: var(--dim); font-family: 'SF Mono', Menlo, monospace; font-size: 10px; }
-    .wd-line { padding: 4px 0; font-size: 11px; color: var(--muted); border-bottom: 1px dashed var(--line); font-family: 'SF Mono', Menlo, monospace; }
-    .wd-line:last-child { border-bottom: 0; }
-    .history-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-    .history-table th, .history-table td { padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--line); }
-    .history-table th { color: var(--muted); font-weight: normal; font-size: 10px; text-transform: uppercase; }
-    .history-table td { font-family: 'SF Mono', Menlo, monospace; }
-    .pill { display: inline-block; padding: 1px 6px; border-radius: 10px; font-size: 10px; background: #2a2e35; color: #ccc; }
-    .pill.pass { background: #143614; color: #4f4; }
-    .pill.fail { background: #3a1414; color: #f66; }
-    .pill.exec { background: #3a2814; color: #fb0; }
-    .pill.done { background: #14283a; color: #4af; }
-    .empty { color: var(--dim); font-style: italic; padding: 16px; text-align: center; font-size: 13px; }
-    /* === 架构地图 v2 === */
-    .arch-wrap { position: relative; padding: 8px 0; }
-    .arch-svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
-    .arch-svg .conn-line { stroke: #555; stroke-width: 1.5; transition: stroke 0.2s, opacity 0.2s; }
-    .arch-svg .conn-line.highlighted { stroke: #fb923c; stroke-width: 2.5; }
-    .arch-svg .conn-line.dimmed { stroke: #2a2e35; opacity: 0.3; }
-    .arch-svg .conn-label { fill: var(--muted); font-size: 10px; font-family: 'SF Mono', Menlo, monospace; transition: fill 0.2s, opacity 0.2s; pointer-events: auto; cursor: default; }
-    .arch-svg .conn-label.highlighted { fill: #fb923c; font-weight: 600; }
-    .arch-svg .conn-label.dimmed { opacity: 0.3; }
-    .arch-svg .conn-label-bg { fill: var(--bg); stroke: var(--line); stroke-width: 0.5; rx: 3; }
-    .arch-svg .conn-label-bg.highlighted { stroke: #fb923c; }
-    .arch-svg .conn-label-bg.dimmed { opacity: 0.3; }
-    .layer { position: relative; z-index: 2; margin-bottom: 14px; padding: 12px; background: var(--panel); border-radius: 10px; border-left: 4px solid var(--layer-color, #555); }
-    .layer h3 { margin: 0 0 10px; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; display: flex; align-items: center; gap: 8px; }
-    .layer h3 .layer-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--layer-color, #555); }
-    .layer-cards { display: flex; gap: 10px; flex-wrap: wrap; }
-    .module-card { flex: 1 1 200px; min-width: 180px; max-width: 280px; padding: 12px; background: var(--bg); border-radius: 8px; border: 1px solid var(--line); cursor: pointer; transition: border-color 0.2s, transform 0.2s, box-shadow 0.2s; }
-    .module-card:hover { border-color: #4a8df4; transform: translateY(-1px); }
-    .module-card.highlighted { border-color: #fb923c; box-shadow: 0 0 0 1px #fb923c, 0 4px 12px rgba(251, 146, 60, 0.15); }
-    .module-card .emoji { font-size: 22px; margin-right: 6px; vertical-align: middle; }
-    .module-card .name { font-size: 13px; font-weight: 600; color: #fff; }
-    .module-card .stack { display: block; font-size: 11px; color: var(--dim); font-family: 'SF Mono', Menlo, monospace; margin: 4px 0; }
-    .module-card .role { font-size: 12px; color: var(--muted); margin-top: 4px; line-height: 1.4; }
-    .arch-legend { display: flex; flex-wrap: wrap; gap: 10px; padding: 10px 14px; background: var(--panel); border-radius: 8px; margin-bottom: 14px; font-size: 11px; border: 1px solid var(--line); }
-    .arch-legend .lg-item { display: flex; align-items: center; gap: 6px; color: var(--muted); }
-    .arch-legend .lg-dot { width: 10px; height: 10px; border-radius: 50%; }
-    .arch-info { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 14px; }
-    .arch-info .panel { margin-bottom: 0; }
-    .arch-info .panel h3 { color: var(--muted); }
-    .arch-info ul { list-style: none; padding: 0; margin: 0; font-size: 12px; }
-    .arch-info li { padding: 5px 0; border-bottom: 1px dashed var(--line); color: var(--text); display: flex; justify-content: space-between; gap: 8px; }
-    .arch-info li:last-child { border-bottom: 0; }
-    .arch-info li .name { font-family: 'SF Mono', Menlo, monospace; font-size: 11px; }
-    .arch-info li .desc { color: var(--dim); font-size: 10px; text-align: right; }
-    .arch-info .patch-card { padding: 8px 10px; background: var(--bg); border-radius: 6px; border-left: 3px solid #fb0; margin-bottom: 6px; }
-    .arch-info .patch-card .purpose { font-size: 12px; color: #fff; }
-    .arch-info .patch-card .files { font-size: 10px; color: #4af; font-family: 'SF Mono', Menlo, monospace; margin-top: 4px; }
-    .arch-info .patch-card .env { font-size: 10px; color: #c4f; font-family: 'SF Mono', Menlo, monospace; }
-    .arch-info .mem-col h4 { margin: 0 0 6px; font-size: 11px; color: #4af; text-transform: uppercase; }
-    .arch-info .mem-col { padding: 0; background: transparent; border: 0; }
-    .arch-info .mem-col li .desc { color: var(--dim); }
-    .group-h { font-size: 10px; color: var(--dim); text-transform: uppercase; letter-spacing: 1px; margin: 8px 0 4px; }
-    @media (max-width: 768px) {
-      .arch-info { grid-template-columns: 1fr; }
-      .arch-svg { display: none; }
-      .module-card { flex-basis: 100%; max-width: 100%; }
-      .header h1 { font-size: 16px; }
-      .current-task h2 { font-size: 16px; }
-      .who-name { font-size: 18px; }
-      body { padding: 12px; }
+  <title>Agent 控制台</title>
+  <style is:global>
+    /* ===== 设计令牌 ===== */
+    *, *::before, *::after { box-sizing: border-box; }
+    :root {
+      --bg:#f6f7f9; --surface:#ffffff; --surface-2:#fbfcfd; --surface-3:#f2f4f7;
+      --border:#e4e7ec; --border-2:#d0d5dd;
+      --text:#0f1728; --text-2:#475467; --text-3:#98a2b3;
+      --accent:#4f46e5; --accent-2:#4338ca; --accent-soft:#eef2ff; --accent-line:#c7d2fe;
+      --ok:#12b76a; --ok-soft:#ecfdf3; --ok-line:#a6f4c5;
+      --run:#f79009; --run-soft:#fffaeb; --run-line:#fedf89;
+      --fail:#f04438; --fail-soft:#fef3f2; --fail-line:#fecdca;
+      --idle-soft:#f2f4f7;
+      --r:12px; --r-sm:8px;
+      --shadow:0 1px 2px rgba(16,24,40,.05);
+      --mono:ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    }
+    html { -webkit-text-size-adjust: 100%; }
+    body {
+      margin:0; background:var(--bg); color:var(--text);
+      font:14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", system-ui, sans-serif;
+      -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+    }
+    .wrap { max-width:1240px; margin:0 auto; padding:24px; }
+    .mono { font-family:var(--mono); }
+    .num { font-variant-numeric:tabular-nums; font-feature-settings:"tnum"; }
+
+    /* ===== 登录 ===== */
+    #login { max-width:380px; margin:14vh auto 0; }
+    .login-card { background:var(--surface); border:1px solid var(--border); border-radius:14px; box-shadow:0 1px 3px rgba(16,24,40,.08); padding:26px; }
+    .brand { display:flex; align-items:center; gap:10px; margin-bottom:18px; }
+    .brand-mark { width:30px; height:30px; border-radius:9px; background:var(--accent); color:#fff; display:grid; place-items:center; flex:none; }
+    .brand-name { font-size:16px; font-weight:600; letter-spacing:-.01em; }
+    #login h1 { margin:0 0 4px; font-size:14px; font-weight:500; color:var(--text-2); }
+    #login .hint { color:var(--text-3); font-size:12.5px; margin:0 0 18px; line-height:1.6; }
+    #login label { display:block; font-size:12px; font-weight:500; color:var(--text-2); margin-bottom:6px; }
+    #pw { width:100%; padding:10px 12px; font:inherit; background:#fff; color:var(--text); border:1px solid var(--border-2); border-radius:var(--r-sm); outline:none; transition:border-color .15s, box-shadow .15s; }
+    #pw:focus { border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
+    #btn { width:100%; margin-top:10px; padding:11px; background:var(--accent); color:#fff; border:0; border-radius:var(--r-sm); font:inherit; font-weight:600; cursor:pointer; transition:background .15s; }
+    #btn:hover { background:var(--accent-2); }
+    #btn:disabled { background:var(--border-2); cursor:not-allowed; }
+    #error { color:var(--fail); margin-top:10px; min-height:18px; font-size:12.5px; }
+
+    /* ===== 顶栏 ===== */
+    #app { display:none; }
+    .topbar { display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-bottom:18px; }
+    .topbar .brand-name { font-size:16px; }
+    .topbar .spacer { flex:1; }
+    .live { display:inline-flex; align-items:center; gap:7px; font-size:12px; color:var(--text-2); background:var(--surface); border:1px solid var(--border); border-radius:999px; padding:5px 12px; }
+    .live i { width:7px; height:7px; border-radius:50%; background:var(--ok); box-shadow:0 0 0 3px var(--ok-soft); }
+    .stamp { font-size:12px; color:var(--text-3); font-family:var(--mono); }
+
+    /* ===== 分段控件 ===== */
+    .seg { display:inline-flex; background:#ebedf1; border-radius:10px; padding:3px; gap:2px; margin-bottom:18px; }
+    .seg button { border:0; background:none; font:inherit; font-size:13px; font-weight:500; color:var(--text-2); padding:7px 16px; border-radius:8px; cursor:pointer; transition:background .15s,color .15s; }
+    .seg button:hover { color:var(--text); }
+    .seg button.on { background:#fff; color:var(--text); box-shadow:var(--shadow); }
+
+    /* ===== 卡片 ===== */
+    .card { background:var(--surface); border:1px solid var(--border); border-radius:var(--r); box-shadow:var(--shadow); padding:18px; }
+    .card + .card { margin-top:14px; }
+    .sec { font-size:11px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--text-3); margin:0 0 12px; }
+    .cols { display:grid; grid-template-columns:minmax(0,1.55fr) minmax(0,1fr); gap:14px; align-items:start; }
+    .cols-3 { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; align-items:start; }
+    .muted { color:var(--text-3); }
+    .empty { color:var(--text-3); font-size:13px; padding:10px 0; }
+
+    /* ===== 胶囊 / 徽章 ===== */
+    .pill { display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600; padding:4px 10px; border-radius:999px; white-space:nowrap; }
+    .pill i { width:6px; height:6px; border-radius:50%; background:currentColor; flex:none; }
+    .pill.run { color:#b54708; background:var(--run-soft); }
+    .pill.ok { color:#027a48; background:var(--ok-soft); }
+    .pill.fail { color:#b42318; background:var(--fail-soft); }
+    .pill.idle { color:var(--text-2); background:var(--idle-soft); }
+    .tag { display:inline-block; font-size:11px; font-weight:600; padding:2px 7px; border-radius:6px; white-space:nowrap; }
+    .tag.default { color:var(--accent-2); background:var(--accent-soft); }
+    .tag.ondemand { color:var(--text-2); background:var(--surface-3); }
+    .tag.alert { color:#b54708; background:var(--run-soft); }
+    .tag.codex { color:var(--accent-2); background:var(--accent-soft); }
+    .tag.xiaomi { color:#b54708; background:#fef0c7; }
+
+    /* ===== 任务进度：Hero ===== */
+    .hero { display:flex; gap:22px; align-items:center; justify-content:space-between; flex-wrap:wrap; }
+    .hero-main { min-width:280px; flex:1; }
+    .hero h2 { margin:10px 0 6px; font-size:20px; font-weight:600; letter-spacing:-.015em; line-height:1.4; }
+    .hero .sub { color:var(--text-3); font-size:12.5px; font-family:var(--mono); }
+    .owner { display:flex; align-items:center; gap:14px; padding:14px 18px; border:1px solid var(--border); border-radius:var(--r); background:var(--surface-2); min-width:300px; }
+    .owner[data-state="running"] { border-color:var(--run-line); background:var(--run-soft); }
+    .owner[data-state="done"] { border-color:var(--ok-line); background:var(--ok-soft); }
+    .avatar { width:42px; height:42px; border-radius:50%; display:grid; place-items:center; font-size:15px; font-weight:700; flex:none; background:#fff; border:1px solid var(--border); }
+    .avatar[data-who="codex"] { color:var(--accent-2); background:var(--accent-soft); border-color:var(--accent-line); }
+    .avatar[data-who="xiaomi"] { color:#b54708; background:#fef0c7; border-color:var(--run-line); }
+    .owner .lbl { font-size:10.5px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--text-3); }
+    .owner .nm { font-size:19px; font-weight:700; letter-spacing:-.01em; margin-top:1px; }
+    .owner .rl { font-size:11.5px; color:var(--text-2); margin-top:1px; }
+    .owner .eta { margin-left:auto; text-align:right; }
+    .owner .eta .v { font-size:17px; font-weight:600; font-family:var(--mono); font-variant-numeric:tabular-nums; }
+    .owner .eta .k { font-size:10.5px; color:var(--text-3); }
+
+    /* ===== 任务进度：阶段轨 ===== */
+    .rail { position:relative; display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); margin:22px 0 4px; }
+    .rail-line, .rail-fill { position:absolute; top:11px; height:2px; border-radius:2px; }
+    .rail-line { left:12.5%; right:12.5%; background:var(--border); }
+    .rail-fill { left:12.5%; background:var(--accent); transition:width .4s ease; }
+    .rail-step { position:relative; display:flex; flex-direction:column; align-items:center; text-align:center; gap:7px; padding:0 4px; }
+    .rail-dot { width:24px; height:24px; border-radius:50%; background:#fff; border:1.5px solid var(--border-2); color:var(--text-3); display:grid; place-items:center; }
+    .rail-step.done .rail-dot { background:var(--accent); border-color:var(--accent); color:#fff; }
+    .rail-step.current .rail-dot { border-color:var(--accent); border-width:2px; background:var(--accent-soft); color:var(--accent-2); font-weight:700; box-shadow:0 0 0 4px var(--accent-soft); animation:breathe 2.2s ease-in-out infinite; }
+    @keyframes breathe { 0%,100% { box-shadow:0 0 0 4px var(--accent-soft); } 50% { box-shadow:0 0 0 7px rgba(79,70,229,.10); } }
+    .rail-step .sn { font-size:13px; font-weight:500; color:var(--text-3); }
+    .rail-step.done .sn, .rail-step.current .sn { color:var(--text); font-weight:600; }
+    .rail-step.current .sn { color:var(--accent-2); font-weight:700; }
+    .rail-step.current .sm { color:var(--accent-2); font-weight:600; }
+    .rail-step .sm { font-size:11px; color:var(--text-3); font-family:var(--mono); }
+
+    /* ===== 活动流 ===== */
+    .feed { display:flex; flex-direction:column; }
+    .feed-row { display:flex; align-items:baseline; gap:10px; padding:8px 0; border-top:1px solid var(--surface-3); }
+    .feed-row:first-child { border-top:0; }
+    .feed-row.new { background:var(--accent-soft); border-radius:8px; padding:8px 10px; margin:0 -10px; }
+    .feed-t { font-family:var(--mono); font-size:11px; color:var(--text-3); flex:none; width:60px; }
+    .feed-w { flex:none; }
+    .feed-a { font-size:13px; color:var(--text); }
+    .feed-f { font-family:var(--mono); font-size:11px; color:var(--text-3); margin-left:auto; flex:none; }
+
+    /* ===== 统计块 ===== */
+    .stats { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+    .stat { background:var(--surface-2); border:1px solid var(--border); border-radius:10px; padding:11px 12px; }
+    .stat .k { font-size:11px; color:var(--text-3); }
+    .stat .v { font-size:21px; font-weight:600; letter-spacing:-.02em; margin-top:3px; font-variant-numeric:tabular-nums; }
+    .stat .v small { font-size:12px; font-weight:400; color:var(--text-3); margin-left:3px; letter-spacing:0; }
+    .bars { margin-top:14px; display:flex; flex-direction:column; gap:8px; }
+    .bar { display:grid; grid-template-columns:minmax(70px,1fr) 2fr auto; gap:9px; align-items:center; font-size:12px; }
+    .bar .bl { color:var(--text-2); font-family:var(--mono); font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .bar .bt { height:6px; border-radius:3px; background:var(--surface-3); overflow:hidden; }
+    .bar .bf { height:100%; background:var(--accent); border-radius:3px; }
+    .bar .bv { font-family:var(--mono); font-size:11px; color:var(--text-2); font-variant-numeric:tabular-nums; }
+
+    /* ===== 健康 ===== */
+    .svc { display:flex; align-items:center; gap:9px; padding:6px 0; font-size:12.5px; }
+    .svc .dot { width:8px; height:8px; border-radius:50%; flex:none; }
+    .svc .dot.up { background:var(--ok); box-shadow:0 0 0 3px var(--ok-soft); }
+    .svc .dot.down { background:var(--fail); box-shadow:0 0 0 3px var(--fail-soft); }
+    .svc .lb { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .svc .pd { font-family:var(--mono); font-size:10.5px; color:var(--text-3); }
+    .wd { margin-top:10px; border-top:1px solid var(--surface-3); padding-top:8px; }
+    .wd-row { font-family:var(--mono); font-size:11px; color:var(--text-2); padding:3px 0; }
+    .wd-row .tt { color:var(--text-3); }
+
+    /* ===== 表格 ===== */
+    table.tbl { width:100%; border-collapse:collapse; font-size:13px; }
+    table.tbl th { text-align:left; font-size:10.5px; font-weight:600; letter-spacing:.05em; text-transform:uppercase; color:var(--text-3); padding:0 10px 8px 0; border-bottom:1px solid var(--border); }
+    table.tbl td { padding:9px 10px 9px 0; border-bottom:1px solid var(--surface-3); vertical-align:top; }
+    table.tbl tr:last-child td { border-bottom:0; }
+    table.tbl td.n { font-family:var(--mono); font-size:12px; color:var(--text-2); white-space:nowrap; font-variant-numeric:tabular-nums; }
+    table.tbl td.n.right { text-align:right; }
+    table.tbl td.dim { color:var(--text-3); }
+
+    /* ===== 架构地图 ===== */
+    .arch-head { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:14px; }
+    .arch-legend { display:flex; flex-wrap:wrap; gap:6px 16px; }
+    .lg { display:inline-flex; align-items:center; gap:6px; font-size:11.5px; color:var(--text-2); }
+    .lg i { width:8px; height:8px; border-radius:3px; flex:none; }
+    .arch-hint { font-size:11.5px; color:var(--text-3); }
+    .arch-canvas { position:relative; padding:2px 0; }
+    .arch-layers { display:flex; flex-direction:column; gap:12px; }
+    .arch-layer { background:var(--surface-2); border:1px solid var(--border); border-radius:var(--r); padding:12px; display:grid; grid-template-columns:112px minmax(0,1fr); gap:14px; }
+    .arch-layer-head { display:flex; align-items:flex-start; gap:7px; padding-top:5px; }
+    .arch-layer-head i { width:8px; height:8px; border-radius:3px; margin-top:4px; flex:none; }
+    .arch-layer-head .n { font-size:12.5px; font-weight:600; color:var(--text-2); line-height:1.35; }
+    .arch-layer-head .c { font-size:11px; color:var(--text-3); }
+    .arch-nodes { display:flex; gap:12px; flex-wrap:wrap; }
+    .arch-node { position:relative; z-index:3; flex:1 1 210px; max-width:340px; text-align:left; font:inherit; cursor:pointer; background:#fff; border:1px solid var(--border); border-radius:10px; padding:12px; transition:border-color .15s, box-shadow .15s, opacity .15s; }
+    .arch-node:hover { border-color:var(--accent-line); }
+    .arch-node:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+    .arch-node .top { display:flex; align-items:center; gap:8px; }
+    .arch-node .ic { width:26px; height:26px; border-radius:8px; background:var(--surface-3); color:var(--text-2); display:grid; place-items:center; flex:none; }
+    .arch-node .nm { font-size:13px; font-weight:600; letter-spacing:-.005em; }
+    .arch-node .tech { font-family:var(--mono); font-size:11px; color:var(--accent-2); margin-top:7px; line-height:1.45; }
+    .arch-node .role { font-size:11.5px; color:var(--text-2); margin-top:3px; line-height:1.45; }
+    .arch-node.is-selected { border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
+    .arch-node.is-linked { border-color:var(--accent-line); }
+    .arch-node.is-dim { opacity:.32; }
+    .arch-edges { position:absolute; inset:0; width:100%; height:100%; z-index:2; pointer-events:none; overflow:visible; }
+    .arch-edges path { fill:none; stroke:#cbd5e1; stroke-width:1.5; transition:stroke .15s, opacity .15s, stroke-width .15s; }
+    .arch-edges path.is-active { stroke:var(--accent); stroke-width:2; }
+    .arch-edges path.is-dim { opacity:.15; }
+    .arch-edges circle { fill:#fff; stroke:#cbd5e1; stroke-width:1.5; transition:stroke .15s, opacity .15s; }
+    .arch-edges circle.is-active { stroke:var(--accent); }
+    .arch-edges circle.is-dim { opacity:.15; }
+    #arch-labels { position:absolute; inset:0; z-index:4; pointer-events:none; }
+    .elabel { position:absolute; transform:translate(-50%,-50%); background:#fff; border:1px solid var(--border); border-radius:999px; padding:2px 9px; font-family:var(--mono); font-size:10.5px; color:var(--text-2); white-space:nowrap; transition:all .15s; }
+    .elabel.is-active { border-color:var(--accent); color:var(--accent-2); background:var(--accent-soft); }
+    .elabel.is-dim { opacity:.22; }
+    .arch-detail { margin-top:14px; border:1px dashed var(--border-2); border-radius:var(--r); background:var(--surface-2); padding:14px 16px; }
+    .arch-detail.has { border-style:solid; background:var(--surface); }
+    .arch-detail .dh { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+    .arch-detail .dh .nm { font-size:14px; font-weight:600; }
+    .kv { display:grid; grid-template-columns:86px minmax(0,1fr); gap:4px 12px; margin-top:10px; font-size:12.5px; }
+    .kv .k { color:var(--text-3); }
+    .kv .v { color:var(--text-2); word-break:break-word; }
+    .kv .v code, code.p { font-family:var(--mono); font-size:11.5px; background:var(--surface-3); border-radius:4px; padding:1px 5px; color:var(--text-2); }
+    .list { list-style:none; margin:0; padding:0; font-size:12.5px; }
+    .list li { display:flex; gap:9px; justify-content:space-between; align-items:baseline; padding:6px 0; border-top:1px solid var(--surface-3); }
+    .list li:first-child { border-top:0; }
+    .list li .n { font-family:var(--mono); font-size:11.5px; color:var(--text-2); word-break:break-all; }
+    .list li .d { color:var(--text-3); font-size:11.5px; text-align:right; flex:none; max-width:46%; }
+    .patch { border:1px solid var(--border); border-left:3px solid var(--run); border-radius:8px; padding:10px 12px; margin-bottom:8px; background:var(--surface-2); }
+    .patch .pp { font-size:12.5px; color:var(--text); line-height:1.5; }
+    .patch .pf { font-family:var(--mono); font-size:11px; color:var(--accent-2); margin-top:5px; word-break:break-all; }
+    .patch .pe { font-family:var(--mono); font-size:11px; color:#9a3412; margin-top:2px; word-break:break-all; }
+    .patch .pn { font-size:11.5px; color:var(--text-3); margin-top:4px; }
+
+    /* ===== 移动端 ===== */
+    @media (max-width: 980px) {
+      .wrap { padding:16px; }
+      .cols, .cols-3 { grid-template-columns:minmax(0,1fr); }
+      .arch-layer { grid-template-columns:minmax(0,1fr); gap:8px; }
+      .arch-layer-head { padding-top:0; }
+      .arch-nodes { flex-direction:column; }
+      .arch-node { max-width:none; }
+      .arch-edges, #arch-labels { display:none; }
+      .hero { gap:14px; }
+      .owner { min-width:0; width:100%; }
+      .hero h2 { font-size:17px; }
+      .rail-step .sm { font-size:10px; }
+      .rail-step .sn { font-size:12px; }
+      table.tbl { font-size:12px; }
+      table.tbl td.hide-s, table.tbl th.hide-s { display:none; }
     }
   </style>
 </head>
 <body>
-  <div id="login">
-    <h1>Agent Dashboard</h1>
-    <p class="hint">输入密码查看 (本地浏览器端解密, 数据不会发送到任何服务器)</p>
-    <input type="password" id="pw" placeholder="密码" autofocus autocomplete="off" />
-    <button id="btn" type="button">进入</button>
-    <div id="error"></div>
+  <div id="login" class="wrap">
+    <div class="login-card">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 15l6-6"/><path d="M11 5.5l1-1a4 4 0 0 1 5.6 5.6l-1 1"/><path d="M13 18.5l-1 1a4 4 0 0 1-5.6-5.6l1-1"/></svg>
+        </span>
+        <span class="brand-name">Agent 控制台</span>
+      </div>
+      <h1>需要密码</h1>
+      <p class="hint">数据在浏览器本地解密，不会发送到任何服务器。密码只存在我本机。</p>
+      <label for="pw">密码</label>
+      <input type="password" id="pw" placeholder="••••••••" autocomplete="off" autofocus />
+      <button id="btn" type="button">进入</button>
+      <div id="error"></div>
+    </div>
   </div>
 
-  <div id="app">
-    <div class="header">
-      <h1>Agent Dashboard</h1>
-      <div class="meta">
-        <span><b>上次更新:</b> <span id="meta-update">暂无</span></span> · <span><b>10 秒自动刷新</b></span>
-      </div>
+  <div id="app" class="wrap">
+    <div class="topbar">
+      <span class="brand-mark" aria-hidden="true">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 15l6-6"/><path d="M11 5.5l1-1a4 4 0 0 1 5.6 5.6l-1 1"/><path d="M13 18.5l-1 1a4 4 0 0 1-5.6-5.6l1-1"/></svg>
+      </span>
+      <span class="brand-name">Agent 控制台</span>
+      <span class="spacer"></span>
+      <span class="live"><i></i>实时 · 10 秒刷新</span>
+      <span class="stamp">上次更新: <span id="meta-update">读取中…</span></span>
     </div>
 
-    <div class="tabs" id="tabs">
-      <button class="tab active" data-tab="tasks" type="button">任务进度</button>
-      <button class="tab" data-tab="arch" type="button">架构地图</button>
+    <div class="seg" id="seg" role="tablist">
+      <button class="on" data-tab="tasks" type="button" role="tab">任务进度</button>
+      <button data-tab="arch" type="button" role="tab">架构地图</button>
     </div>
 
-    <div id="panel-tasks" class="tab-panel active"></div>
-    <div id="panel-arch" class="tab-panel"></div>
+    <section id="panel-tasks" class="panel-view"></section>
+    <section id="panel-arch" class="panel-view" style="display:none"></section>
   </div>
 
   <script is:inline>
-    // === 站点固定结构: 架构地图的模块与连线 ===
-    const ARCH_LAYERS = [
-      { id: 'people', name: '① 人层', color: '#f4a261',
-        modules: [
-          { id: 'frank', emoji: '👤', name: 'Frank', stack: '人类操作员', role: '发任务 / 看进度 / 验收' },
-        ]},
-      { id: 'entry', name: '② 入口层', color: '#2a9d8f',
-        modules: [
-          { id: 'bridge', emoji: '🌉', name: 'lark-agents-bridge', stack: '飞书 WS 长连接', role: '群里 @Codex / @小秘 路由到对应 agent' },
-          { id: 'gateway', emoji: '🚪', name: 'OpenClaw 网关', stack: 'OpenClaw agent: main', role: '本地会话 / 工具 / 委派' },
-        ]},
-      { id: 'engine', name: '③ 引擎层', color: '#e76f51',
-        modules: [
-          { id: 'codex-cli', emoji: '🤖', name: 'Codex CLI', stack: 'Codex CLI', role: '出方案 / 验收 / 监控' },
-          { id: 'agent-main', emoji: '🧠', name: '小秘 (agent main)', stack: 'OpenClaw + 本地模型', role: '执行任务 / 推密文 / 操作文件' },
-        ]},
-      { id: 'shared', name: '④ 共享层', color: '#264653',
-        modules: [
-          { id: 'agent-bus', emoji: '📦', name: 'agent-bus', stack: 'runs/ + delegations/ + watchdog.log', role: '任务记录 / 委派日志 / 健康监控' },
-          { id: 'dashboard-snapshot', emoji: '🔒', name: '看板密文快照', stack: 'PBKDF2+AES-GCM, 200k iter', role: '采集 → 加密 → 推送 GitHub' },
-        ]},
-      { id: 'delivery', name: '⑤ 交付层', color: '#8e7dbe',
-        modules: [
-          { id: 'frankofswing', emoji: '🌐', name: 'frankofswing.com', stack: 'Astro static + Vercel', role: '公开站点 + 密码门 /agents/' },
-        ]},
-    ];
+  /* ============================================================
+     0. 常量与静态结构
+     ============================================================ */
+  const POLL_MS = 10000;                                  /* 打开页面时每 10 秒刷新；无人打开 = 无请求 */
+  const ENC_URL = '/data/agent-dashboard.enc.json';
 
-    const CONNECTIONS = [
-      { from: 'frank', to: 'bridge', label: '@Codex 群消息' },
-      { from: 'frank', to: 'gateway', label: '@小秘 群消息' },
-      { from: 'bridge', to: 'codex-cli', label: 'codex exec' },
-      { from: 'gateway', to: 'agent-main', label: 'openclaw agent --json' },
-      { from: 'codex-cli', to: 'agent-main', label: '委派 / 回执' },
-      { from: 'agent-main', to: 'agent-bus', label: '写 status.json / delegations' },
-      { from: 'agent-bus', to: 'dashboard-snapshot', label: '采集 + 加密' },
-      { from: 'dashboard-snapshot', to: 'frankofswing', label: '密文 push' },
-    ];
+  const PHASES = [
+    { k:'planning',  n:'规划', who:'codex'  },
+    { k:'executing', n:'执行', who:'xiaomi' },
+    { k:'verifying', n:'验收', who:'codex'  },
+    { k:'done',      n:'完成', who:''       },
+  ];
+  const OWNERS = {
+    codex:  { name:'Codex', short:'C',  role:'方案 · 测试方案 · 独立验收' },
+    xiaomi: { name:'小秘',  short:'秘', role:'落地 · 写测试 · 交证据' },
+    none:   { name:'无人',  short:'–',  role:'等待派发' },
+  };
+  /* 事件里的 phase → 阶段轨下标（采集器为每个事件标好 phase，避免靠文件名猜） */
+  const PHASE_INDEX = { planning:0, executing:1, verifying:2, done:3 };
 
-    const POLL_MS = 10000;
-    const ENC_URL = '/data/agent-dashboard.enc.json';
-    let currentPassword = '';
-    let lastBlobHash = '';
-    let pollTimer = null;
-    let currentData = null;
+  /* 架构地图拓扑：5 层。tech 写"用了什么项目"，role 写"干什么"。 */
+  const LAYERS = [
+    { id:'people', name:'① 人', color:'#f79009', nodes:[
+      { id:'frank', icon:'user', name:'Frank', tech:'人类操作员 · 飞书群', role:'提需求 / 拍板 / 看进度' },
+    ]},
+    { id:'entry', name:'② 入口', color:'#12b76a', nodes:[
+      { id:'bridge', icon:'link', name:'lark-agents-bridge', tech:'自建 Node 桥接 · 飞书长连接', role:'把群里 @Codex 的消息转成本地 Codex 任务' },
+      { id:'gateway', icon:'server', name:'OpenClaw 网关', tech:'OpenClaw · 飞书 / Telegram 通道', role:'小秘的宿主：会话 / 工具 / 技能 / 委派' },
+    ]},
+    { id:'runtime', name:'③ 运行时', color:'#4f46e5', nodes:[
+      { id:'codex', icon:'cpu', name:'Codex（我）', tech:'Codex CLI · 强模型（额度有限）', role:'出方案 + 测试方案 + 独立验收' },
+      { id:'xiaomi', icon:'sparkle', name:'小秘 agent:main', tech:'OpenClaw agent · 本地模型（额度足）', role:'按方案落地 + 写测试 + 交证据' },
+    ]},
+    { id:'state', name:'④ 共享状态', color:'#7c3aed', nodes:[
+      { id:'bus', icon:'db', name:'agent-bus', tech:'自建状态总线 · runs/ + JSONL', role:'任务产物 / 委派记录 / 看护日志' },
+      { id:'snapshot', icon:'lock', name:'看板密文快照', tech:'PBKDF2 + AES-256-GCM', role:'采集 → 加密 → 推送 GitHub' },
+    ]},
+    { id:'delivery', name:'⑤ 交付', color:'#0ea5e9', nodes:[
+      { id:'site', icon:'globe', name:'frankofswing.com', tech:'Astro 静态站 · Vercel', role:'公开站点 + 密码门 /agents/' },
+    ]},
+  ];
 
-    // === 工具 ===
-    function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]); }
-    function fmtTime(iso) {
-      if (!iso) return '暂无';
-      try { const d = new Date(iso); if (isNaN(d.getTime())) return esc(iso); return d.toLocaleTimeString('zh-CN', { hour12: false }); }
-      catch { return esc(iso); }
+  /* 连线：route 'v' = 出下方进上方；'h' = 出右侧进左侧。x1/x2 或 y1/y2 是锚点在边上的位置(0~1)。 */
+  const EDGES = [
+    { from:'frank',    to:'bridge',   route:'v', x1:.50, x2:.35, label:'@Codex 群消息' },
+    { from:'frank',    to:'gateway',  route:'v', x1:.50, x2:.65, label:'@小秘 群消息' },
+    { from:'bridge',   to:'codex',    route:'v', x1:.50, x2:.50, label:'codex exec' },
+    { from:'gateway',  to:'xiaomi',   route:'v', x1:.50, x2:.50, label:'openclaw agent --json' },
+    { from:'codex',    to:'xiaomi',   route:'h', y1:.50, y2:.50, label:'委派 / 回执' },
+    { from:'codex',    to:'bus',      route:'v', x1:.32, x2:.30, label:'写 plan / verify-report' },
+    { from:'xiaomi',   to:'bus',      route:'v', x1:.30, x2:.70, label:'写 status.json / exec-log' },
+    { from:'bus',      to:'snapshot', route:'h', y1:.50, y2:.50, label:'采集 + 加密' },
+    { from:'snapshot', to:'site',     route:'v', x1:.50, x2:.50, label:'密文 push' },
+  ];
+
+  const ICONS = {
+    user:    '<path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/>',
+    link:    '<path d="M9 15l6-6"/><path d="M11 5.5l1-1a4 4 0 0 1 5.6 5.6l-1 1"/><path d="M13 18.5l-1 1a4 4 0 0 1-5.6-5.6l1-1"/>',
+    server:  '<rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/>',
+    cpu:     '<rect x="7" y="7" width="10" height="10" rx="2"/><path d="M10 2v3M14 2v3M10 19v3M14 19v3M2 10h3M2 14h3M19 10h3M19 14h3"/>',
+    sparkle: '<path d="M12 3.5l1.9 5.1 5.1 1.9-5.1 1.9L12 17.5l-1.9-5.1L5 10.5l5.1-1.9L12 3.5Z"/>',
+    db:      '<ellipse cx="12" cy="6" rx="7.5" ry="3"/><path d="M4.5 6v12c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3V6"/><path d="M4.5 12c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3"/>',
+    lock:    '<rect x="4.5" y="10" width="15" height="10.5" rx="2.5"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>',
+    globe:   '<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c2.4 2.5 3.7 5.6 3.7 9S14.4 18.5 12 21c-2.4-2.5-3.7-5.6-3.7-9S9.6 5.5 12 3Z"/>',
+    check:   '<path d="M20 6.5 9.5 17 4 11.5"/>',
+  };
+
+  /* 组件目录表：回答"用了什么项目 / 怎么起（常驻、按需、默认加载）"。 */
+  const CATALOG = [
+    { n:'lark-agents-bridge', t:'自建 Node 桥接包（+1 个本地补丁）', m:'常驻', h:'launchd ai.feishu-codex-bridge.bot', e:'~/.feishu-codex-bridge/config.json' },
+    { n:'OpenClaw 网关',       t:'OpenClaw 平台（+2 个本地补丁）',   m:'常驻', h:'launchd ai.openclaw.gateway',          e:'~/.openclaw/openclaw.json' },
+    { n:'Codex（我）',         t:'Codex CLI + 强模型端点',           m:'按需', h:'被桥接唤起',                          e:'~/.codex/config.toml' },
+    { n:'小秘 agent:main',     t:'OpenClaw agent + 本地模型端点',     m:'按需', h:'被网关唤起',                          e:'~/.openclaw/workspace/main/' },
+    { n:'feishu-collab',       t:'自建 skill · 三方协作规则',         m:'默认加载', h:'Codex 常驻 + 小秘 workspace 已装', e:'~/.codex/skills/feishu-collab/SKILL.md' },
+    { n:'frankofswing-dev',    t:'自建 skill · 站点开发约定',         m:'默认加载', h:'同上',                                e:'~/.codex/skills/frankofswing-dev/SKILL.md' },
+    { n:'agent-bus',           t:'自建状态总线（JSON / JSONL）',      m:'按需', h:'双方读写',                            e:'~/.openclaw/agent-bus/runs/<run-id>/' },
+    { n:'delegate / ask_codex', t:'自建委派脚本（自带两行群回执）',    m:'按需', h:'给指令拉起',                          e:'za/delegate.py · za/ask_codex.py' },
+    { n:'agent-dashboard',     t:'自建采集 + 加密 + 推送',            m:'常驻', h:'launchd ai.agent-dashboard.push（每 60 秒）', e:'~/.openclaw/agent-dashboard/' },
+    { n:'watchdog',            t:'自建看护（ps 探活 + 连续 2 次才判 down）', m:'常驻', h:'launchd ai.agent-bus.watchdog（每 60 秒）', e:'~/.local/share/agent-bus/watchdog.py' },
+    { n:'frankofswing.com',    t:'Astro + Vercel（推送走 GitHub Contents API）', m:'远端', h:'Vercel 自动构建',            e:'~/.openclaw/workspace-jobs' },
+  ];
+
+  const MEMORY = [
+    { who:'Codex（我）', items:[
+      ['za/CODEX-CONTEXT.md', '交接记忆：换模型 / 新会话先读'],
+      ['~/.codex/AGENTS.md', '全局硬规则（怎么给小秘发消息等）'],
+      ['~/.codex/sessions/**/rollout-*.jsonl', '会话原文（可检索）'],
+      ['za/WORKFLOW.md + TESTING.md', '开发工作流 / 测试工作流'],
+    ]},
+    { who:'小秘（OpenClaw）', items:[
+      ['~/.openclaw/workspace/AGENTS.md', '每轮都加载的常驻规则'],
+      ['workspace/main/{IDENTITY,USER,MEMORY,SOUL}.md', '身份 / 用户 / 长期记忆'],
+      ['workspace/main/memory/*.md', '按日期的记忆片段'],
+      ['workspace/main/skills/', '已装技能（feishu-collab 等）'],
+    ]},
+    { who:'共享（agent-bus）', items:[
+      ['runs/<run-id>/{task,plan,test-plan,exec-log,verify-report}.md', '一次任务的全部产物'],
+      ['runs/<run-id>/status.json', '看板读的进度状态'],
+      ['runs.jsonl · delegations/*.json', '历史结论 / 每次委派与成本'],
+      ['watchdog.log', '看护事件'],
+    ]},
+  ];
+
+  const SELF_SKILLS = [
+    { n:'feishu-collab', t:'default', d:'三方协作规则（回话顺序 / 分工 / 监工）' },
+    { n:'frankofswing-dev', t:'default', d:'站点开发约定（代码位置 / 部署 / 内容规则）' },
+    { n:'imagegen', t:'ondemand', d:'生成位图素材' },
+    { n:'openai-docs', t:'ondemand', d:'OpenAI / Codex 官方资料' },
+    { n:'skill-creator · skill-installer', t:'ondemand', d:'写 skill / 装 skill' },
+    { n:'documents · pdf · presentations · spreadsheets', t:'ondemand', d:'Office 文档产出' },
+    { n:'visualize', t:'ondemand', d:'交互式可视化' },
+  ];
+
+  /* ============================================================
+     1. 工具函数
+     ============================================================ */
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+  const icon = (n, sz) => '<svg width="' + (sz||15) + '" height="' + (sz||15) + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + (ICONS[n] || '') + '</svg>';
+
+  function ts2hm(iso) {
+    if (!iso) return '';
+    const m = String(iso).match(/T(\d{2}:\d{2})(?::(\d{2}))?/);
+    return m ? (m[2] ? m[1] + ':' + m[2] : m[1]) : '';
+  }
+  function fmtDT(iso) {
+    if (!iso) return '读取中…';
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return String(iso);
+    const p = (n) => String(n).padStart(2, '0');
+    return p(d.getMonth()+1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+  }
+  function humanDur(ms) {
+    if (!isFinite(ms) || ms < 0) return '—';
+    const s = Math.floor(ms / 1000);
+    if (s < 60) return s + ' 秒';
+    const m = Math.floor(s / 60);
+    if (m < 60) return m + ' 分 ' + (s % 60) + ' 秒';
+    const h = Math.floor(m / 60);
+    return h + ' 时 ' + (m % 60) + ' 分';
+  }
+  function durBetween(a, b) {
+    if (!a) return '—';
+    const t0 = new Date(a).getTime(), t1 = b ? new Date(b).getTime() : Date.now();
+    if (isNaN(t0) || isNaN(t1)) return '—';
+    return humanDur(t1 - t0);
+  }
+  function money(v) {
+    if (typeof v !== 'number' || !isFinite(v)) return '—';
+    return '$' + v.toFixed(v < 1 ? 3 : 2);
+  }
+  function num(v) {
+    if (typeof v !== 'number' || !isFinite(v)) return '—';
+    return v.toLocaleString('en-US');
+  }
+  function shortNum(v) {
+    if (typeof v !== 'number' || !isFinite(v)) return '—';
+    if (v >= 1e6) return (v / 1e6).toFixed(2) + 'M';
+    if (v >= 1e3) return (v / 1e3).toFixed(1) + 'k';
+    return String(v);
+  }
+
+  /* ============================================================
+     2. WebCrypto（保持不变：密码只在浏览器里）
+     ============================================================ */
+  async function deriveKey(password, salt, iter) {
+    const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveKey']);
+    return crypto.subtle.deriveKey({ name:'PBKDF2', salt, iterations:iter, hash:'SHA-256' }, base, { name:'AES-GCM', length:256 }, false, ['decrypt']);
+  }
+  async function decryptBlob(blob, password) {
+    const b64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+    const key = await deriveKey(password, b64(blob.salt), blob.iter);
+    const pt = await crypto.subtle.decrypt({ name:'AES-GCM', iv:b64(blob.nonce) }, key, b64(blob.ct));
+    return JSON.parse(new TextDecoder().decode(pt));
+  }
+  async function fetchBlob() {
+    const r = await fetch(ENC_URL + '?t=' + Date.now(), { cache:'no-store' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return r.json();
+  }
+  async function blobHash(b) {
+    const s = JSON.stringify({ s:b.salt, n:b.nonce, c:b.ct, i:b.iter });
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
+    return Array.from(new Uint8Array(buf)).map((x) => x.toString(16).padStart(2,'0')).join('');
+  }
+
+  /* ============================================================
+     3. 任务进度
+     ============================================================ */
+  function phaseTimes(task) {
+    const out = [null, null, null, null];
+    (task.events || []).forEach((e) => {
+      const i = (e.phase != null && PHASE_INDEX[e.phase] != null) ? PHASE_INDEX[e.phase] : 0;
+      if (i == null) return;
+      if (!out[i] || String(e.ts) < String(out[i].ts)) out[i] = { ts:e.ts, who:e.who };
+    });
+    return out;
+  }
+  function pickCurrent(tasks) {
+    const active = tasks.filter((t) => (t.phase || 'planning') !== 'done')
+      .sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')));
+    if (active.length) return active[0];
+    return tasks.slice().sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')))[0] || null;
+  }
+  function stateOf(task) {
+    if (!task) return 'idle';
+    if (task.verdict === 'FAIL') return 'fail';
+    if ((task.phase || '') === 'done') return task.verdict === 'PASS' ? 'done' : 'idle';
+    return 'run';
+  }
+  function renderRail(task) {
+    const cur = PHASES.findIndex((p) => p.k === (task.phase || 'planning'));
+    const idx = cur < 0 ? 0 : cur;
+    const times = phaseTimes(task);
+    const pct = (idx / (PHASES.length - 1)) * 75;   /* 线宽 = 75% × 进度（线本身占 75%） */
+    const steps = PHASES.map((p, i) => {
+      const cls = i < idx ? 'done' : (i === idx ? (stateOf(task) === 'done' ? 'done' : 'current') : '');
+      const mark = i < idx || (i === idx && stateOf(task) === 'done')
+        ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">' + ICONS.check + '</svg>'
+        : '<span class="num">' + (i + 1) + '</span>';
+      let info = times[i] ? ((OWNERS[times[i].who] || {}).name || times[i].who) + ' · ' + ts2hm(times[i].ts) : '';
+      if (!info && i === idx && cls === 'current') info = '进行中…';
+      return '<div class="rail-step ' + cls + '">'
+        + '<span class="rail-dot">' + mark + '</span>'
+        + '<span class="sn">' + p.n + '</span>'
+        + '<span class="sm">' + esc(info) + '</span>'
+        + '</div>';
+    }).join('');
+    return '<div class="rail">'
+      + '<span class="rail-line"></span>'
+      + '<span class="rail-fill" style="width:' + pct.toFixed(2) + '%"></span>'
+      + steps + '</div>';
+  }
+  function feedWho(w) {
+    const o = OWNERS[w];
+    if (!o) return '<span class="tag ondemand">' + esc(w || '?') + '</span>';
+    return '<span class="tag ' + (w === 'codex' ? 'codex' : 'xiaomi') + '">' + esc(o.name) + '</span>';
+  }
+  function renderTasks(data) {
+    const tasks = data.tasks || [];
+    const res = data.resources || {};
+    const health = data.health || {};
+    const task = pickCurrent(tasks);
+
+    let html = '';
+    if (!task) {
+      html += '<div class="card"><p class="sec">当前任务</p><div class="empty">还没有任务记录。派一个任务给我，这里会出现它的全流程。</div></div>';
+    } else {
+      const st = stateOf(task);
+      const owner = OWNERS[task.owner] ? task.owner : 'none';
+      const pill = st === 'run' ? '<span class="pill run"><i></i>进行中</span>'
+        : st === 'done' ? '<span class="pill ok"><i></i>已完成 · ' + esc(task.verdict || 'PASS') + '</span>'
+        : st === 'fail' ? '<span class="pill fail"><i></i>失败 · ' + esc(task.verdict || 'FAIL') + '</span>'
+        : '<span class="pill idle"><i></i>空闲</span>';
+      const attempts = typeof task.attempts === 'number' ? task.attempts : 0;
+
+      html += '<div class="card"><p class="sec">当前任务</p><div class="hero">'
+        + '<div class="hero-main">'
+        +   '<div>' + pill + '</div>'
+        +   '<h2>' + esc(task.task_one_liner || '(无任务描述)') + '</h2>'
+        +   '<div class="sub">' + esc(task.run_id || '') + ' · 第 ' + attempts + ' 次尝试 · 开始 ' + esc(ts2hm(task.started_at) || '—') + '</div>'
+        + '</div>'
+        + '<div class="owner" data-state="' + (st === 'run' ? 'running' : (st === 'done' ? 'done' : 'idle')) + '">'
+        +   '<span class="avatar" data-who="' + owner + '">' + esc((OWNERS[owner] || OWNERS.none).short) + '</span>'
+        +   '<span><span class="lbl">现在谁在干活</span>'
+        +     '<div class="nm">' + esc((OWNERS[owner] || OWNERS.none).name) + '</div>'
+        +     '<div class="rl">' + esc((OWNERS[owner] || OWNERS.none).role) + '</div></span>'
+        +   '<span class="eta"><div class="v" data-elapsed="' + esc(task.started_at || '') + '" data-stop="' + (st === 'run' ? '' : '1') + '">'
+        +     esc(durBetween(task.started_at, st === 'run' ? null : task.updated_at)) + '</div><div class="k">'
+        +     (st === 'run' ? '已耗时（实时）' : '总耗时') + '</div></span>'
+        + '</div>'
+        + '</div>'
+        + '<p class="sec" style="margin-top:20px">阶段</p>'
+        + renderRail(task)
+        + (task.note ? '<div style="margin-top:16px;font-size:12.5px;color:var(--text-2);background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:10px 12px">' + esc(task.note) + '</div>' : '')
+        + '</div>';
     }
-    function fmtDate(iso) {
-      if (!iso) return '暂无';
-      try { const d = new Date(iso); if (isNaN(d.getTime())) return esc(iso); return d.toLocaleString('zh-CN', { hour12: false }); }
-      catch { return esc(iso); }
-    }
-    function elapsedSince(iso) {
-      if (!iso) return '暂无';
-      try {
-        const d = new Date(iso); if (isNaN(d.getTime())) return '暂无';
-        const ms = Date.now() - d.getTime();
-        if (ms < 60000) return Math.floor(ms / 1000) + ' 秒';
-        if (ms < 3600000) return Math.floor(ms / 60000) + ' 分钟';
-        return Math.floor(ms / 3600000) + ' 小时';
-      } catch { return '暂无'; }
-    }
-    function safeNum(n, suffix = '') { return (typeof n === 'number' && isFinite(n)) ? n.toFixed(4) + suffix : '暂无'; }
 
-    // === WebCrypto ===
-    async function deriveKey(password, salt, iter) {
-      const enc = new TextEncoder();
-      const baseKey = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveKey']);
-      return crypto.subtle.deriveKey(
-        { name: 'PBKDF2', salt, iterations: iter, hash: 'SHA-256' },
-        baseKey, { name: 'AES-GCM', length: 256 }, false, ['decrypt']
-      );
+    /* 左：活动流；右：资源 + 健康 */
+    const events = ((task && task.events) || []).slice().reverse();
+    const feed = events.length
+      ? events.slice(0, 9).map((e, i) => '<div class="feed-row' + (i === 0 ? ' new' : '') + '">'
+          + '<span class="feed-t">' + esc(ts2hm(e.ts)) + '</span>'
+          + '<span class="feed-w">' + feedWho(e.who) + '</span>'
+          + '<span class="feed-a">' + esc(e.what || '') + '</span>'
+          + '<span class="feed-f">' + esc(e.file || '') + '</span></div>').join('')
+      : '<div class="empty">还没有动作。</div>';
+
+    html += '<div class="cols" style="margin-top:14px">'
+      + '<div class="card"><p class="sec">活动流（最近 ' + Math.min(9, events.length) + ' 条）</p><div class="feed">' + feed + '</div></div>'
+      + '<div>' + renderResources(res) + renderHealth(health) + '</div>'
+      + '</div>';
+
+    html += renderHistory(tasks);
+    $('panel-tasks').innerHTML = html;
+    tickElapsed();
+  }
+
+  function renderResources(res) {
+    const cost = (typeof res.todayCostUsd === 'number') ? res.todayCostUsd : null;
+    const tk = res.codexTodayTokens || {};
+    const delegations = Array.isArray(res.recentDelegations) ? res.recentDelegations : [];
+    const sessions = (typeof res.codexSessionsToday === 'number') ? res.codexSessionsToday : 0;
+    const tkTotal = (typeof tk.total === 'number' && tk.total > 0) ? tk.total : null;
+
+    const stats = '<div class="stats">'
+      + '<div class="stat"><div class="k">今日成本（小秘侧）</div><div class="v">' + (cost == null ? '—' : money(cost)) + '</div></div>'
+      + '<div class="stat"><div class="k">Codex 今日 token</div><div class="v">' + shortNum(tkTotal) + '<small>' + (tk.output ? '出 ' + shortNum(tk.output) : '') + '</small></div></div>'
+      + '<div class="stat"><div class="k">今日委派</div><div class="v">' + delegations.length + '<small>次</small></div></div>'
+      + '<div class="stat"><div class="k">Codex 会话</div><div class="v">' + sessions + '<small>今日</small></div></div>'
+      + '</div>';
+
+    const byModel = res.todayByModel || {};
+    const rows = Object.keys(byModel)
+      .filter((k) => k && k !== 'unknown' && k !== 'null' && byModel[k] > 0)
+      .sort((a, b) => byModel[b] - byModel[a]);
+    const max = rows.length ? byModel[rows[0]] : 0;
+    const bars = rows.length
+      ? '<div class="bars">' + rows.map((m) => '<div class="bar">'
+          + '<span class="bl" title="' + esc(m) + '">' + esc(String(m).replace(/^[a-z-]+\//, '')) + '</span>'
+          + '<span class="bt"><span class="bf" style="width:' + ((byModel[m] / max) * 100).toFixed(1) + '%"></span></span>'
+          + '<span class="bv">' + money(byModel[m]) + '</span></div>').join('') + '</div>'
+      : '';
+
+    return '<div class="card"><p class="sec">资源消耗</p>' + stats + bars + '</div>';
+  }
+
+  const SVC_LABEL = {
+    'ai.openclaw.gateway': '小秘网关',
+    'ai.feishu-codex-bridge.bot': '桥接（Codex）',
+    'ai.agent-bus.watchdog': '看护 watchdog',
+    'ai.agent-dashboard.push': '看板推送',
+  };
+  const WD_TEXT = {
+    'down': '检测到组件不可用', 'restart-attempt': '尝试重启', 'restart-ok': '重启成功',
+    'restart-failed': '重启失败', 'healthy': '健康检查通过',
+  };
+  function renderHealth(health) {
+    const services = (health.services || []).filter((s) => s.label);
+    const mine = services.filter((s) => SVC_LABEL[s.label]);
+    const other = services.filter((s) => !SVC_LABEL[s.label]);
+    const svc = mine.length ? mine.map((s) => {
+      const up = s.pid && s.pid !== '-' && s.pid !== '?';
+      return '<div class="svc"><span class="dot ' + (up ? 'up' : 'down') + '"></span>'
+        + '<span class="lb">' + esc(SVC_LABEL[s.label]) + '</span>'
+        + '<span class="pd">' + (up ? 'pid ' + esc(s.pid) : '未运行') + '</span></div>';
+    }).join('') : '<div class="empty">暂无服务信息</div>';
+
+    const wd = (health.watchdog_tail || []).slice(-4).reverse().map((e) => {
+      const t = (WD_TEXT[e.event] || e.event || JSON.stringify(e).slice(0, 40));
+      const c = e.component ? '（' + e.component + '）' : '';
+      return '<div class="wd-row"><span class="tt">' + esc(ts2hm(e.ts)) + '</span> ' + esc(t) + esc(c) + '</div>';
+    }).join('');
+
+    return '<div class="card" style="margin-top:14px"><p class="sec">健康</p>' + svc
+      + (other.length ? '<div class="svc"><span class="dot up" style="background:var(--text-3);box-shadow:none"></span><span class="lb muted">其它 ai.* 任务 ' + other.length + ' 个（与本工作流无关）</span></div>' : '')
+      + (wd ? '<div class="wd"><p class="sec" style="margin:0 0 4px">看护最近事件</p>' + wd + '</div>' : '')
+      + '</div>';
+  }
+
+  function renderHistory(tasks) {
+    const rows = tasks.slice().sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')));
+    if (!rows.length) return '';
+    const body = rows.map((t) => {
+      const st = stateOf(t);
+      const pill = st === 'done' ? '<span class="pill ok"><i></i>' + esc(t.verdict || 'PASS') + '</span>'
+        : st === 'fail' ? '<span class="pill fail"><i></i>' + esc(t.verdict || 'FAIL') + '</span>'
+        : st === 'run' ? '<span class="pill run"><i></i>进行中</span>'
+        : '<span class="pill idle"><i></i>—</span>';
+      return '<tr>'
+        + '<td><div>' + esc(t.task_one_liner || '') + '</div><div class="n dim">' + esc(t.run_id || '') + '</div></td>'
+        + '<td>' + pill + '</td>'
+        + '<td class="n hide-s">' + esc((OWNERS[t.owner] || OWNERS.none).name) + '</td>'
+        + '<td class="n hide-s">' + (typeof t.attempts === 'number' ? t.attempts : 0) + '</td>'
+        + '<td class="n right">' + esc(durBetween(t.started_at, t.updated_at)) + '</td>'
+        + '</tr>';
+    }).join('');
+    return '<div class="card" style="margin-top:14px"><p class="sec">历史任务（' + rows.length + '）</p>'
+      + '<table class="tbl"><thead><tr><th>任务</th><th>结论</th><th class="hide-s">负责人</th><th class="hide-s">尝试</th><th>耗时</th></tr></thead>'
+      + '<tbody>' + body + '</tbody></table></div>';
+  }
+
+  /* 实时计时：只更新文本，不重排 */
+  function tickElapsed() {
+    document.querySelectorAll('[data-elapsed]').forEach((el) => {
+      if (el.getAttribute('data-stop')) return;
+      const t0 = new Date(el.getAttribute('data-elapsed')).getTime();
+      if (isNaN(t0)) return;
+      el.textContent = humanDur(Date.now() - t0);
+    });
+  }
+  setInterval(tickElapsed, 1000);
+
+  /* ============================================================
+     4. 架构地图
+     ============================================================ */
+  const NODE_DETAIL = {
+    frank:    { project:'—', run:'—', files:['飞书群 oc_63b6…'], env:[], note:'唯一管理员。需求与拍板的来源；两个 bot 都在这个群里回话。' },
+    bridge:   { project:'lark-agents-bridge（自建，含 1 个本地补丁）', run:'常驻 · launchd ai.feishu-codex-bridge.bot', files:['~/.feishu-codex-bridge/config.json'], env:[], note:'把群里 @Codex 的消息转成本地 Codex CLI 任务，再把我写回的答案发到群里。' },
+    gateway:  { project:'OpenClaw 平台（含 2 个本地补丁）', run:'常驻 · launchd ai.openclaw.gateway', files:['~/.openclaw/openclaw.json','~/.openclaw/service-env/ai.openclaw.gateway.env'], env:['OPENCLAW_FEISHU_ATALL_CHATS','OPENCLAW_FORCE_STRANDED_REPLY_RECOVERY','OPENCLAW_SUPPRESS_STRANDED_NOTICE'], note:'小秘的宿主：飞书/Telegram 通道、技能、工具、委派全在这里。三个本地补丁让 @所有人 能唤醒她、并且不丢消息、不发噪音。' },
+    codex:    { project:'Codex CLI + 本机配置的强模型端点', run:'按需 · 被桥接唤起', files:['~/.codex/config.toml','~/.codex/skills/','~/.codex/sessions/'], env:[], note:'贵、额度有限 → 只做"想"和"查"：澄清需求、出方案、写测试方案、独立验收。' },
+    xiaomi:   { project:'OpenClaw agent:main + 本地模型端点', run:'按需 · 被网关唤起', files:['~/.openclaw/workspace/main/','~/.openclaw/workspace/main/skills/'], env:[], note:'便宜、额度足 → 做"写"和"跑"：按方案落地、按测试方案写测试、跑完把证据交回来。' },
+    bus:      { project:'自建状态总线（无第三方依赖）', run:'按需读写', files:['~/.openclaw/agent-bus/runs/','~/.openclaw/agent-bus/delegations/','~/.openclaw/agent-bus/watchdog.log'], env:[], note:'一次任务的全部产物落在这里；看板与 watchdog 都从这里读，状态不藏在模型会话里。' },
+    snapshot: { project:'自建（Python cryptography + 浏览器 WebCrypto）', run:'常驻 · launchd ai.agent-dashboard.push（每 60 秒，内容没变就跳过）', files:['~/.openclaw/agent-dashboard/gen_dashboard.py','~/.openclaw/agent-dashboard/push_dashboard.py'], env:[], note:'密码只在本机权限 600 的文件里；仓库里只有密文，页面在浏览器端解密。' },
+    site:     { project:'Astro 静态站 + Vercel（推送走 GitHub Contents API）', run:'远端 · Vercel 自动构建', files:['~/.openclaw/workspace-jobs/src/pages/agents.astro'], env:[], note:'公开站点；/agents/ 有密码门，并且 noindex 不被搜索引擎收录。' },
+  };
+
+  function liveFacts(id, data) {
+    const arch = data.architecture || {};
+    const health = data.health || {};
+    const f = [];
+    const svcOf = (label) => (health.services || []).find((s) => s.label === label);
+    if (id === 'gateway') {
+      const s = svcOf('ai.openclaw.gateway');
+      f.push(['运行状态', s && s.pid && s.pid !== '-' ? '运行中 · pid ' + s.pid : '未运行']);
+      f.push(['通道', (arch.channels || []).map((c) => c.name).join(' · ') || '—']);
+      f.push(['插件', (arch.plugins || []).filter((p) => p.enabled).map((p) => p.id).join(' · ') || '—']);
+      f.push(['agents', (arch.agents || []).map((a) => a.id).join(' · ') || '—']);
     }
-    async function decryptBlob(blob, password) {
-      const salt = Uint8Array.from(atob(blob.salt), c => c.charCodeAt(0));
-      const nonce = Uint8Array.from(atob(blob.nonce), c => c.charCodeAt(0));
-      const ct = Uint8Array.from(atob(blob.ct), c => c.charCodeAt(0));
-      const key = await deriveKey(password, salt, blob.iter);
-      const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: nonce }, key, ct);
-      return JSON.parse(new TextDecoder().decode(pt));
+    if (id === 'codex') {
+      const s = svcOf('ai.feishu-codex-bridge.bot');
+      f.push(['桥接进程', s && s.pid && s.pid !== '-' ? '运行中 · pid ' + s.pid : '未运行']);
+      const tk = (data.resources || {}).codexTodayTokens || {};
+      f.push(['今日 token', tk.total ? num(tk.total) + '（出 ' + num(tk.output) + '）' : '—']);
+      f.push(['今日会话', String((data.resources || {}).codexSessionsToday || 0)]);
     }
-    async function fetchBlob() {
-      const r = await fetch(ENC_URL + '?t=' + Date.now(), { cache: 'no-store' });
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      return await r.json();
+    if (id === 'xiaomi') {
+      const skills = (arch.skills || []).filter((s) => s.eligible && !s.disabled);
+      f.push(['可用技能', skills.length + ' 个（其中 ' + skills.filter((s) => s.modelVisible).length + ' 个模型直接可见）']);
+      f.push(['自装技能', (arch.skills || []).filter((s) => s.ours).map((s) => s.name).join(' · ') || '—']);
     }
-    async function blobHash(blob) {
-      const s = JSON.stringify({ s: blob.salt, n: blob.nonce, c: blob.ct, i: blob.iter });
-      const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
-      return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+    if (id === 'bus') {
+      const runs = data.tasks || [];
+      f.push(['任务记录', runs.length + ' 条，最新 ' + (runs.length ? runs[runs.length - 1].run_id : '—')]);
+      f.push(['委派记录', ((data.resources || {}).recentDelegations || []).length + ' 次（今日）']);
     }
-
-    // === 任务进度渲染 ===
-    function renderTasks(data) {
-      const tasks = data.tasks || [];
-      const resources = data.resources || {};
-      const health = data.health || {};
-      const el = document.getElementById('panel-tasks');
-
-      // 当前任务 = updated_at 最新的非 done 任务; 若都 done 取最新
-      const active = tasks.filter(t => t.phase !== 'done').sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''));
-      const cur = active[0] || tasks.slice().sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''))[0];
-
-      const curHtml = cur ? renderCurrentTask(cur) : `<div class="panel"><h3>当前任务</h3><div class="empty">暂无</div></div>`;
-      const timelineHtml = renderTimeline(cur);
-      const resHtml = renderResources(resources);
-      const healthHtml = renderHealth(health);
-      const histHtml = renderHistory(tasks);
-
-      el.innerHTML = curHtml + timelineHtml + resHtml + healthHtml + histHtml;
+    if (id === 'snapshot') {
+      f.push(['最近生成', fmtDT(data.generatedAt)]);
+      const s = svcOf('ai.agent-dashboard.push');
+      f.push(['推送任务', s ? (s.pid && s.pid !== '-' ? '运行中' : '已安装 · 非持续运行') : '未安装']);
     }
+    if (id === 'site') f.push(['线上入口', 'frankofswing.com/agents/']);
+    return f;
+  }
 
-    function renderCurrentTask(t) {
-      const phase = t.phase || 'planning';
-      const stepIdx = { planning: 0, executing: 1, verifying: 2, done: 3 }[phase] ?? 0;
-      const steps = ['规划', '执行', '验收', '完成'];
-      const stepHtml = steps.map((s, i) => {
-        const cls = i < stepIdx ? 'done' : i === stepIdx ? 'active' : '';
-        return `<div class="step ${cls}">${s}</div>`;
-      }).join('');
-      const owner = t.owner || 'none';
-      const ownerName = { xiaomi: '小秘', codex: 'Codex', none: '无人' }[owner] || '无人';
-      const elapsed = elapsedSince(t.started_at);
-      const attempts = (typeof t.attempts === 'number') ? t.attempts : 0;
-      const verdict = t.verdict;
-      const verdictPill = verdict === 'PASS' ? '<span class="pill pass">PASS</span>' : verdict === 'FAIL' ? '<span class="pill fail">FAIL</span>' : '';
-      const note = t.note || '';
-      const oneLiner = t.task_one_liner || '(无任务描述)';
+  let selectedNode = null;
 
-      return `<div class="current-task">
-        <h2>${esc(oneLiner)} ${verdictPill}</h2>
-        <div class="task-id">${esc(t.run_id || '')} · <span class="pill done">${esc(phase)}</span></div>
-        <div class="phase-stepper">${stepHtml}</div>
-        <div class="who-working" data-owner="${esc(owner)}">
-          <div>
-            <div class="who-label">现在谁在干活</div>
-            <div class="who-name">${esc(ownerName)}</div>
-          </div>
-          <div class="who-meta">已耗时 ${esc(elapsed)} · 第 ${attempts} 次尝试</div>
-        </div>
-        ${note ? `<div class="task-note">${esc(note)}</div>` : ''}
-      </div>`;
+  function renderArch(data) {
+    const arch = data.architecture || {};
+    const layersHtml = LAYERS.map((L) => {
+      const nodes = L.nodes.map((n) => '<button class="arch-node" type="button" data-node-id="' + n.id + '">'
+        + '<span class="top"><span class="ic">' + icon(n.icon) + '</span><span class="nm">' + esc(n.name) + '</span></span>'
+        + '<div class="tech">' + esc(n.tech) + '</div>'
+        + '<div class="role">' + esc(n.role) + '</div>'
+        + '</button>').join('');
+      return '<div class="arch-layer">'
+        + '<div class="arch-layer-head"><i style="background:' + L.color + '"></i><div><div class="n">' + esc(L.name) + '</div><div class="c">' + L.nodes.length + ' 个组件</div></div></div>'
+        + '<div class="arch-nodes">' + nodes + '</div></div>';
+    }).join('');
+
+    const legend = LAYERS.map((L) => '<span class="lg"><i style="background:' + L.color + '"></i>' + esc(L.name) + '</span>').join('');
+
+    const dot = '<svg class="arch-edges" id="arch-svg"><defs>'
+      + '<marker id="ah" markerWidth="9" markerHeight="9" refX="7.5" refY="3" orient="auto"><path d="M0 0 L8 3 L0 6 z" fill="#cbd5e1" stroke="none"/></marker>'
+      + '<marker id="ah-on" markerWidth="9" markerHeight="9" refX="7.5" refY="3" orient="auto"><path d="M0 0 L8 3 L0 6 z" fill="#4f46e5" stroke="none"/></marker>'
+      + '</defs></svg><div id="arch-labels"></div>';
+
+    $('panel-arch').innerHTML = '<div class="card">'
+      + '<div class="arch-head"><p class="sec" style="margin:0">架构地图 · ' + LAYERS.length + ' 层 / ' + LAYERS.reduce((a, l) => a + l.nodes.length, 0) + ' 个组件 / ' + EDGES.length + ' 条连接</p>'
+      + '<span class="spacer" style="flex:1"></span><span class="arch-hint">点任意组件 → 高亮它的上下游</span></div>'
+      + '<div class="arch-legend" style="margin-bottom:14px">' + legend + '</div>'
+      + '<div class="arch-canvas" id="arch-canvas"><div class="arch-layers">' + layersHtml + '</div>' + dot + '</div>'
+      + '</div>'
+      + '<div class="arch-detail" id="arch-detail"><span class="muted" style="font-size:12.5px">点上面的任意组件，这里会显示它的项目、启动方式、关键文件和实时状态。</span></div>'
+      + renderCatalog()
+      + '<div class="cols-3" style="margin-top:14px">' + renderMemory() + renderSkills(arch) + renderPatches(arch) + '</div>';
+
+    requestAnimationFrame(() => { drawEdges(); syncSelection(); });
+  }
+
+  function renderCatalog() {
+    const body = CATALOG.map((c) => {
+      const tag = c.m === '默认加载' ? '<span class="tag default">默认加载</span>'
+        : c.m === '常驻' ? '<span class="tag xiaomi">常驻</span>'
+        : '<span class="tag ondemand">' + esc(c.m) + '</span>';
+      return '<tr><td><div style="font-weight:600">' + esc(c.n) + '</div><div class="dim" style="font-size:11.5px;font-family:var(--mono)">' + esc(c.t) + '</div></td>'
+        + '<td>' + tag + '<div class="dim" style="font-size:11.5px;margin-top:4px">' + esc(c.h) + '</div></td>'
+        + '<td class="dim" style="font-size:11.5px;font-family:var(--mono);word-break:break-word">' + esc(c.e) + '</td></tr>';
+    }).join('');
+    return '<div class="card" style="margin-top:14px"><p class="sec">组件目录 · 用了什么 / 怎么起</p>'
+      + '<table class="tbl"><thead><tr><th style="width:30%">组件</th><th style="width:26%">启动方式</th><th>证据（配置文件 / 代码位置）</th></tr></thead><tbody>'
+      + body + '</tbody></table></div>';
+  }
+
+  function renderMemory() {
+    const cols = MEMORY.map((g) => '<p class="sec" style="margin:0 0 6px">' + esc(g.who) + '</p>'
+      + '<ul class="list">' + g.items.map((it) => '<li><span class="n">' + esc(it[0]) + '</span><span class="d">' + esc(it[1]) + '</span></li>').join('') + '</ul>').join('');
+    return '<div class="card"><p class="sec">记忆系统（谁会记得什么）</p>' + cols + '</div>';
+  }
+
+  function renderSkills(arch) {
+    const skills = arch.skills || [];
+    const ours = skills.filter((s) => s.ours);
+    const ok = skills.filter((s) => !s.ours && s.eligible && !s.disabled);
+    const off = skills.filter((s) => !s.eligible || s.disabled);
+    const visible = ok.filter((s) => s.modelVisible);
+
+    const rowsOurs = ours.map((s) => '<li><span class="n">' + esc(s.name) + '</span><span class="d"><span class="tag default">常驻</span></span></li>').join('');
+    const rowsOk = ok.slice(0, 10).map((s) => '<li><span class="n">' + esc(s.name) + '</span><span class="d">'
+      + (s.modelVisible ? '<span class="tag default">模型直接可见</span>' : '<span class="tag ondemand">需指令拉起</span>') + '</span></li>').join('');
+    const mine = SELF_SKILLS.map((s) => '<li><span class="n">' + esc(s.n) + '</span><span class="d">'
+      + (s.t === 'default' ? '<span class="tag default">默认加载</span>' : '<span class="tag ondemand">按需</span>')
+      + '<div style="margin-top:2px">' + esc(s.d) + '</div></span></li>').join('');
+
+    return '<div class="card"><p class="sec">Skills · 哪些默认调用、哪些要拉起</p>'
+      + '<p class="sec" style="margin:10px 0 4px;color:var(--text-2)">Codex（我）· 常驻</p><ul class="list">' + mine + '</ul>'
+      + '<p class="sec" style="margin:14px 0 4px;color:var(--text-2)">小秘 · 自装 ' + ours.length + ' 个</p><ul class="list">' + (rowsOurs || '<li class="dim">—</li>') + '</ul>'
+      + '<p class="sec" style="margin:14px 0 4px;color:var(--text-2)">小秘 · 内置可用 ' + ok.length + ' 个（' + visible.length + ' 个模型直接可见）</p>'
+      + '<ul class="list">' + (rowsOk || '<li class="dim">—</li>') + '</ul>'
+      + '<p class="dim" style="font-size:11.5px;margin:10px 0 0">另有 ' + off.length + ' 个因缺依赖或已关闭（未列出）。</p>'
+      + '</div>';
+  }
+
+  function renderPatches(arch) {
+    const patches = arch.patches || [];
+    const body = patches.length ? patches.map((p) => '<div class="patch">'
+      + '<div class="pp">' + esc(p.purpose || '') + (p.rebuild ? ' <span class="tag alert">升级后需重打</span>' : '') + '</div>'
+      + (p.files && p.files.length ? '<div class="pf">' + p.files.map(esc).join(' · ') + '</div>' : '')
+      + (p.env && p.env.length ? '<div class="pe">' + p.env.map(esc).join(' · ') + '</div>' : '')
+      + (p.note ? '<div class="pn">' + esc(p.note) + '</div>' : '')
+      + '</div>').join('') : '<div class="empty">暂无</div>';
+    return '<div class="card"><p class="sec">本地补丁（' + patches.length + '）</p>' + body
+      + '<p class="dim" style="font-size:11.5px;margin:8px 0 0">补丁清单与还原方式见 za/CODEX-CONTEXT.md。</p></div>';
+  }
+
+  /* ── 连线绘制 ── */
+  function orthPath(sx, sy, tx, ty, axis, r) {
+    const dx = tx - sx, dy = ty - sy;
+    if (axis === 'h') {
+      if (Math.abs(dy) < 1) return ['M ' + sx + ' ' + sy + ' L ' + tx + ' ' + ty, (sx + tx) / 2, ty];
+      const mx = (sx + tx) / 2, d = Math.sign(dy), rr = Math.min(r, Math.abs(dy) / 2, Math.abs(dx) / 2 || r);
+      return ['M ' + sx + ' ' + sy + ' L ' + (mx - rr) + ' ' + sy + ' Q ' + mx + ' ' + sy + ' ' + mx + ' ' + (sy + d * rr)
+        + ' L ' + mx + ' ' + (ty - d * rr) + ' Q ' + mx + ' ' + ty + ' ' + (mx + rr) + ' ' + ty + ' L ' + tx + ' ' + ty, mx, ty];
     }
+    if (Math.abs(dx) < 1) return ['M ' + sx + ' ' + sy + ' L ' + tx + ' ' + ty, tx, (sy + ty) / 2];
+    const my = (sy + ty) / 2, d = Math.sign(dx), rr = Math.min(r, Math.abs(dx) / 2, Math.abs(dy) / 2 || r);
+    return ['M ' + sx + ' ' + sy + ' L ' + sx + ' ' + (my - rr) + ' Q ' + sx + ' ' + my + ' ' + (sx + d * rr) + ' ' + my
+      + ' L ' + (tx - d * rr) + ' ' + my + ' Q ' + tx + ' ' + my + ' ' + tx + ' ' + (my + rr) + ' L ' + tx + ' ' + ty, tx, my];
+  }
 
-    function renderTimeline(cur) {
-      const events = (cur && cur.events) || [];
-      if (!events.length) {
-        return `<div class="panel"><h3>阶段时间线</h3><div class="empty">暂无</div></div>`;
+  function drawEdges() {
+    const canvas = $('arch-canvas'), svg = $('arch-svg'), labels = $('arch-labels');
+    if (!canvas || !svg || !labels) return;
+    if (!canvas.offsetWidth) return;
+    const cr = canvas.getBoundingClientRect();
+    svg.setAttribute('width', cr.width);
+    svg.setAttribute('height', cr.height);
+    /* 只清掉上一轮画的线/点，保留 <defs> 里的箭头 marker */
+    svg.querySelectorAll('path[data-from], circle[data-from]').forEach((el) => el.remove());
+    labels.innerHTML = '';
+    const NS = 'http://www.w3.org/2000/svg';
+    const link = {};
+
+    EDGES.forEach((e) => {
+      const A = canvas.querySelector('.arch-node[data-node-id="' + e.from + '"]');
+      const B = canvas.querySelector('.arch-node[data-node-id="' + e.to + '"]');
+      if (!A || !B) return;
+      const ar = A.getBoundingClientRect(), br = B.getBoundingClientRect();
+      let sx, sy, tx, ty;
+      if (e.route === 'h') {
+        const y1 = e.y1 == null ? .5 : e.y1, y2 = e.y2 == null ? .5 : e.y2;
+        sx = ar.right - cr.left; sy = ar.top - cr.top + ar.height * y1;
+        tx = br.left - cr.left;  ty = br.top - cr.top + br.height * y2;
+      } else {
+        const x1 = e.x1 == null ? .5 : e.x1, x2 = e.x2 == null ? .5 : e.x2;
+        sx = ar.left - cr.left + ar.width * x1; sy = ar.bottom - cr.top;
+        tx = br.left - cr.left + br.width * x2;  ty = br.top - cr.top;
       }
-      const items = events.slice().reverse().map(e => {
-        const ts = (e.ts || '').slice(11, 19);
-        const who = e.who || '?';
-        const what = e.what || '';
-        return `<div class="timeline-event">
-          <span class="ts">${esc(ts)}</span>
-          <span class="who" data-w="${esc(who)}">${esc(who)}</span>
-          <span class="what">${esc(what)}</span>
-        </div>`;
-      }).join('');
-      return `<div class="panel"><h3>阶段时间线</h3>${items}</div>`;
-    }
+      const [d, lx, ly] = orthPath(sx, sy, tx, ty, e.route, 8);
 
-    function renderResources(res) {
-      const today = safeNum(res.todayCostUsd, '');
-      const totalCost = (typeof res.todayCostUsd === 'number') ? res.todayCostUsd : 0;
-      const calls = (Array.isArray(res.recentDelegations)) ? res.recentDelegations.length : 0;
-      const codex = (typeof res.codexSessionsToday === 'number') ? res.codexSessionsToday : 0;
+      const dot = document.createElementNS(NS, 'circle');
+      dot.setAttribute('cx', sx); dot.setAttribute('cy', sy); dot.setAttribute('r', 2.6);
+      dot.dataset.from = e.from; dot.dataset.to = e.to;
+      svg.appendChild(dot);
 
-      const byModel = res.todayByModel || {};
-      const modelEntries = Object.entries(byModel).sort((a, b) => b[1] - a[1]);
-      const maxCost = modelEntries.length ? modelEntries[0][1] : 0;
-      const bars = modelEntries.length ? modelEntries.map(([m, c]) => {
-        const pct = maxCost > 0 ? (c / maxCost * 100) : 0;
-        const label = m.replace(/^minimax-portal\//, '');
-        return `<div class="bar-row">
-          <span class="bar-label" title="${esc(m)}">${esc(label)}</span>
-          <div class="bar-track"><div class="bar-fill" style="width: ${pct.toFixed(1)}%"></div></div>
-          <span class="bar-value">$${safeNum(c)}</span>
-        </div>`;
-      }).join('') : '<div class="empty">暂无</div>';
+      const p = document.createElementNS(NS, 'path');
+      p.setAttribute('d', d);
+      p.setAttribute('marker-end', 'url(#ah)');
+      p.dataset.from = e.from; p.dataset.to = e.to;
+      svg.appendChild(p);
 
-      return `<div class="panel">
-        <h3>资源</h3>
-        <div class="res-stats">
-          <div class="stat-box"><div class="stat-label">今日成本</div><div class="stat-value">$${today || '暂无'}</div></div>
-          <div class="stat-box"><div class="stat-label">今日委派</div><div class="stat-value">${calls} <span class="stat-unit">次</span></div></div>
-          <div class="stat-box"><div class="stat-label">Codex 会话</div><div class="stat-value">${codex} <span class="stat-unit">/ 今日</span></div></div>
-        </div>
-        ${modelEntries.length ? modelEntries.map(([m, c]) => '').join('') + bars : ''}
-      </div>`;
-    }
-
-    function renderHealth(health) {
-      const services = health.services || [];
-      const wd = (health.watchdog_tail || []).slice().reverse();
-      const svcHtml = services.length ? services.map(s => {
-        const label = s.label || s.raw || '?';
-        const pid = s.pid || '?';
-        const up = pid && pid !== '-' && pid !== '?';
-        return `<div class="service-row">
-          <span class="dot ${up ? 'up' : 'down'}"></span>
-          <span class="label" title="${esc(label)}">${esc(label)}</span>
-          <span class="pid">pid=${esc(pid)}</span>
-        </div>`;
-      }).join('') : '<div class="empty">暂无</div>';
-
-      const wdHtml = wd.length ? wd.slice(0, 5).map(e => {
-        const ts = (e.ts || '').slice(11, 19);
-        const evt = e.event || e.raw || JSON.stringify(e).slice(0, 80);
-        return `<div class="wd-line">${esc(ts)} · ${esc(evt)}</div>`;
-      }).join('') : '<div class="empty">暂无</div>';
-
-      return `<div class="panel">
-        <h3>健康</h3>
-        <div class="group-h">Launchd 服务</div>
-        ${svcHtml}
-        <div class="group-h">Watchdog 最近 5 条</div>
-        ${wdHtml}
-      </div>`;
-    }
-
-    function renderHistory(tasks) {
-      const sorted = tasks.slice().sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''));
-      if (!sorted.length) {
-        return `<div class="panel"><h3>历史任务</h3><div class="empty">暂无</div></div>`;
-      }
-      const rows = sorted.map(t => {
-        const verdict = t.verdict || '';
-        const pill = verdict === 'PASS' ? '<span class="pill pass">PASS</span>' : verdict === 'FAIL' ? '<span class="pill fail">FAIL</span>' : '<span class="pill">—</span>';
-        const attempts = (typeof t.attempts === 'number') ? t.attempts : 0;
-        const elapsed = elapsedSince(t.started_at);
-        return `<tr>
-          <td>${esc(t.run_id || '?')}</td>
-          <td>${pill}</td>
-          <td>${attempts}</td>
-          <td>${esc(elapsed)}</td>
-        </tr>`;
-      }).join('');
-      return `<div class="panel">
-        <h3>历史任务</h3>
-        <table class="history-table">
-          <thead><tr><th>任务</th><th>结论</th><th>尝试</th><th>耗时</th></tr></thead>
-          <tbody>${rows}</tbody>
-        </table>
-      </div>`;
-    }
-
-    // === 架构地图渲染 ===
-    function renderArch(data) {
-      const el = document.getElementById('panel-arch');
-      const arch = data.architecture || {};
-
-      const legendHtml = `<div class="arch-legend">${
-        ARCH_LAYERS.map(l => `<div class="lg-item"><span class="lg-dot" style="background:${l.color}"></span>${esc(l.name)}</span></div>`).join('')
-      }</div>`;
-
-      const layersHtml = ARCH_LAYERS.map(layer => {
-        const cards = layer.modules.map(m => `
-          <div class="module-card" data-module-id="${esc(m.id)}">
-            <span class="emoji">${esc(m.emoji)}</span><span class="name">${esc(m.name)}</span>
-            <span class="stack">${esc(m.stack)}</span>
-            <div class="role">${esc(m.role)}</div>
-          </div>
-        `).join('');
-        return `<div class="layer" style="--layer-color: ${layer.color}">
-          <h3><span class="layer-dot"></span>${esc(layer.name)}</h3>
-          <div class="layer-cards">${cards}</div>
-        </div>`;
-      }).join('');
-
-      const archSvg = `<svg class="arch-svg" id="arch-svg" preserveAspectRatio="none"></svg>`;
-
-      // Skills (按需/默认) + 记忆系统 + 补丁
-      const skills = arch.skills || [];
-      const scripts = arch.scripts || [];
-      const patches = arch.patches || [];
-
-      const skillsHtml = `<div class="panel">
-        <h3>Skills</h3>
-        <div class="group-h">默认加载 (内置)</div>
-        <ul>${skills.slice(0, 20).map(s => `<li><span class="name">${esc(s.name)}</span><span class="desc">${esc(s.description || '')}</span></li>`).join('') || '<div class="empty">暂无</div>'}</ul>
-        <div class="group-h">按需拉起 (scripts/)</div>
-        <ul>${scripts.slice(0, 12).map(s => `<li><span class="name">${esc(s.replace(/^\/Users\/frank_bot\//, '~/'))}</span></li>`).join('') || '<div class="empty">暂无</div>'}</ul>
-      </div>`;
-
-      const memHtml = `<div class="panel">
-        <h3>记忆系统</h3>
-        <div class="arch-info">
-          <div class="mem-col">
-            <h4>Codex 的</h4>
-            <ul>
-              <li><span class="name">~/.codex/sessions/**/rollout-*.jsonl</span></li>
-              <li><span class="name">~/.codex/skills/</span></li>
-              <li><span class="name">~/.codex/plugins/cache/</span></li>
-            </ul>
-          </div>
-          <div class="mem-col">
-            <h4>小秘 的</h4>
-            <ul>
-              <li><span class="name">~/.openclaw/workspace/main/IDENTITY.md</span></li>
-              <li><span class="name">~/.openclaw/workspace/main/USER.md</span></li>
-              <li><span class="name">~/.openclaw/workspace/main/MEMORY.md</span></li>
-              <li><span class="name">~/.openclaw/workspace/main/memory/*.md</span></li>
-            </ul>
-          </div>
-          <div class="mem-col">
-            <h4>共享的</h4>
-            <ul>
-              <li><span class="name">~/.openclaw/agent-bus/runs/*/status.json</span></li>
-              <li><span class="name">~/.openclaw/agent-bus/runs.jsonl</span></li>
-              <li><span class="name">~/.openclaw/agent-bus/delegations/*.json</span></li>
-              <li><span class="name">~/.openclaw/agent-bus/watchdog.log</span></li>
-            </ul>
-          </div>
-        </div>
-      </div>`;
-
-      const patchesHtml = `<div class="panel">
-        <h3>本地补丁</h3>
-        ${patches.slice(0, 6).map(p => `
-          <div class="patch-card">
-            <div class="purpose">${esc(p.purpose || '(无说明)')}</div>
-            ${p.files && p.files.length ? `<div class="files">📁 ${p.files.map(esc).join(', ')}</div>` : ''}
-            ${p.env && p.env.length ? `<div class="env">🔑 ${p.env.map(esc).join(', ')}</div>` : ''}
-            ${p.note ? `<div class="desc">${esc(p.note)}</div>` : ''}
-          </div>
-        `).join('') || '<div class="empty">暂无</div>'}
-      </div>`;
-
-      const infoHtml = `<div class="arch-info">${skillsHtml}${memHtml}${patchesHtml}</div>`;
-
-      el.innerHTML = legendHtml + `<div class="arch-wrap" id="arch-wrap">${layersHtml}${archSvg}</div>` + infoHtml;
-
-      // 画连线
-      requestAnimationFrame(() => drawConnections());
-      setupCardClick();
-    }
-
-    function drawConnections() {
-      const svg = document.getElementById('arch-svg');
-      const wrap = document.getElementById('arch-wrap');
-      if (!svg || !wrap) return;
-      svg.innerHTML = '<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#888"/></marker></defs>';
-      const wrapRect = wrap.getBoundingClientRect();
-
-      CONNECTIONS.forEach((conn) => {
-        const fromEl = wrap.querySelector(`[data-module-id="${conn.from}"]`);
-        const toEl = wrap.querySelector(`[data-module-id="${conn.to}"]`);
-        if (!fromEl || !toEl) return;
-        const fr = fromEl.getBoundingClientRect();
-        const tr = toEl.getBoundingClientRect();
-
-        const fromX = fr.left + fr.width / 2 - wrapRect.left;
-        const fromY = fr.bottom - wrapRect.top;
-        const toX = tr.left + tr.width / 2 - wrapRect.left;
-        const toY = tr.top - wrapRect.top;
-        const midX = (fromX + toX) / 2;
-        const midY = (fromY + toY) / 2;
-
-        // 折线: 从 source 底部向下, 水平到 mid, 再向下到 target 顶部
-        const dy1 = (fromY + toY) / 2 - fromY;
-        const dy2 = toY - (fromY + toY) / 2;
-        const path = `M ${fromX} ${fromY} L ${fromX} ${fromY + dy1 / 2} L ${toX} ${fromY + dy1 / 2} L ${toX} ${toY}`;
-
-        const NS = 'http://www.w3.org/2000/svg';
-        const pathEl = document.createElementNS(NS, 'path');
-        pathEl.setAttribute('d', path);
-        pathEl.setAttribute('class', 'conn-line');
-        pathEl.setAttribute('data-from', conn.from);
-        pathEl.setAttribute('data-to', conn.to);
-        pathEl.setAttribute('fill', 'none');
-        pathEl.setAttribute('marker-end', 'url(#arrow)');
-        svg.appendChild(pathEl);
-
-        // Label 背景
-        const labelText = conn.label;
-        const labelW = Math.max(labelText.length * 7 + 14, 60);
-        const labelH = 18;
-        const bg = document.createElementNS(NS, 'rect');
-        bg.setAttribute('x', midX - labelW / 2);
-        bg.setAttribute('y', midY - labelH / 2);
-        bg.setAttribute('width', labelW);
-        bg.setAttribute('height', labelH);
-        bg.setAttribute('class', 'conn-label-bg');
-        bg.setAttribute('data-from', conn.from);
-        bg.setAttribute('data-to', conn.to);
-        svg.appendChild(bg);
-
-        const txt = document.createElementNS(NS, 'text');
-        txt.setAttribute('x', midX);
-        txt.setAttribute('y', midY + 3);
-        txt.setAttribute('text-anchor', 'middle');
-        txt.setAttribute('class', 'conn-label');
-        txt.setAttribute('data-from', conn.from);
-        txt.setAttribute('data-to', conn.to);
-        txt.textContent = labelText;
-        svg.appendChild(txt);
-      });
-    }
-
-    function setupCardClick() {
-      const cards = document.querySelectorAll('.module-card');
-      cards.forEach(card => {
-        card.addEventListener('click', () => {
-          const id = card.dataset.moduleId;
-          const wasHighlighted = card.classList.contains('highlighted');
-          // 清所有
-          document.querySelectorAll('.module-card.highlighted').forEach(c => c.classList.remove('highlighted'));
-          document.querySelectorAll('.conn-line, .conn-label, .conn-label-bg').forEach(l => {
-            l.classList.remove('highlighted', 'dimmed');
-          });
-          if (wasHighlighted) return;
-          card.classList.add('highlighted');
-          document.querySelectorAll(`.conn-line[data-from="${id}"], .conn-line[data-to="${id}"]`).forEach(l => l.classList.add('highlighted'));
-          document.querySelectorAll(`.conn-label[data-from="${id}"], .conn-label[data-to="${id}"], .conn-label-bg[data-from="${id}"], .conn-label-bg[data-to="${id}"]`).forEach(l => l.classList.add('highlighted'));
-          document.querySelectorAll('.conn-line:not(.highlighted), .conn-label:not(.highlighted), .conn-label-bg:not(.highlighted)').forEach(l => l.classList.add('dimmed'));
-        });
-      });
-    }
-
-    // === Polling ===
-    async function refresh() {
-      if (!currentPassword) return;
-      try {
-        const blob = await fetchBlob();
-        const hash = await blobHash(blob);
-        if (hash === lastBlobHash) return;
-        lastBlobHash = hash;
-        currentData = await decryptBlob(blob, currentPassword);
-        renderAll(currentData);
-        const tsEl = document.getElementById('meta-update');
-        if (tsEl) tsEl.textContent = currentData.generatedAt ? fmtDate(currentData.generatedAt) : '暂无';
-      } catch (e) {
-        console.error('refresh failed:', e);
-        if (String(e).includes('OperationError') || String(e).includes('decrypt')) {
-          sessionStorage.removeItem('dashboard-pw');
-          location.reload();
-        }
-      }
-    }
-    function startPolling() {
-      if (pollTimer) clearInterval(pollTimer);
-      pollTimer = setInterval(refresh, POLL_MS);
-    }
-    function switchTab(name) {
-      document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
-      document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + name));
-      if (name === 'arch' && currentData) requestAnimationFrame(drawConnections);
-    }
-
-    function renderAll(data) {
-      renderTasks(data);
-      renderArch(data);
-    }
-
-    async function doLogin() {
-      const pw = document.getElementById('pw').value;
-      if (!pw) return;
-      const errEl = document.getElementById('error');
-      const btn = document.getElementById('btn');
-      btn.disabled = true;
-      errEl.textContent = '解密中... (PBKDF2 200k 轮, 约 1-2 秒)';
-      await new Promise(r => setTimeout(r, 10));
-      try {
-        const blob = await fetchBlob();
-        const data = await decryptBlob(blob, pw);
-        currentPassword = pw;
-        sessionStorage.setItem('dashboard-pw', pw);
-        lastBlobHash = await blobHash(blob);
-        document.getElementById('login').style.display = 'none';
-        document.getElementById('app').style.display = 'block';
-        renderAll(data);
-        const tsEl = document.getElementById('meta-update');
-        if (tsEl) tsEl.textContent = data.generatedAt ? fmtDate(data.generatedAt) : '暂无';
-        startPolling();
-        errEl.textContent = '';
-      } catch (e) {
-        errEl.textContent = '密码不正确 (解密失败)';
-      } finally {
-        btn.disabled = false;
-      }
-    }
-
-    // === Boot ===
-    document.getElementById('btn').addEventListener('click', doLogin);
-    document.getElementById('pw').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
-    document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => switchTab(t.dataset.tab)));
-    window.addEventListener('resize', () => {
-      if (document.getElementById('panel-arch').classList.contains('active')) drawConnections();
+      const lab = document.createElement('span');
+      lab.className = 'elabel';
+      lab.textContent = e.label;
+      lab.style.left = lx + 'px';
+      lab.style.top = ly + 'px';
+      lab.dataset.from = e.from; lab.dataset.to = e.to;
+      labels.appendChild(lab);
+      link[e.from + '>' + e.to] = { p, dot, lab };
     });
 
-    (function () {
-      const saved = sessionStorage.getItem('dashboard-pw');
-      if (saved) {
-        document.getElementById('pw').value = saved;
-        doLogin();
-      }
-    })();
+    canvas.querySelectorAll('.arch-node').forEach((n) => {
+      if (n.dataset.bound) return;
+      n.dataset.bound = '1';
+      n.addEventListener('click', () => {
+        selectedNode = (selectedNode === n.dataset.nodeId) ? null : n.dataset.nodeId;
+        syncSelection();
+      });
+    });
+    canvas.__links = link;
+    syncSelection();   /* 重画后必须重新上色，否则旧的选中态会丢（2026-10-09 实锤） */
+  }
+
+  function syncSelection() {
+    const canvas = $('arch-canvas'), detail = $('arch-detail');
+    if (!canvas) return;
+    const sel = selectedNode;
+    const neigh = {};
+    if (sel) EDGES.forEach((e) => { if (e.from === sel) neigh[e.to] = 1; if (e.to === sel) neigh[e.from] = 1; });
+
+    canvas.querySelectorAll('.arch-node').forEach((n) => {
+      const id = n.dataset.nodeId;
+      n.classList.toggle('is-selected', id === sel);
+      n.classList.toggle('is-linked', !!(sel && neigh[id]));
+      n.classList.toggle('is-dim', !!(sel && id !== sel && !neigh[id]));
+      n.setAttribute('aria-pressed', id === sel ? 'true' : 'false');
+    });
+    const links = canvas.__links || {};
+    Object.keys(links).forEach((k) => {
+      const hit = !!sel && (k.split('>')[0] === sel || k.split('>')[1] === sel);
+      const l = links[k];
+      l.p.classList.toggle('is-active', hit);
+      l.p.classList.toggle('is-dim', !!sel && !hit);
+      l.p.setAttribute('marker-end', hit ? 'url(#ah-on)' : 'url(#ah)');
+      l.dot.classList.toggle('is-active', hit);
+      l.dot.classList.toggle('is-dim', !!sel && !hit);
+      l.lab.classList.toggle('is-active', hit);
+      l.lab.classList.toggle('is-dim', !!sel && !hit);
+    });
+
+    if (!sel || !NODE_DETAIL[sel]) {
+      detail.classList.remove('has');
+      detail.innerHTML = '<span class="muted" style="font-size:12.5px">点上面的任意组件，这里会显示它的项目、启动方式、关键文件和实时状态。</span>';
+      return;
+    }
+    const spec = NODE_DETAIL[sel];
+    const node = LAYERS.flatMap((l) => l.nodes).find((n) => n.id === sel) || { name: sel, tech: '' };
+    const facts = liveFacts(sel, currentData || {});
+    detail.classList.add('has');
+    detail.innerHTML = '<div class="dh"><span class="ic" style="width:26px;height:26px;border-radius:8px;background:var(--surface-3);display:grid;place-items:center;color:var(--text-2)">' + icon(node.icon) + '</span>'
+      + '<span class="nm">' + esc(node.name) + '</span>'
+      + '<span class="tag ondemand">' + esc(node.tech) + '</span></div>'
+      + '<div class="kv">'
+      + '<span class="k">用了什么</span><span class="v">' + esc(spec.project) + '</span>'
+      + '<span class="k">怎么起</span><span class="v">' + esc(spec.run) + '</span>'
+      + '<span class="k">关键文件</span><span class="v">' + spec.files.map((x) => '<code class="p">' + esc(x) + '</code>').join(' ') + '</span>'
+      + (spec.env.length ? '<span class="k">环境变量</span><span class="v">' + spec.env.map((x) => '<code class="p">' + esc(x) + '</code>').join(' ') + '</span>' : '')
+      + '<span class="k">说明</span><span class="v">' + esc(spec.note) + '</span>'
+      + (facts.length ? '<span class="k">实时</span><span class="v">' + facts.map((f) => esc(f[0]) + '：' + esc(f[1])).join(' ｜ ') + '</span>' : '')
+      + '</div>';
+  }
+
+  /* ============================================================
+     5. 刷新 / 标签页 / 登录
+     ============================================================ */
+  let currentPassword = '', lastBlobHash = '', pollTimer = null, currentData = null;
+
+  function renderAll(data) {
+    currentData = data;
+    renderTasks(data);
+    renderArch(data);
+    const el = $('meta-update');
+    if (el) el.textContent = data.generatedAt ? fmtDT(data.generatedAt) : '—';
+  }
+
+  async function refresh() {
+    if (!currentPassword) return;
+    try {
+      const blob = await fetchBlob();
+      const h = await blobHash(blob);
+      if (h === lastBlobHash) return;
+      lastBlobHash = h;
+      renderAll(await decryptBlob(blob, currentPassword));
+    } catch (e) {
+      console.error('refresh failed:', e);
+      if (/OperationError|decrypt/i.test(String(e))) { sessionStorage.removeItem('dashboard-pw'); location.reload(); }
+    }
+  }
+
+  function switchTab(name) {
+    document.querySelectorAll('#seg button').forEach((b) => b.classList.toggle('on', b.dataset.tab === name));
+    $('panel-tasks').style.display = name === 'tasks' ? '' : 'none';
+    $('panel-arch').style.display = name === 'arch' ? '' : 'none';
+    if (name === 'arch') requestAnimationFrame(() => { drawEdges(); syncSelection(); });
+  }
+
+  async function doLogin() {
+    const pw = $('pw').value;
+    if (!pw) return;
+    const errEl = $('error'), btn = $('btn');
+    btn.disabled = true;
+    errEl.textContent = '解密中…（PBKDF2 20 万轮，约 1–2 秒）';
+    await new Promise((r) => setTimeout(r, 10));
+    try {
+      const blob = await fetchBlob();
+      const data = await decryptBlob(blob, pw);
+      currentPassword = pw;
+      sessionStorage.setItem('dashboard-pw', pw);
+      lastBlobHash = await blobHash(blob);
+      $('login').style.display = 'none';
+      $('app').style.display = 'block';
+      renderAll(data);
+      errEl.textContent = '';
+      if (pollTimer) clearInterval(pollTimer);
+      pollTimer = setInterval(refresh, POLL_MS);
+    } catch (e) {
+      errEl.textContent = '密码不正确';
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  $('btn').addEventListener('click', doLogin);
+  $('pw').addEventListener('keydown', (e) => { if (e.key === 'Enter') doLogin(); });
+  document.querySelectorAll('#seg button').forEach((b) => b.addEventListener('click', () => switchTab(b.dataset.tab)));
+  window.addEventListener('resize', () => { if ($('panel-arch').style.display !== 'none') drawEdges(); });
+  if (window.ResizeObserver) new ResizeObserver(() => { if ($('panel-arch').style.display !== 'none') drawEdges(); }).observe(document.body);
+  window.addEventListener('beforeunload', () => { if (pollTimer) clearInterval(pollTimer); });
+
+  (function boot() {
+    const saved = sessionStorage.getItem('dashboard-pw');
+    if (saved) { $('pw').value = saved; doLogin(); }
+  })();
   </script>
 </body>
 </html>
