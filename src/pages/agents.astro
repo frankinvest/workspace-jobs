@@ -1,0 +1,420 @@
+---
+// src/pages/agents.astro
+// 密码保护的可视化: 任务进度盘 + 架构地图
+// 数据从 /data/agent-dashboard.enc.json (密文) 浏览器端解密
+---
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8" />
+  <meta name="robots" content="noindex, nofollow" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Agent Dashboard</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      margin: 0; padding: 24px; background: #0d0f12; color: #e0e0e0;
+      min-height: 100vh;
+    }
+    #login { max-width: 360px; margin: 80px auto; }
+    #login h1 { margin-top: 0; font-size: 22px; }
+    #login .hint { color: #888; font-size: 13px; margin-bottom: 16px; }
+    #login input {
+      width: 100%; padding: 12px; font-size: 15px; margin-bottom: 12px;
+      background: #1a1d22; color: #fff; border: 1px solid #2a2e35; border-radius: 6px;
+      outline: none;
+    }
+    #login input:focus { border-color: #2a6df4; }
+    #login button {
+      width: 100%; padding: 12px; background: #2a6df4; color: #fff;
+      border: 0; border-radius: 6px; cursor: pointer; font-size: 15px;
+    }
+    #login button:hover { background: #1a5bd4; }
+    #error { color: #f44; margin-top: 8px; min-height: 20px; font-size: 13px; }
+    #app { display: none; max-width: 1100px; margin: 0 auto; }
+    .header {
+      display: flex; justify-content: space-between; align-items: baseline;
+      margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid #1a1d22;
+    }
+    .header h1 { margin: 0; font-size: 20px; }
+    .meta { color: #666; font-size: 12px; font-family: 'SF Mono', Menlo, monospace; }
+    .tabs { display: flex; gap: 4px; border-bottom: 1px solid #2a2e35; margin-bottom: 20px; }
+    .tab {
+      padding: 8px 16px; cursor: pointer; border: 0; background: none;
+      color: #888; font-size: 14px; border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+    }
+    .tab:hover { color: #ddd; }
+    .tab.active { color: #fff; border-bottom-color: #2a6df4; }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+    .task {
+      padding: 14px 16px; margin-bottom: 10px; background: #14171c;
+      border-radius: 8px; border-left: 4px solid #555;
+    }
+    .task.planning { border-left-color: #4a8df4; }
+    .task.executing { border-left-color: #fb0; }
+    .task.verifying { border-left-color: #c4f; }
+    .task.done { border-left-color: #4a4; }
+    .task-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .task-row strong { font-family: 'SF Mono', Menlo, monospace; font-size: 13px; }
+    .task-desc { color: #b0b0b0; margin-top: 6px; font-size: 14px; }
+    .task-meta { color: #666; font-size: 11px; margin-top: 6px; font-family: 'SF Mono', Menlo, monospace; }
+    .task-note { color: #888; font-size: 12px; margin-top: 6px; padding: 6px 10px; background: #0d0f12; border-radius: 4px; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; background: #2a2e35; color: #ccc; font-family: 'SF Mono', Menlo, monospace; }
+    .pill.pass { background: #143614; color: #4f4; }
+    .pill.fail { background: #3a1414; color: #f66; }
+    .pill.phase-planning { background: #14283a; color: #4af; }
+    .pill.phase-executing { background: #3a2814; color: #fb0; }
+    .pill.phase-verifying { background: #2a143a; color: #c4f; }
+    .pill.phase-done { background: #143614; color: #4f4; }
+    .stats {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 10px; margin-bottom: 20px;
+    }
+    .stat {
+      padding: 12px 14px; background: #14171c; border-radius: 8px;
+      border: 1px solid #1f2329;
+    }
+    .stat-label { color: #888; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .stat-value { color: #fff; font-size: 18px; margin-top: 4px; font-family: 'SF Mono', Menlo, monospace; }
+    pre {
+      background: #14171c; padding: 16px; border-radius: 8px;
+      overflow: auto; border: 1px solid #1f2329;
+    }
+    pre code { font-family: 'SF Mono', Menlo, monospace; font-size: 12px; color: #d0d0d0; }
+    .arch-section { margin-bottom: 24px; }
+    .arch-section h3 { color: #ccc; font-size: 14px; margin: 0 0 8px 0; padding-bottom: 6px; border-bottom: 1px solid #1f2329; }
+    .arch-list { list-style: none; padding: 0; margin: 0; }
+    .arch-list li {
+      padding: 8px 12px; background: #14171c; margin-bottom: 4px;
+      border-radius: 4px; font-size: 13px; display: flex; justify-content: space-between; align-items: center;
+    }
+    .arch-list .name { color: #fff; font-family: 'SF Mono', Menlo, monospace; }
+    .arch-list .desc { color: #888; font-size: 11px; }
+    .patch-card { padding: 12px 14px; background: #14171c; border-left: 3px solid #fb0; border-radius: 4px; margin-bottom: 8px; }
+    .patch-purpose { color: #fff; font-size: 13px; font-weight: 500; }
+    .patch-files { color: #4af; font-family: 'SF Mono', Menlo, monospace; font-size: 11px; margin-top: 6px; }
+    .patch-env { color: #c4f; font-family: 'SF Mono', Menlo, monospace; font-size: 11px; margin-top: 2px; }
+    .patch-note { color: #888; font-size: 11px; margin-top: 6px; }
+    .empty { color: #666; font-style: italic; padding: 20px; text-align: center; }
+  </style>
+</head>
+<body>
+  <div id="login">
+    <h1>Agent Dashboard</h1>
+    <p class="hint">输入密码查看 (本地浏览器端解密, 数据不会发送到任何服务器)</p>
+    <input type="password" id="pw" placeholder="密码" autofocus autocomplete="off" />
+    <button id="btn" type="button">进入</button>
+    <div id="error"></div>
+  </div>
+
+  <div id="app">
+    <div class="header">
+      <h1>Agent Dashboard</h1>
+      <div class="meta">
+        <span id="meta-update">last update: --</span>
+        ·
+        <span id="meta-poll">polling: 10s</span>
+      </div>
+    </div>
+
+    <div class="tabs" id="tabs">
+      <button class="tab active" data-tab="tasks" type="button">任务进度</button>
+      <button class="tab" data-tab="arch" type="button">架构地图</button>
+      <button class="tab" data-tab="health" type="button">健康</button>
+    </div>
+
+    <div id="panel-tasks" class="tab-panel active"></div>
+    <div id="panel-arch" class="tab-panel"></div>
+    <div id="panel-health" class="tab-panel"></div>
+  </div>
+
+  <script is:inline>
+    const POLL_MS = 10000;
+    const ENC_URL = '/data/agent-dashboard.enc.json';
+    let currentPassword = '';
+    let lastBlobHash = '';
+    let pollTimer = null;
+
+    // ── WebCrypto helpers ──
+    async function deriveKey(password, salt, iter) {
+      const enc = new TextEncoder();
+      const baseKey = await crypto.subtle.importKey(
+        'raw', enc.encode(password), 'PBKDF2', false, ['deriveKey']
+      );
+      return crypto.subtle.deriveKey(
+        { name: 'PBKDF2', salt, iterations: iter, hash: 'SHA-256' },
+        baseKey,
+        { name: 'AES-GCM', length: 256 },
+        false, ['decrypt']
+      );
+    }
+
+    async function decryptBlob(blob, password) {
+      const salt = Uint8Array.from(atob(blob.salt), c => c.charCodeAt(0));
+      const nonce = Uint8Array.from(atob(blob.nonce), c => c.charCodeAt(0));
+      const ct = Uint8Array.from(atob(blob.ct), c => c.charCodeAt(0));
+      const key = await deriveKey(password, salt, blob.iter);
+      const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: nonce }, key, ct);
+      return JSON.parse(new TextDecoder().decode(pt));
+    }
+
+    async function fetchBlob() {
+      const r = await fetch(ENC_URL + '?t=' + Date.now(), { cache: 'no-store' });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return await r.json();
+    }
+
+    async function blobHash(blob) {
+      const s = JSON.stringify({ s: blob.salt, n: blob.nonce, c: blob.ct, i: blob.iter });
+      const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
+      return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      })[c]);
+    }
+
+    function pillFor(phase) {
+      const map = {
+        planning: 'phase-planning', executing: 'phase-executing',
+        verifying: 'phase-verifying', done: 'phase-done'
+      };
+      return `<span class="pill ${map[phase] || ''}">${esc(phase || '?')}</span>`;
+    }
+
+    function verdictPill(verdict) {
+      if (verdict === 'PASS') return '<span class="pill pass">PASS</span>';
+      if (verdict === 'FAIL') return '<span class="pill fail">FAIL</span>';
+      return '';
+    }
+
+    // ── Renderers ──
+    function renderTasks(data) {
+      const tasks = data.tasks || [];
+      const res = data.resources || {};
+      const el = document.getElementById('panel-tasks');
+
+      const statsHtml = `
+        <div class="stats">
+          <div class="stat">
+            <div class="stat-label">今日花费</div>
+            <div class="stat-value">$${(res.todayCostUsd || 0).toFixed(4)}</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">今日委派</div>
+            <div class="stat-value">${(res.recentDelegations || []).length}</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">Codex 会话 (今日)</div>
+            <div class="stat-value">${res.codexSessionsToday || 0}</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">活跃 run</div>
+            <div class="stat-value">${tasks.filter(t => t.phase !== 'done').length}</div>
+          </div>
+        </div>`;
+
+      if (!tasks.length) {
+        el.innerHTML = statsHtml + '<div class="empty">无任务记录</div>';
+        return;
+      }
+
+      const tasksHtml = tasks.map(t => `
+        <div class="task ${esc(t.phase || 'unknown')}">
+          <div class="task-row">
+            <strong>${esc(t.run_id || '?')}</strong>
+            ${verdictPill(t.verdict)}
+            ${pillFor(t.phase)}
+            <span class="pill">owner: ${esc(t.owner || '?')}</span>
+            <span class="pill">attempts: ${t.attempts || 0}</span>
+          </div>
+          ${t.task_one_liner ? `<div class="task-desc">${esc(t.task_one_liner)}</div>` : ''}
+          <div class="task-meta">
+            started: ${esc(t.started_at || '--')} ·
+            updated: ${esc(t.updated_at || '--')}
+          </div>
+          ${t.note ? `<div class="task-note">${esc(t.note)}</div>` : ''}
+        </div>
+      `).join('');
+
+      el.innerHTML = statsHtml + tasksHtml;
+    }
+
+    function renderArch(arch) {
+      const el = document.getElementById('panel-arch');
+      const agents = arch.agents || [];
+      const channels = arch.channels || [];
+      const skills = arch.skills || [];
+      const scripts = arch.scripts || [];
+      const patches = arch.patches || [];
+
+      const agentsHtml = agents.length ? `
+        <ul class="arch-list">${agents.map(a => `
+          <li>
+            <span><span class="name">${esc(a.id)}</span> · ${esc(a.name || '')}</span>
+            <span class="desc">${esc((a.model || '').replace('minimax-portal/', ''))}</span>
+          </li>`).join('')}</ul>` : '<div class="empty">无 agent</div>';
+
+      const channelsHtml = channels.length ? `
+        <ul class="arch-list">${channels.map(c => `
+          <li>
+            <span><span class="name">${esc(c.name)}</span>${c.accounts && c.accounts.length ? ' · accounts: ' + c.accounts.map(esc).join(', ') : ''}</span>
+            <span class="desc">${c.enabled ? 'enabled' : 'disabled'}</span>
+          </li>`).join('')}</ul>` : '<div class="empty">无 channel</div>';
+
+      const skillsHtml = skills.length ? `
+        <ul class="arch-list">${skills.slice(0, 50).map(s => `
+          <li>
+            <span class="name">${esc(s.name)}</span>
+            <span class="desc">${esc(s.description || '')}</span>
+          </li>`).join('')}</ul>
+        ${skills.length > 50 ? `<div class="meta" style="margin-top:8px;">... 还有 ${skills.length - 50} 个</div>` : ''}`
+        : '<div class="empty">无 skill</div>';
+
+      const scriptsHtml = scripts.length ? `
+        <ul class="arch-list">${scripts.map(s => `
+          <li><span class="name">${esc(s)}</span></li>`).join('')}</ul>` : '<div class="empty">无 script</div>';
+
+      const patchesHtml = patches.length ? patches.map(p => `
+        <div class="patch-card">
+          <div class="patch-purpose">${esc(p.purpose)}</div>
+          ${p.files && p.files.length ? `<div class="patch-files">📁 ${p.files.map(esc).join(', ')}</div>` : ''}
+          ${p.env && p.env.length ? `<div class="patch-env">🔑 ${p.env.map(esc).join(', ')}</div>` : ''}
+          ${p.note ? `<div class="patch-note">${esc(p.note)}</div>` : ''}
+        </div>`).join('') : '<div class="empty">无补丁</div>';
+
+      el.innerHTML = `
+        <div class="arch-section"><h3>Agents (${agents.length})</h3>${agentsHtml}</div>
+        <div class="arch-section"><h3>Channels (${channels.length})</h3>${channelsHtml}</div>
+        <div class="arch-section"><h3>Skills (${skills.length})</h3>${skillsHtml}</div>
+        <div class="arch-section"><h3>Scripts (${scripts.length})</h3>${scriptsHtml}</div>
+        <div class="arch-section"><h3>Patches (${patches.length})</h3>${patchesHtml}</div>
+      `;
+    }
+
+    function renderHealth(health) {
+      const el = document.getElementById('panel-health');
+      const wd = (health.watchdog_tail || []).slice().reverse();
+      const svc = health.services || [];
+
+      const wdHtml = wd.length ? `
+        <ul class="arch-list">${wd.slice(0, 10).map(e => `
+          <li>
+            <span class="name">${esc(e.event || e.raw || JSON.stringify(e).slice(0, 60))}</span>
+            <span class="desc">${esc(e.ts || e.component || '')}</span>
+          </li>`).join('')}</ul>` : '<div class="empty">无 watchdog 记录</div>';
+
+      const svcHtml = svc.length ? `
+        <ul class="arch-list">${svc.map(s => `
+          <li>
+            <span class="name">${esc(s.label || s.raw || '?')}</span>
+            <span class="desc">pid=${esc(s.pid || '?')} status=${esc(s.status || '?')}</span>
+          </li>`).join('')}</ul>` : '<div class="empty">无服务</div>';
+
+      el.innerHTML = `
+        <div class="arch-section"><h3>Launchd Services (${svc.length})</h3>${svcHtml}</div>
+        <div class="arch-section"><h3>Watchdog Tail (${wd.length})</h3>${wdHtml}</div>
+      `;
+    }
+
+    function renderAll(data) {
+      renderTasks(data);
+      renderArch(data.architecture || {});
+      renderHealth(data.health || {});
+    }
+
+    function switchTab(name) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + name));
+    }
+
+    // ── Polling loop ──
+    async function refresh() {
+      if (!currentPassword) return;
+      try {
+        const blob = await fetchBlob();
+        const hash = await blobHash(blob);
+        if (hash === lastBlobHash) return;  // 内容未变, 跳过
+        lastBlobHash = hash;
+        const data = await decryptBlob(blob, currentPassword);
+        renderAll(data);
+        const tsEl = document.getElementById('meta-update');
+        if (tsEl) tsEl.textContent = 'last update: ' + (data.generatedAt || '--');
+      } catch (e) {
+        console.error('refresh failed:', e);
+        if (String(e).includes('decrypt') || String(e).includes('OperationError')) {
+          // 密码可能变了, 退回登录
+          sessionStorage.removeItem('dashboard-pw');
+          location.reload();
+        }
+      }
+    }
+
+    function startPolling() {
+      if (pollTimer) clearInterval(pollTimer);
+      pollTimer = setInterval(refresh, POLL_MS);
+    }
+
+    // ── Login flow ──
+    async function tryLogin(pw) {
+      try {
+        const blob = await fetchBlob();
+        const data = await decryptBlob(blob, pw);
+        return { ok: true, blob, data };
+      } catch (e) {
+        return { ok: false, error: e };
+      }
+    }
+
+    async function doLogin() {
+      const pw = document.getElementById('pw').value;
+      if (!pw) return;
+      const errEl = document.getElementById('error');
+      const btn = document.getElementById('btn');
+      btn.disabled = true;
+      errEl.textContent = '解密中... (PBKDF2 200k 轮, 约 1-2 秒)';
+      // 强制让 UI 更新一次
+      await new Promise(r => setTimeout(r, 10));
+      const r = await tryLogin(pw);
+      btn.disabled = false;
+      if (!r.ok) {
+        errEl.textContent = '密码不正确 (解密失败)';
+        return;
+      }
+      currentPassword = pw;
+      sessionStorage.setItem('dashboard-pw', pw);
+      lastBlobHash = await blobHash(r.blob);
+      document.getElementById('login').style.display = 'none';
+      document.getElementById('app').style.display = 'block';
+      renderAll(r.data);
+      const tsEl = document.getElementById('meta-update');
+      if (tsEl) tsEl.textContent = 'last update: ' + (r.data.generatedAt || '--');
+      startPolling();
+    }
+
+    // ── Boot ──
+    document.getElementById('btn').addEventListener('click', doLogin);
+    document.getElementById('pw').addEventListener('keydown', e => {
+      if (e.key === 'Enter') doLogin();
+    });
+    document.querySelectorAll('.tab').forEach(t => {
+      t.addEventListener('click', () => switchTab(t.dataset.tab));
+    });
+
+    // 自动登录 (如果 sessionStorage 有)
+    (function () {
+      const saved = sessionStorage.getItem('dashboard-pw');
+      if (saved) {
+        document.getElementById('pw').value = saved;
+        doLogin();
+      }
+    })();
+  </script>
+</body>
+</html>
