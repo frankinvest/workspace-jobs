@@ -286,34 +286,69 @@
       table.tbl td.hide-s, table.tbl th.hide-s { display:none; }
     }
 
-  /* === task-panel-v2: 阶段可展开 === */
-  .stages-card .stages { display:flex; flex-direction:column; gap:8px; margin-top:8px; }
-  .stage-item { background: var(--surface-2, #14171c); border: 1px solid var(--border, #1f2329); border-radius: 8px; overflow: hidden; }
-  .stage-item.is-current { border-color: var(--accent, #2a6df4); box-shadow: 0 0 0 1px var(--accent, #2a6df4); }
-  .stage-item.todo { opacity: 0.6; }
-  .stage-header { display: grid; grid-template-columns: 24px 90px 1fr auto 24px; align-items: center; gap: 10px; padding: 10px 14px; cursor: pointer; user-select: none; }
-  .stage-header:hover { background: rgba(255,255,255,0.02); }
-  .stage-header:focus { outline: 1px solid var(--accent, #2a6df4); outline-offset: -1px; }
-  .stage-marker { width:28px; height:28px; border-radius:50%; background:var(--surface-2); color:var(--text-3); font-size:11px; font-weight:600; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; }
-  .stage-item.done .stage-marker { background:var(--ok-soft); color:var(--ok-line); }
-  .stage-item.current .stage-marker { background:var(--accent); color:#fff; box-shadow:0 0 0 4px var(--accent-soft); }
-  .stage-item.is-current .stage-marker { animation: stage-pulse 2s ease-in-out infinite; }
-  @keyframes stage-pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(42,109,244,0.5); } 50% { box-shadow: 0 0 0 6px rgba(42,109,244,0); } }
-  .stage-name { font-weight:600; color:#fff; font-size:17px; }
-  .stage-who { color:var(--text-2); font-size:12px; font-family:var(--mono); }
-  .stage-time { color:var(--text-3); font-size:11px; font-weight:600; font-family:var(--mono); }
-  .stage-toggle { color: #888; font-size: 12px; text-align: center; }
-  .stage-body { padding: 0 14px 12px 48px; display: none; }
-  .stage-item[aria-expanded="true"] > .stage-body { display: block; }
-  .stage-empty { color: #666; font-style: italic; font-size: 12px; padding: 6px 0; }
-  .stage-file { padding: 6px 0; border-top: 1px dashed var(--border, #1f2329); }
-  .stage-file:first-child { border-top: 0; }
-  .stage-file-head { display: flex; gap: 8px; align-items: baseline; margin-bottom: 4px; }
-  .file-name { font-family: ui-monospace, monospace; font-size: 12px; color: #4a8df4; }
-  .file-title { font-size: 12px; color: #888; }
-  .file-excerpt { color: #c0c0c0; font-size: 12px; line-height: 1.5; background: rgba(0,0,0,0.2); padding: 6px 8px; border-radius: 4px; font-style: italic; word-break: break-word; }
-  .stage-verdict { margin: 8px 0; }
-  .stage-file-excerpt { color: #c0c0c0; font-size: 12px; line-height: 1.5; padding: 6px 8px; }
+  /* ===== 任务进度：四阶段流程 ===== */
+  .stages-card { padding-bottom: 14px; }
+  .stages-toolbar { display:flex; align-items:flex-end; justify-content:space-between; gap:16px; margin-bottom:12px; }
+  .stages-toolbar .sec { margin:0; color:var(--text-2); font-size:12px; font-weight:600; letter-spacing:.01em; text-transform:none; }
+  .stage-progress { width:min(260px,38%); }
+  .stage-progress-top { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:5px; }
+  .stage-progress-label { font-size:12px; font-weight:600; color:var(--text-2); }
+  .stage-progress-count { font-family:var(--mono); font-size:12px; font-variant-numeric:tabular-nums; color:var(--text-2); }
+  .stage-progress-track { height:6px; border-radius:999px; background:var(--surface-3); overflow:hidden; }
+  .stage-progress-fill { display:block; height:100%; border-radius:inherit; background:linear-gradient(90deg,var(--accent),#7c3aed); }
+  .stages-card .stages { display:flex; flex-direction:column; gap:10px; }
+  .stage-item { background:#fff; border:1px solid var(--border); border-radius:10px; overflow:hidden; box-shadow:var(--shadow); }
+  .stage-item.todo { background:var(--surface-2); }
+  .stage-item.is-current { border-color:var(--accent-line); box-shadow:0 0 0 3px var(--accent-soft); }
+  .stage-header { all:unset; box-sizing:border-box; display:grid; grid-template-columns:34px minmax(0,1fr) auto 22px; align-items:center; gap:12px; width:100%; min-height:64px; padding:12px 14px; font:inherit; color:inherit; cursor:pointer; }
+  .stage-header:hover { background:var(--surface-2); }
+  .stage-header:focus, .stage-header:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; border-radius:9px; }
+  .stage-marker { width:28px; height:28px; border-radius:50%; display:grid; place-items:center; flex:none; background:var(--surface-3); color:var(--text-3); border:1px solid var(--border); font-family:var(--mono); font-size:12px; font-weight:600; }
+  .stage-item.done .stage-marker { background:var(--ok-soft); border-color:var(--ok-line); color:#027a48; }
+  .stage-item.current .stage-marker { background:var(--accent); border-color:var(--accent); color:#fff; box-shadow:0 0 0 4px var(--accent-soft); }
+  .stage-marker .pulse { display:block; width:8px; height:8px; border-radius:50%; background:#fff; }
+  .stage-title { min-width:0; display:flex; align-items:center; gap:9px; flex-wrap:wrap; }
+  .stage-name { color:var(--text); font-size:14px; font-weight:600; letter-spacing:-.01em; }
+  .stage-item.todo .stage-name { color:var(--text-2); font-weight:600; }
+  .stage-state { display:inline-flex; align-items:center; height:21px; padding:2px 8px; border-radius:999px; font-size:11px; font-weight:600; background:var(--surface-3); color:var(--text-2); }
+  .stage-item.done .stage-state { background:var(--ok-soft); color:#027a48; }
+  .stage-item.current .stage-state { background:var(--accent-soft); color:var(--accent-2); }
+  .stage-meta { display:flex; align-items:center; gap:12px; color:var(--text-2); font-size:12px; white-space:nowrap; }
+  .stage-owner { display:inline-flex; align-items:center; gap:6px; font-weight:400; }
+  .stage-owner::before { content:''; width:6px; height:6px; border-radius:50%; background:var(--accent); }
+  .stage-item.done .stage-owner::before { background:var(--ok); }
+  .stage-time { font-family:var(--mono); font-variant-numeric:tabular-nums; color:var(--text-2); }
+  .stage-toggle { color:var(--text-3); font-size:12px; text-align:center; transition:transform .15s ease; }
+  .stage-item[aria-expanded="true"] .stage-toggle { transform:rotate(90deg); }
+  .stage-body { display:none; padding:0 14px 14px 60px; }
+  .stage-item[aria-expanded="true"] > .stage-body { display:block; }
+  .stage-content { background:var(--surface-2); border:1px solid var(--border); border-radius:9px; padding:12px; }
+  .stage-empty { display:flex; align-items:center; gap:8px; color:var(--text-2); font-size:12px; }
+  .stage-empty::before { content:''; width:7px; height:7px; border-radius:50%; background:var(--border-2); }
+  .stage-files { display:grid; gap:9px; }
+  .stage-file { background:#fff; border:1px solid var(--border); border-left:3px solid var(--accent-line); border-radius:8px; padding:10px 12px; }
+  .stage-file-head { display:flex; align-items:center; gap:10px; margin-bottom:7px; }
+  .file-icon { width:28px; height:28px; flex:none; border-radius:7px; background:var(--accent-soft); color:var(--accent-2); display:grid; place-items:center; font-family:var(--mono); font-size:11px; font-weight:600; }
+  .stage-file-titles { min-width:0; display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; }
+  .file-title { color:var(--text); font-size:13.5px; font-weight:600; }
+  .file-name { font-family:var(--mono); font-size:11px; color:var(--text-2); background:var(--surface-3); border-radius:4px; padding:2px 6px; }
+  .file-excerpt { margin:0; color:var(--text-2); font-size:12px; line-height:1.65; display:-webkit-box; -webkit-line-clamp:5; -webkit-box-orient:vertical; overflow:hidden; }
+  .stage-result { display:grid; gap:10px; }
+  .stage-verdict { margin:0; display:flex; align-items:center; gap:10px; }
+  .stage-verdict-title { color:var(--text-2); font-size:12px; font-weight:600; }
+  .stage-file-excerpt { margin:0; color:var(--text-2); font-size:12px; line-height:1.65; background:#fff; border:1px solid var(--border); border-radius:8px; padding:10px 12px; }
+
+  @media (max-width:700px) {
+    .stages-toolbar { align-items:flex-start; flex-direction:column; }
+    .stage-progress { width:100%; }
+    .stage-header { grid-template-columns:30px minmax(0,1fr) 20px; min-height:0; row-gap:7px; }
+    .stage-meta { grid-column:2 / -1; justify-content:flex-start; }
+    .stage-meta { flex-wrap:wrap; white-space:normal; }
+    .stage-body { padding:0 10px 12px 10px; }
+    .stage-content { padding:10px; }
+    .stage-file { padding:9px 10px; }
+    .file-excerpt { -webkit-line-clamp:6; }
+  }
   .hist-progress { display: inline-flex; gap: 3px; align-items: center; }
   .hist-progress .hdot { width: 8px; height: 8px; border-radius: 50%; background: #1a1d22; display: inline-block; }
   .hist-progress .hdot.on { background: #4f4; }
@@ -768,13 +803,21 @@
       const curPhase = task.phase || 'planning';
       const stages = task.stages || {};
       const curIdx = STAGE_META.findIndex((x) => x.k === curPhase);
-      html += '<div class="card stages-card"><p class="sec">四阶段</p><div class="stages" id="stages" data-current-phase="' + esc(curPhase) + '">';
+      const reachedCount = curPhase === 'done' ? STAGE_META.length : Math.max(curIdx + 1, 1);
+      const progressPct = Math.round((reachedCount / STAGE_META.length) * 100);
+      const progressLabel = curPhase === 'done' ? '全部阶段完成' : '进行到：' + esc((STAGE_META[curIdx] || {}).n || curPhase);
+      html += '<div class="card stages-card">'
+        + '<div class="stages-toolbar"><p class="sec">四阶段流程</p>'
+        + '<div class="stage-progress"><div class="stage-progress-top"><span class="stage-progress-label">' + progressLabel + '</span><span class="stage-progress-count">' + reachedCount + '/' + STAGE_META.length + '</span></div>'
+        + '<div class="stage-progress-track"><span class="stage-progress-fill" style="width:' + progressPct + '%"></span></div></div></div>'
+        + '<div class="stages" id="stages" data-current-phase="' + esc(curPhase) + '">';
       STAGE_META.forEach(function(m, i) {
         const s = stages[m.k] || {};
         const files = Array.isArray(s.files) ? s.files : [];
         const who = s.who || '?';
+        const ownerName = (OWNERS[who] || {}).name || who || '—';
         const at = s.at || '';
-        const atStr = at ? at.slice(11, 19) : '—';
+        const atStr = at ? at.slice(5, 16).replace('T', ' ') : '—';
         // 状态 class
         let stCls = 'todo';
         if (i < curIdx) stCls = 'done';
@@ -783,15 +826,16 @@
         const isCurDefault = (m.k === curPhase) || (curPhase === 'done' && m.k === 'done');
         const ariaExp = isCurDefault ? 'true' : 'false';
         const isCurrentCls = (m.k === curPhase) ? ' is-current' : '';
-        html += '<div class="stage-item stage-' + m.k + ' ' + stCls + isCurrentCls + '" data-stage="' + m.k + '" data-stage-idx="' + i + '" aria-expanded="' + ariaExp + '">'
-          + '<div class="stage-header" role="button" tabindex="0" onclick="toggleStage(\'' + m.k + '\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();toggleStage(\'' + m.k + '\')}">'
+        const stateLabel = stCls === 'done' ? '已完成' : (stCls === 'current' ? '进行中' : '待开始');
+        const bodyId = 'stage-body-' + m.k;
+        html += '<section class="stage-item stage-' + m.k + ' ' + stCls + isCurrentCls + '" data-stage="' + m.k + '" data-stage-idx="' + i + '" aria-expanded="' + ariaExp + '">'
+          + '<button class="stage-header" type="button" aria-controls="' + esc(bodyId) + '" onclick="toggleStage(\'' + m.k + '\')">'
           +   '<span class="stage-marker">' + (stCls === 'done' ? '✓' : (stCls === 'current' ? '<span class="pulse"></span>' : (i + 1))) + '</span>'
-          +   '<span class="stage-name">' + m.n + '</span>'
-          +   '<span class="stage-who">' + esc(who) + '</span>'
-          +   '<span class="stage-time">' + esc(atStr) + '</span>'
+          +   '<span class="stage-title"><span class="stage-name">' + m.n + '</span><span class="stage-state">' + stateLabel + '</span></span>'
+          +   '<span class="stage-meta"><span class="stage-owner">' + esc(ownerName) + '</span><span class="stage-time">' + esc(atStr) + '</span></span>'
           +   '<span class="stage-toggle">' + (ariaExp === 'true' ? '▾' : '▸') + '</span>'
-          + '</div>'
-          + '<div class="stage-body" data-stage-body="' + m.k + '">';
+          + '</button>'
+          + '<div class="stage-body" id="' + esc(bodyId) + '" data-stage-body="' + m.k + '"><div class="stage-content">';
         if (m.k === 'done') {
           const verdict = s.verdict;
           const note = s.note;
@@ -799,21 +843,27 @@
           // 按前缀选 ok / fail class，不能再 verdict==='PASS' 硬等。
           const vCls = (verdict || '').startsWith('FAIL') ? 'fail'
                       : (verdict || '').startsWith('PASS') ? 'ok' : 'fail';
-          if (verdict) html += '<div class="stage-verdict"><span class="pill ' + vCls + '"><i></i>' + esc(verdict) + '</span></div>';
-          if (note) html += '<div class="stage-file-excerpt">' + esc(note) + '</div>';
-          if (!verdict && !note) html += '<div class="stage-empty">该阶段尚未开始</div>';
+          html += '<div class="stage-result">';
+          if (verdict) html += '<div class="stage-verdict"><span class="pill ' + vCls + '"><i></i>' + esc(verdict) + '</span><span class="stage-verdict-title">验收结论</span></div>';
+          if (note) html += '<p class="stage-file-excerpt">' + esc(note) + '</p>';
+          if (!verdict && !note) html += '<div class="stage-empty">暂无验收结论</div>';
+          html += '</div>';
         } else if (files.length === 0) {
-          html += '<div class="stage-empty">该阶段尚未开始</div>';
+          html += '<div class="stage-empty">暂无产物</div>';
         } else {
+          html += '<div class="stage-files">';
           files.forEach(function(f) {
-            html += '<div class="stage-file">'
-              + '<div class="stage-file-head"><span class="file-name">' + esc(f.name || '') + '</span>'
-              + '<span class="file-title">' + esc(f.title || '') + '</span></div>'
-              + '<div class="file-excerpt">"' + esc(f.excerpt || '') + '"</div>'
-              + '</div>';
+            const ext = String(f.name || 'FILE').split('.').pop().slice(0, 4).toUpperCase();
+            html += '<article class="stage-file">'
+              + '<div class="stage-file-head"><span class="file-icon">' + esc(ext) + '</span>'
+              + '<div class="stage-file-titles"><span class="file-title">' + esc(f.title || '未命名产物') + '</span>'
+              + '<span class="file-name">' + esc(f.name || '') + '</span></div></div>'
+              + '<p class="file-excerpt">' + esc(f.excerpt || '') + '</p>'
+              + '</article>';
           });
+          html += '</div>';
         }
-        html += '</div></div>';
+        html += '</div></div></section>';
       });
       html += '</div></div>';
     }
