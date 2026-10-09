@@ -267,6 +267,41 @@
       table.tbl { font-size:12px; }
       table.tbl td.hide-s, table.tbl th.hide-s { display:none; }
     }
+
+  /* === task-panel-v2: 阶段可展开 === */
+  .stages-card .stages { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+  .stage-item { background: var(--surface-2, #14171c); border: 1px solid var(--border, #1f2329); border-radius: 8px; overflow: hidden; }
+  .stage-item.is-current { border-color: var(--accent, #2a6df4); box-shadow: 0 0 0 1px var(--accent, #2a6df4); }
+  .stage-item.todo { opacity: 0.6; }
+  .stage-header { display: grid; grid-template-columns: 24px 90px 1fr auto 24px; align-items: center; gap: 10px; padding: 10px 14px; cursor: pointer; user-select: none; }
+  .stage-header:hover { background: rgba(255,255,255,0.02); }
+  .stage-header:focus { outline: 1px solid var(--accent, #2a6df4); outline-offset: -1px; }
+  .stage-marker { width: 24px; height: 24px; border-radius: 50%; background: #1a1d22; color: #888; font-size: 11px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .stage-item.done .stage-marker { background: #143614; color: #4f4; }
+  .stage-item.current .stage-marker { background: var(--accent, #2a6df4); color: #fff; }
+  .stage-item.is-current .stage-marker { animation: stage-pulse 2s ease-in-out infinite; }
+  @keyframes stage-pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(42,109,244,0.5); } 50% { box-shadow: 0 0 0 6px rgba(42,109,244,0); } }
+  .stage-name { font-weight: 600; color: #fff; font-size: 13px; }
+  .stage-who { color: #888; font-size: 12px; font-family: ui-monospace, monospace; }
+  .stage-time { color: #888; font-size: 11px; font-family: ui-monospace, monospace; }
+  .stage-toggle { color: #888; font-size: 12px; text-align: center; }
+  .stage-body { padding: 0 14px 12px 48px; display: none; }
+  .stage-item[aria-expanded="true"] > .stage-body { display: block; }
+  .stage-empty { color: #666; font-style: italic; font-size: 12px; padding: 6px 0; }
+  .stage-file { padding: 6px 0; border-top: 1px dashed var(--border, #1f2329); }
+  .stage-file:first-child { border-top: 0; }
+  .stage-file-head { display: flex; gap: 8px; align-items: baseline; margin-bottom: 4px; }
+  .file-name { font-family: ui-monospace, monospace; font-size: 12px; color: #4a8df4; }
+  .file-title { font-size: 12px; color: #888; }
+  .file-excerpt { color: #c0c0c0; font-size: 12px; line-height: 1.5; background: rgba(0,0,0,0.2); padding: 6px 8px; border-radius: 4px; font-style: italic; word-break: break-word; }
+  .stage-verdict { margin: 8px 0; }
+  .stage-file-excerpt { color: #c0c0c0; font-size: 12px; line-height: 1.5; padding: 6px 8px; }
+  .hist-progress { display: inline-flex; gap: 3px; align-items: center; }
+  .hist-progress .hdot { width: 8px; height: 8px; border-radius: 50%; background: #1a1d22; display: inline-block; }
+  .hist-progress .hdot.on { background: #4f4; }
+  .hist-progress .hdot.cur { background: #4a8df4; }
+  .run-id-display { font-family: ui-monospace, monospace; color: #4a8df4; }
+  .history-card .empty { color: #666; font-style: italic; padding: 12px; text-align: center; font-size: 12px; }
   </style>
 </head>
 <body>
@@ -566,11 +601,48 @@
     if (!o) return '<span class="tag ondemand">' + esc(w || '?') + '</span>';
     return '<span class="tag ' + (w === 'codex' ? 'codex' : 'xiaomi') + '">' + esc(o.name) + '</span>';
   }
+  /* task-panel-v2: 阶段展开/折叠 (accordion 单选) */
+  function toggleStage(stage) {
+    const items = document.querySelectorAll('.stage-item');
+    items.forEach(function(it) {
+      if (it.dataset.stage === stage) {
+        const cur = it.getAttribute('aria-expanded') === 'true';
+        it.setAttribute('aria-expanded', cur ? 'false' : 'true');
+        const tog = it.querySelector('.stage-toggle');
+        if (tog) tog.textContent = cur ? '▸' : '▾';
+      } else {
+        it.setAttribute('aria-expanded', 'false');
+        const tog = it.querySelector('.stage-toggle');
+        if (tog) tog.textContent = '▸';
+      }
+    });
+  }
+  /* visual_check.py 探针 */
+  window.__stageItems = function() {
+    return [...document.querySelectorAll('.stage-item')].map(function(s) {
+      const body = s.querySelector('.stage-body');
+      return {
+        stage: s.dataset.stage,
+        ariaExpanded: s.getAttribute('aria-expanded') === 'true',
+        isCurrent: s.classList.contains('is-current'),
+        bodyOffsetHeight: body ? body.offsetHeight : 0,
+      };
+    });
+  };
+  window.__currentRunIdOnPage = function() {
+    const el = document.querySelector('.current-task-card .run-id-display');
+    return el ? el.textContent.trim() : '';
+  };
+  window.__historyRunIds = function() {
+    return [...document.querySelectorAll('.history-row')].map(function(r) { return r.dataset.runId; }).filter(Boolean);
+  };
   function renderTasks(data) {
     const tasks = data.tasks || [];
     const res = data.resources || {};
     const health = data.health || {};
-    const task = pickCurrent(tasks);
+    // task-panel-v2: current_run_id 是数据源 (取自 payload 顶层)
+    const currentRunId = data.current_run_id || (tasks.slice().sort((a,b)=>String(b.updated_at||"").localeCompare(String(a.updated_at||"")))[0]||{}).run_id;
+    const task = tasks.find((t) => t.run_id === currentRunId) || pickCurrent(tasks);
 
     let html = '';
     if (!task) {
@@ -584,11 +656,14 @@
         : '<span class="pill idle"><i></i>空闲</span>';
       const attempts = typeof task.attempts === 'number' ? task.attempts : 0;
 
-      html += '<div class="card"><p class="sec">当前任务</p><div class="hero">'
+      // === 当前任务卡 v2: 状态胶囊 + 任务一句话 + run_id (含 .run-id-display 供探针) + 谁在干活 ===
+      const rid = task.run_id || '';
+      html += '<div class="card current-task-card" data-run-id="' + esc(rid) + '">'
+        + '<p class="sec">当前任务</p><div class="hero">'
         + '<div class="hero-main">'
         +   '<div>' + pill + '</div>'
         +   '<h2>' + esc(task.task_one_liner || '(无任务描述)') + '</h2>'
-        +   '<div class="sub">' + esc(task.run_id || '') + ' · 第 ' + attempts + ' 次尝试 · 开始 ' + esc(ts2hm(task.started_at) || '—') + '</div>'
+        +   '<div class="sub"><span class="run-id-display">' + esc(rid) + '</span> · 第 ' + attempts + ' 次尝试 · 开始 ' + esc(ts2hm(task.started_at) || '—') + '</div>'
         + '</div>'
         + '<div class="owner" data-state="' + (st === 'run' ? 'running' : (st === 'done' ? 'done' : 'idle')) + '">'
         +   '<span class="avatar" data-who="' + owner + '">' + esc((OWNERS[owner] || OWNERS.none).short) + '</span>'
@@ -598,12 +673,64 @@
         +   '<span class="eta"><div class="v" data-elapsed="' + esc(task.started_at || '') + '" data-stop="' + (st === 'run' ? '' : '1') + '">'
         +     esc(durBetween(task.started_at, st === 'run' ? null : task.updated_at)) + '</div><div class="k">'
         +     (st === 'run' ? '已耗时（实时）' : '总耗时') + '</div></span>'
-        + '</div>'
-        + '</div>'
-        + '<p class="sec" style="margin-top:20px">阶段</p>'
-        + renderRail(task)
-        + (task.note ? '<div style="margin-top:16px;font-size:12.5px;color:var(--text-2);background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:10px 12px">' + esc(task.note) + '</div>' : '')
+        + '</div></div>'
+        + (task.note ? '<div style="margin-top:14px;font-size:12.5px;color:var(--text-2);background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:10px 12px">' + esc(task.note) + '</div>' : '')
         + '</div>';
+
+      // === 四阶段 v2 (可展开, S12 探针目标) ===
+      const STAGE_META = [
+        { k: 'planning',  n: '① 规划' },
+        { k: 'executing', n: '② 执行' },
+        { k: 'verifying', n: '③ 验收' },
+        { k: 'done',      n: '④ 完成' },
+      ];
+      const curPhase = task.phase || 'planning';
+      const stages = task.stages || {};
+      const curIdx = STAGE_META.findIndex((x) => x.k === curPhase);
+      html += '<div class="card stages-card"><p class="sec">四阶段</p><div class="stages" id="stages" data-current-phase="' + esc(curPhase) + '">';
+      STAGE_META.forEach(function(m, i) {
+        const s = stages[m.k] || {};
+        const files = Array.isArray(s.files) ? s.files : [];
+        const who = s.who || '?';
+        const at = s.at || '';
+        const atStr = at ? at.slice(11, 19) : '—';
+        // 状态 class
+        let stCls = 'todo';
+        if (i < curIdx) stCls = 'done';
+        else if (i === curIdx) stCls = (curPhase === 'done') ? 'done' : 'current';
+        // 默认展开: 当前阶段, 或 phase==done 时 done 阶段
+        const isCurDefault = (m.k === curPhase) || (curPhase === 'done' && m.k === 'done');
+        const ariaExp = isCurDefault ? 'true' : 'false';
+        const isCurrentCls = (m.k === curPhase) ? ' is-current' : '';
+        html += '<div class="stage-item stage-' + m.k + ' ' + stCls + isCurrentCls + '" data-stage="' + m.k + '" data-stage-idx="' + i + '" aria-expanded="' + ariaExp + '">'
+          + '<div class="stage-header" role="button" tabindex="0" onclick="toggleStage(\'' + m.k + '\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();toggleStage(\'' + m.k + '\')}">'
+          +   '<span class="stage-marker">' + (stCls === 'done' ? '✓' : (stCls === 'current' ? '<span class="pulse"></span>' : (i + 1))) + '</span>'
+          +   '<span class="stage-name">' + m.n + '</span>'
+          +   '<span class="stage-who">' + esc(who) + '</span>'
+          +   '<span class="stage-time">' + esc(atStr) + '</span>'
+          +   '<span class="stage-toggle">' + (ariaExp === 'true' ? '▾' : '▸') + '</span>'
+          + '</div>'
+          + '<div class="stage-body" data-stage-body="' + m.k + '">';
+        if (m.k === 'done') {
+          const verdict = s.verdict;
+          const note = s.note;
+          if (verdict) html += '<div class="stage-verdict"><span class="pill ' + (verdict === 'PASS' ? 'ok' : 'fail') + '"><i></i>' + esc(verdict) + '</span></div>';
+          if (note) html += '<div class="stage-file-excerpt">' + esc(note) + '</div>';
+          if (!verdict && !note) html += '<div class="stage-empty">该阶段尚未开始</div>';
+        } else if (files.length === 0) {
+          html += '<div class="stage-empty">该阶段尚未开始</div>';
+        } else {
+          files.forEach(function(f) {
+            html += '<div class="stage-file">'
+              + '<div class="stage-file-head"><span class="file-name">' + esc(f.name || '') + '</span>'
+              + '<span class="file-title">' + esc(f.title || '') + '</span></div>'
+              + '<div class="file-excerpt">"' + esc(f.excerpt || '') + '"</div>'
+              + '</div>';
+          });
+        }
+        html += '</div></div>';
+      });
+      html += '</div></div>';
     }
 
     /* 左：活动流；右：资源 + 健康 */
@@ -621,7 +748,7 @@
       + '<div class="stack">' + renderResources(res) + renderProviders(data.providers) + renderHealth(health) + '</div>'
       + '</div>';
 
-    html += renderHistory(tasks);
+    html += renderHistory(tasks, currentRunId);
     $('panel-tasks').innerHTML = html;
     tickElapsed();
   }
@@ -764,25 +891,35 @@
       + '</div>';
   }
 
-  function renderHistory(tasks) {
-    const rows = tasks.slice().sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')));
-    if (!rows.length) return '';
+  function renderHistory(tasks, currentRunId) {
+    // task-panel-v2: 历史任务表**不含**当前任务 (S14 判定)
+    const rows = (tasks || []).filter((t) => t.run_id !== currentRunId)
+      .sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')));
+    if (!rows.length) return '<div class="card history-card" style="margin-top:14px"><p class="sec">历史任务（0，不含当前任务）</p><div class="empty">还没有历史任务。</div></div>';
+    const PH = ['planning','executing','verifying','done'];
     const body = rows.map((t) => {
       const st = stateOf(t);
       const pill = st === 'done' ? '<span class="pill ok"><i></i>' + esc(t.verdict || 'PASS') + '</span>'
         : st === 'fail' ? '<span class="pill fail"><i></i>' + esc(t.verdict || 'FAIL') + '</span>'
         : st === 'run' ? '<span class="pill run"><i></i>进行中</span>'
         : '<span class="pill idle"><i></i>—</span>';
-      return '<tr>'
+      const tIdx = PH.indexOf(t.phase || 'planning');
+      const isDoneT = isFinished(t);
+      const dots = PH.map(function(p, i) {
+        const c = isDoneT || (t.phase === 'done') ? 'on' : (i < tIdx ? 'on' : (i === tIdx ? 'cur' : ''));
+        return '<span class="hdot ' + c + '"></span>';
+      }).join('');
+      return '<tr class="history-row" data-run-id="' + esc(t.run_id || '') + '">'
         + '<td><div>' + esc(t.task_one_liner || '') + '</div><div class="n dim">' + esc(t.run_id || '') + '</div></td>'
         + '<td>' + pill + '</td>'
         + '<td class="n hide-s">' + esc((OWNERS[t.owner] || OWNERS.none).name) + '</td>'
         + '<td class="n hide-s">' + (typeof t.attempts === 'number' ? t.attempts : 0) + '</td>'
         + '<td class="n right">' + esc(durBetween(t.started_at, t.updated_at)) + '</td>'
+        + '<td class="hide-s" style="white-space:nowrap"><span class="hist-progress" title="' + esc(t.phase || '?') + '">' + dots + '</span></td>'
         + '</tr>';
     }).join('');
-    return '<div class="card" style="margin-top:14px"><p class="sec">历史任务（' + rows.length + '）</p>'
-      + '<table class="tbl"><thead><tr><th>任务</th><th>结论</th><th class="hide-s">负责人</th><th class="hide-s">尝试</th><th>耗时</th></tr></thead>'
+    return '<div class="card history-card" style="margin-top:14px"><p class="sec">历史任务（' + rows.length + '，不含当前任务）</p>'
+      + '<table class="tbl"><thead><tr><th>任务</th><th>结论</th><th class="hide-s">负责人</th><th class="hide-s">尝试</th><th>耗时</th><th class="hide-s">阶段</th></tr></thead>'
       + '<tbody>' + body + '</tbody></table></div>';
   }
 
