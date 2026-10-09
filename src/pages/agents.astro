@@ -75,6 +75,8 @@
     .live { display:inline-flex; align-items:center; gap:7px; font-size:12px; color:var(--text-2); background:var(--surface); border:1px solid var(--border); border-radius:999px; padding:5px 12px; }
     .live i { width:7px; height:7px; border-radius:50%; background:var(--text-3); box-shadow:0 0 0 3px var(--surface); }
     .live.is-local i { background:var(--ok); box-shadow:0 0 0 3px var(--ok-soft); }
+    /* edge-data: 边缘代理生效（手机/非 Mac 的常态）—— 与"本地绿"区分，但仍是"新鲜"语义 */
+    .live.is-edge i { background:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
     .stamp { font-size:12px; color:var(--text-3); font-family:var(--mono); }
 
     /* ===== 分段控件 ===== */
@@ -363,8 +365,11 @@
      0. 常量与静态结构
      ============================================================ */
   const POLL_MS = 10000;                                  /* 打开页面时每 10 秒刷新；无人打开 = 无请求 */
-  // realtime-data: 本地秒级通道 + CDN 回退
+  // realtime-data: 本地秒级通道 → Vercel 边缘代理 → CDN 兜底
   const LOCAL_URL = 'http://127.0.0.1:8898/data/agent-dashboard.enc.json';
+  // edge-data (2026-10-09): 同源代理，绕开"手机连不到 127.0.0.1"和"国内直连 raw.github 被 RST"两件事。
+  // Vercel 的服务器在墙外，由它去取 GitHub raw；浏览器只跟 frankofswing.com 说话（无 CORS、无混合内容）。
+  const EDGE_URL  = '/api/dash';
   const CDN_URL   = 'https://frankinvest.github.io/agent-dashboard-preview/data/agent-dashboard.enc.json';
   let activeURL = LOCAL_URL;  // 记住当前生效的通道 (供 UI 显示)
 
@@ -544,7 +549,7 @@
     const pt = await crypto.subtle.decrypt({ name:'AES-GCM', iv:b64(blob.nonce) }, key, b64(blob.ct));
     return JSON.parse(new TextDecoder().decode(pt));
   }
-  // realtime-data: 先试本地 (1.5s 超时), 失败回退 CDN
+  // realtime-data: 先试本地 (1.5s 超时) → 再试同源边缘代理 → 最后回退 CDN
   async function fetchBlob() {
     try {
       const r = await fetch(LOCAL_URL + '?t=' + Date.now(), { cache:'no-store', signal: AbortSignal.timeout(1500) });
@@ -553,24 +558,41 @@
       try { window.__channel = 'local'; } catch (e) {}
       return r.json();
     } catch (e) {
-      console.info('[dashboard] local channel unavailable, falling back to CDN');
-      activeURL = CDN_URL;
-      const r2 = await fetch(CDN_URL + '?t=' + Date.now(), { cache:'no-store' });
-      if (!r2.ok) throw new Error('CDN HTTP ' + r2.status);
-      try { window.__channel = 'cdn'; } catch (e2) {}
-      return r2.json();
+      console.info('[dashboard] local channel unavailable, trying edge proxy');
+      try {
+        const re = await fetch(EDGE_URL + '?t=' + Date.now(), { cache:'no-store', signal: AbortSignal.timeout(4000) });
+        if (!re.ok) throw new Error('edge HTTP ' + re.status);
+        const j = await re.json();
+        if (!j || !j.ct) throw new Error('edge payload invalid');   // 防止代理返回 HTML/错误页被当成数据
+        activeURL = EDGE_URL;
+        try { window.__channel = 'edge'; } catch (e1) {}
+        return j;
+      } catch (e2) {
+        console.info('[dashboard] edge proxy unavailable, falling back to CDN', e2);
+        activeURL = CDN_URL;
+        const r2 = await fetch(CDN_URL + '?t=' + Date.now(), { cache:'no-store' });
+        if (!r2.ok) throw new Error('CDN HTTP ' + r2.status);
+        try { window.__channel = 'cdn'; } catch (e3) {}
+        return r2.json();
+      }
     }
   }
-  // realtime-data: 通道指示更新 (本地=绿/实时, CDN=灰/≤10 分钟)
+  // realtime-data: 通道指示更新 (本地=绿/实时, 边缘代理=蓝绿/≤1 分钟, CDN=灰/≤10 分钟)
   function updateChannelIndicator() {
     const el = document.querySelector('.live');
     if (!el) return;
     const isLocal = (window.__channel === 'local');
+    const isEdge  = (window.__channel === 'edge');
     el.classList.toggle('is-local', isLocal);
+    el.classList.toggle('is-edge', isEdge);
     const i = el.querySelector('i');
-    if (i) i.title = isLocal ? '本地秒级通道 127.0.0.1:8898' : 'CDN 回退 frankinvest.github.io (≤10 分钟滞后)';
+    if (i) i.title = isLocal ? '本地秒级通道 127.0.0.1:8898'
+                  : isEdge  ? '边缘代理 /api/dash（Vercel 取 GitHub，滞后≈1 分钟）'
+                            : 'CDN 回退 frankinvest.github.io (≤10 分钟滞后)';
     const span = el.querySelector('span.ch');
-    if (span) span.textContent = isLocal ? '实时 · 10 秒刷新' : '≤10 分钟 · 10 秒重试';
+    if (span) span.textContent = isLocal ? '实时 · 10 秒刷新'
+                              : isEdge  ? '≤1 分钟 · 10 秒刷新'
+                                        : '≤10 分钟 · 10 秒重试';
   }
 
   async function blobHash(b) {
