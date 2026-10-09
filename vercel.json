@@ -1,3 +1,5 @@
 {
-  "cleanUrls": true
+  "cleanUrls": true,
+  "// 2026-10-09": "站点改用 Build Output API（.vercel/output）来放行 /api/dash 这个 on-demand 端点；之前 404 的原因是部署只吃 dist（纯静态），函数的产物被丢掉。",
+  "outputDirectory": ".vercel/output"
 }
