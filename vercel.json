@@ -1,9 +1,3 @@
 {
-  "cleanUrls": true,
-  "rewrites": [
-    {
-      "source": "/api/dash",
-      "destination": "https://raw.githubusercontent.com/frankinvest/agent-dashboard-preview/main/data/agent-dashboard.enc.json"
-    }
-  ]
+  "cleanUrls": true
 }
