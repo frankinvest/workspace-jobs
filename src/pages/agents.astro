@@ -1011,7 +1011,7 @@
     }).join('');
     const total = allRows.length;
     const needExpand = total > 8;
-    const expandBtn = needExpand ? '<button class="history-expand-btn" type="button" data-collapsed="1">显示全部 ' + total + ' 条</button>' : '';
+    const expandBtn = needExpand ? '<button class="history-expand-btn" type="button" data-collapsed="1" onclick="toggleHistory(this)">显示全部 ' + total + ' 条</button>' : '';
     return '<div class="card history-card' + (needExpand ? ' is-collapsed' : '') + '"><div class="history-head"><p class="sec">历史任务（'
       + (needExpand ? '默认 8 / 共 ' + total + ' 条' : '共 ' + total + ' 条')
       + '，不含当前任务）</p>' + expandBtn + '</div>'
@@ -1026,6 +1026,15 @@
       + '<th class="hide-s col-stages">阶段</th>'
       + '</tr></thead>'
       + '<tbody>' + body + '</tbody></table></div>';
+  }
+
+  function toggleHistory(btn) {
+    const card = btn.closest('.history-card');
+    if (!card) return;
+    const collapsed = card.classList.toggle('is-collapsed', btn.dataset.collapsed !== '1');
+    btn.dataset.collapsed = collapsed ? '1' : '0';
+    const total = card.querySelectorAll('.history-row').length;
+    btn.textContent = collapsed ? '显示全部 ' + total + ' 条' : '收起';
   }
 
   /* 实时计时：只更新文本，不重排 */
