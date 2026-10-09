@@ -338,6 +338,64 @@
   .stage-verdict-title { color:var(--text-2); font-size:12px; font-weight:600; }
   .stage-file-excerpt { margin:0; color:var(--text-2); font-size:12px; line-height:1.65; background:#fff; border:1px solid var(--border); border-radius:8px; padding:10px 12px; }
 
+  /* ===== 运行监控 / 任务档案 ===== */
+  .ops-card { padding-bottom:14px; }
+  .ops-head { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px; }
+  .ops-head .sec { margin:0; }
+  .ops-summary { color:var(--text-2); font-size:12px; }
+  .ops-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:10px; }
+  .ops-task { width:100%; text-align:left; font:inherit; color:inherit; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; padding:12px; cursor:pointer; }
+  .ops-task:hover { border-color:var(--accent-line); background:var(--accent-soft); }
+  .ops-task.is-selected { border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
+  .ops-task-top { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
+  .ops-task-title { color:var(--text); font-size:13.5px; font-weight:600; line-height:1.45; }
+  .health-pill { display:inline-flex; align-items:center; gap:6px; border-radius:999px; padding:3px 8px; font-size:11px; font-weight:600; white-space:nowrap; }
+  .health-pill::before { content:''; width:6px; height:6px; border-radius:50%; background:currentColor; }
+  .health-pill.healthy { color:#027a48; background:var(--ok-soft); }
+  .health-pill.attention { color:#b54708; background:var(--run-soft); }
+  .health-pill.stalled { color:#b42318; background:var(--fail-soft); }
+  .health-pill.done { color:var(--text-2); background:var(--surface-3); }
+  .ops-task-meta { display:flex; flex-wrap:wrap; gap:6px 12px; margin-top:9px; color:var(--text-2); font-size:12px; }
+  .ops-task-action { margin-top:9px; padding-top:9px; border-top:1px solid var(--border); color:var(--text-2); font-size:12px; line-height:1.55; }
+  .ops-empty { display:flex; align-items:center; gap:9px; background:var(--surface-2); border:1px dashed var(--border-2); border-radius:10px; padding:13px; color:var(--text-2); font-size:13.5px; }
+  .ops-empty::before { content:''; width:8px; height:8px; border-radius:50%; background:var(--ok); }
+
+  .task-detail-head { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap; }
+  .task-detail-title { min-width:260px; flex:1; }
+  .task-detail-kicker { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:7px; }
+  .task-detail-title h2 { margin:0; color:var(--text); font-size:20px; font-weight:600; line-height:1.4; letter-spacing:-.015em; }
+  .task-detail-meta { margin-top:7px; color:var(--text-2); font-size:12px; display:flex; gap:8px 14px; flex-wrap:wrap; }
+  .task-signal { min-width:220px; border:1px solid var(--border); border-radius:10px; background:var(--surface-2); padding:11px 12px; }
+  .task-signal .k { color:var(--text-3); font-size:11px; }
+  .task-signal .v { color:var(--text); font-size:13.5px; font-weight:600; margin-top:3px; }
+  .revision-tabs { display:flex; gap:6px; flex-wrap:wrap; margin-top:12px; }
+  .revision-tab { font:inherit; font-size:11px; font-weight:600; color:var(--text-2); background:var(--surface-3); border:1px solid var(--border); border-radius:999px; padding:4px 9px; cursor:pointer; }
+  .revision-tab.on { color:var(--accent-2); background:var(--accent-soft); border-color:var(--accent-line); }
+  .lineage-note { margin-top:7px; color:var(--text-2); font-size:12px; }
+
+  .archive-head { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px; }
+  .archive-head .sec { margin:0; }
+  .task-archive { display:flex; flex-direction:column; gap:10px; }
+  .task-group { border:1px solid var(--border); border-radius:10px; overflow:hidden; background:#fff; }
+  .task-group-row { all:unset; box-sizing:border-box; display:grid; grid-template-columns:minmax(0,1fr) auto auto auto; gap:12px; align-items:center; width:100%; padding:12px 14px; font:inherit; color:inherit; cursor:pointer; }
+  .task-group-row:hover { background:var(--surface-2); }
+  .task-group-row:focus { outline:2px solid var(--accent); outline-offset:-2px; }
+  .task-group-title { color:var(--text); font-size:13.5px; font-weight:600; line-height:1.45; }
+  .task-group-sub { margin-top:3px; color:var(--text-2); font-size:11px; font-family:var(--mono); }
+  .task-group-stat { color:var(--text-2); font-size:12px; white-space:nowrap; }
+  .task-run-strip { display:flex; gap:6px; flex-wrap:wrap; padding:0 14px 12px 14px; border-top:1px solid var(--surface-3); }
+  .task-run-chip { margin-top:10px; font:inherit; font-size:11px; color:var(--text-2); background:var(--surface-3); border:1px solid var(--border); border-radius:999px; padding:3px 8px; cursor:pointer; }
+  .task-run-chip.on { color:var(--accent-2); background:var(--accent-soft); border-color:var(--accent-line); }
+
+  .stage-file.is-expanded .file-excerpt { display:block; -webkit-line-clamp:unset; overflow:visible; }
+  .file-more { display:inline-block; margin-top:7px; padding:0; border:0; background:none; color:var(--accent-2); font:inherit; font-size:11px; font-weight:600; cursor:pointer; }
+
+  @media (max-width:700px) {
+    .task-group-row { grid-template-columns:minmax(0,1fr) auto; row-gap:7px; }
+    .task-group-stat.hide-s { display:none; }
+    .task-signal { width:100%; }
+  }
+
   @media (max-width:700px) {
     .stages-toolbar { align-items:flex-start; flex-direction:column; }
     .stage-progress { width:100%; }
@@ -442,6 +500,7 @@
     ]},
     { id:'state', name:'④ 共享状态', color:'#7c3aed', nodes:[
       { id:'bus', icon:'db', hub:true, name:'agent-bus', tech:'自建状态总线 · runs/ + JSONL', role:'任务产物 / 委派记录 / 看护日志（全流程枢纽）' },
+      { id:'task_ledger', icon:'flow', name:'任务档案库', tech:'gen_dashboard · task_id / lineage / health', role:'把 run 聚合为稳定任务，计算心跳、停滞、多轮谱系与可追溯档案' },
       { id:'snapshot', icon:'lock', name:'看板密文快照', tech:'PBKDF2 + AES-256-GCM', role:'采集 → 加密 → 推送 GitHub' },
     ]},
     { id:'delivery', name:'⑤ 交付', color:'#0ea5e9', nodes:[
@@ -458,7 +517,8 @@
     { from:'codex',    to:'xiaomi',   route:'h', y1:.50, y2:.50, kind:'handoff', label:'委派 / 回执' },
     { from:'codex',    to:'bus',      route:'v', x1:.32, x2:.30, kind:'write',   label:'写 plan / verify-report' },
     { from:'xiaomi',   to:'bus',      route:'v', x1:.30, x2:.70, kind:'write',   label:'写 status.json / exec-log' },
-    { from:'bus',      to:'snapshot', route:'h', y1:.50, y2:.50, kind:'write',   label:'采集 + 加密' },
+    { from:'bus',        to:'task_ledger', route:'h', y1:.32, y2:.32, kind:'write', label:'run → task 聚合' },
+    { from:'task_ledger',to:'snapshot',    route:'h', y1:.68, y2:.68, kind:'write', label:'健康 / 谱系快照' },
     { from:'snapshot', to:'site',     route:'v', x1:.50, x2:.50, kind:'deliver', label:'密文 push' },
   ];
   const FLOW_KINDS = [
@@ -476,6 +536,7 @@
     cpu:     '<rect x="7" y="7" width="10" height="10" rx="2"/><path d="M10 2v3M14 2v3M10 19v3M14 19v3M2 10h3M2 14h3M19 10h3M19 14h3"/>',
     sparkle: '<path d="M12 3.5l1.9 5.1 5.1 1.9-5.1 1.9L12 17.5l-1.9-5.1L5 10.5l5.1-1.9L12 3.5Z"/>',
     db:      '<ellipse cx="12" cy="6" rx="7.5" ry="3"/><path d="M4.5 6v12c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3V6"/><path d="M4.5 12c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3"/>',
+    flow:    '<rect x="4" y="4" width="6" height="6" rx="1.5"/><rect x="14" y="14" width="6" height="6" rx="1.5"/><path d="M10 7h4a3 3 0 0 1 3 3v4M14 17h-4a3 3 0 0 1-3-3V10"/>',
     lock:    '<rect x="4.5" y="10" width="15" height="10.5" rx="2.5"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>',
     globe:   '<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c2.4 2.5 3.7 5.6 3.7 9S14.4 18.5 12 21c-2.4-2.5-3.7-5.6-3.7-9S9.6 5.5 12 3Z"/>',
     check:   '<path d="M20 6.5 9.5 17 4 11.5"/>',
@@ -490,6 +551,7 @@
     { n:'feishu-collab',       t:'自建 skill · 三方协作规则',         m:'默认加载', h:'Codex 常驻 + 小秘 workspace 已装', e:'~/.codex/skills/feishu-collab/SKILL.md' },
     { n:'frankofswing-dev',    t:'自建 skill · 站点开发约定',         m:'默认加载', h:'同上',                                e:'~/.codex/skills/frankofswing-dev/SKILL.md' },
     { n:'agent-bus',           t:'自建状态总线（JSON / JSONL）',      m:'按需', h:'双方读写',                            e:'~/.openclaw/agent-bus/runs/<run-id>/' },
+    { n:'任务档案库',           t:'稳定 task_id + 多轮 run 谱系 + 心跳健康模型', m:'按需', h:'gen_dashboard 每 60 秒聚合',          e:'gen_dashboard.py:_build_task_groups / _health_for_task' },
     { n:'delegate / ask_codex', t:'自建委派脚本（自带两行群回执）',    m:'按需', h:'给指令拉起',                          e:'za/delegate.py · za/ask_codex.py' },
     { n:'agent-dashboard',     t:'自建采集 + 加密 + 推送',            m:'常驻', h:'launchd ai.agent-dashboard.push（每 60 秒）', e:'~/.openclaw/agent-dashboard/' },
     { n:'watchdog',            t:'自建看护（ps 探活 + 连续 2 次才判 down）', m:'常驻', h:'launchd ai.agent-bus.watchdog（每 60 秒）', e:'~/.local/share/agent-bus/watchdog.py' },
@@ -752,15 +814,97 @@
   window.__historyRunIds = function() {
     return [...document.querySelectorAll('.history-row')].map(function(r) { return r.dataset.runId; }).filter(Boolean);
   };
+
+  let selectedTaskId = null;
+  let selectedRunByTask = {};
+
+  function relAge(seconds) {
+    if (seconds == null) return '—';
+    if (seconds < 60) return seconds + ' 秒前';
+    if (seconds < 3600) return Math.floor(seconds / 60) + ' 分钟前';
+    return Math.floor(seconds / 3600) + ' 小时前';
+  }
+
+  function healthPill(health) {
+    const h = health || {};
+    return '<span class="health-pill ' + esc(h.state || 'attention') + '">' + esc(h.label || '状态未知') + '</span>';
+  }
+
+  function renderOps(groups) {
+    const active = (groups || []).filter((g) => g.status === 'active');
+    const body = active.length ? '<div class="ops-grid">' + active.map((g) => {
+      const h = g.health || {};
+      const task = (currentData.tasks || []).find((t) => t.run_id === g.latest_run_id) || {};
+      const selected = g.task_id === selectedTaskId;
+      return '<button class="ops-task' + (selected ? ' is-selected' : '') + '" type="button" onclick="selectDashboardTask(\'' + esc(g.task_id) + '\')">'
+        + '<div class="ops-task-top"><span class="ops-task-title">' + esc(g.title || g.task_id) + '</span>' + healthPill(h) + '</div>'
+        + '<div class="ops-task-meta"><span>阶段：' + esc((PHASES.find((p) => p.k === task.phase) || {}).n || task.phase || '—') + '</span>'
+        + '<span>负责人：' + esc((OWNERS[task.owner] || OWNERS.none).name) + '</span>'
+        + '<span>最后活动：' + esc(relAge(h.ageSec)) + '</span><span>第 ' + esc(String(g.latest_revision || 1)) + ' 轮</span></div>'
+        + '<div class="ops-task-action">' + esc(h.currentAction ? ('当前动作：' + h.currentAction) : '尚无新的活动记录') + '</div>'
+        + '</button>';
+    }).join('') + '</div>' : '<div class="ops-empty">当前没有运行中的任务；下面可以直接查看历史任务档案。</div>';
+    return '<div class="card ops-card"><div class="ops-head"><p class="sec">运行监控</p>'
+      + '<span class="ops-summary">' + active.length + ' 个进行中 · ' + groups.length + ' 个任务</span></div>' + body + '</div>';
+  }
+
+  function renderTaskArchive(groups) {
+    const rows = (groups || []).map((g) => {
+      const h = g.health || {};
+      const selected = g.task_id === selectedTaskId;
+      const runChips = (g.runs || []).map((r) => '<button class="task-run-chip' + (r.run_id === selectedRunByTask[g.task_id] ? ' on' : '') + '" type="button" onclick="selectDashboardRun(\'' + esc(g.task_id) + '\',\'' + esc(r.run_id) + '\')">第 ' + esc(String(r.revision)) + ' 轮 · ' + esc(r.verdict || r.phase || '—') + '</button>').join('');
+      return '<div class="task-group"><button class="task-group-row" type="button" data-task-id="' + esc(g.task_id) + '" onclick="selectDashboardTask(\'' + esc(g.task_id) + '\')">'
+        + '<span><span class="task-group-title">' + esc(g.title || g.task_id) + '</span><span class="task-group-sub">' + esc(g.task_id) + '</span></span>'
+        + healthPill(h)
+        + '<span class="task-group-stat hide-s">' + esc(String(g.run_count || 1)) + ' 轮 · ' + esc((OWNERS[g.owner] || OWNERS.none).name) + '</span>'
+        + '<span class="task-group-stat">' + esc(relAge(h.ageSec)) + '</span>'
+        + '</button>'
+        + ((g.runs || []).length > 1 ? '<div class="task-run-strip">' + runChips + '</div>' : '')
+        + '</div>';
+    }).join('');
+    return '<div class="card"><div class="archive-head"><p class="sec">任务档案</p><span class="ops-summary">'
+      + groups.length + ' 个稳定任务 · ' + groups.reduce((n, g) => n + (g.run_count || 0), 0) + ' 轮执行</span></div>'
+      + '<div class="task-archive">' + rows + '</div></div>';
+  }
+
+  window.selectDashboardTask = function(taskId) {
+    selectedTaskId = taskId;
+    renderTasks(currentData || {});
+  };
+
+  window.selectDashboardRun = function(taskId, runId) {
+    selectedTaskId = taskId;
+    selectedRunByTask[taskId] = runId;
+    renderTasks(currentData || {});
+  };
+
+  window.toggleArtifact = function(el) {
+    const card = el.closest('.stage-file');
+    if (!card) return;
+    card.classList.toggle('is-expanded');
+    const btn = card.querySelector('.file-more');
+    if (btn) btn.textContent = card.classList.contains('is-expanded') ? '收起摘要' : '展开摘要';
+  };
+
   function renderTasks(data) {
     const tasks = data.tasks || [];
     const res = data.resources || {};
     const health = data.health || {};
-    // task-panel-v2: current_run_id 是数据源 (取自 payload 顶层)
-    const currentRunId = data.current_run_id || (tasks.slice().sort((a,b)=>String(b.updated_at||"").localeCompare(String(a.updated_at||"")))[0]||{}).run_id;
-    const task = tasks.find((t) => t.run_id === currentRunId) || pickCurrent(tasks);
+    const groups = data.task_groups || [];
+    if (!selectedTaskId || !groups.some((g) => g.task_id === selectedTaskId)) {
+      const first = groups.find((g) => g.status === 'active') || groups[0];
+      selectedTaskId = first ? first.task_id : null;
+    }
+    const selectedGroup = groups.find((g) => g.task_id === selectedTaskId) || null;
+    if (selectedGroup && !selectedRunByTask[selectedGroup.task_id]) {
+      selectedRunByTask[selectedGroup.task_id] = selectedGroup.latest_run_id;
+    }
+    const selectedRunId = selectedGroup
+      ? (selectedRunByTask[selectedGroup.task_id] || selectedGroup.latest_run_id)
+      : data.current_run_id;
+    const task = tasks.find((t) => t.run_id === selectedRunId) || pickCurrent(tasks);
 
-    let html = '';
+    let html = renderOps(groups);
     if (!task) {
       html += '<div class="card"><p class="sec">当前任务</p><div class="empty">还没有任务记录。派一个任务给我，这里会出现它的全流程。</div></div>';
     } else {
@@ -772,23 +916,26 @@
         : '<span class="pill idle"><i></i>空闲</span>'));
       const attempts = typeof task.attempts === 'number' ? task.attempts : 0;
 
-      // === 当前任务卡 v2: 状态胶囊 + 任务一句话 + run_id (含 .run-id-display 供探针) + 谁在干活 ===
+      // === 任务详情：稳定任务 + 当前轮次 + 健康信号 + 产物阶段 ===
       const rid = task.run_id || '';
-      html += '<div class="card current-task-card" data-run-id="' + esc(rid) + '">'
-        + '<p class="sec">当前任务</p><div class="hero">'
-        + '<div class="hero-main">'
-        +   '<div>' + pill + '</div>'
-        +   '<h2>' + esc(task.task_one_liner || '(无任务描述)') + '</h2>'
-        +   '<div class="sub"><span class="run-id-display">' + esc(rid) + '</span> · 第 ' + attempts + ' 次尝试 · 开始 ' + esc(ts2hm(task.started_at) || '—') + '</div>'
-        + '</div>'
-        + '<div class="owner" data-state="' + (st === 'run' ? 'running' : (st === 'done' ? 'done' : 'idle')) + '">'
-        +   '<span class="avatar" data-who="' + owner + '">' + esc((OWNERS[owner] || OWNERS.none).short) + '</span>'
-        +   '<span><span class="lbl">' + (st === 'done' ? '负责人' : '现在谁在干活') + '</span>'
-        +     '<div class="nm">' + esc((OWNERS[owner] || OWNERS.none).name) + '</div>'
-        +     '<div class="rl">' + esc((OWNERS[owner] || OWNERS.none).role) + '</div></span>'
-        +   '<span class="eta"><div class="v" data-elapsed="' + esc(task.started_at || '') + '" data-stop="' + (st === 'run' ? '' : '1') + '">'
-        +     esc(durBetween(task.started_at, st === 'run' ? null : task.updated_at)) + '</div><div class="k">'
-        +     (st === 'run' ? '已耗时（实时）' : '总耗时') + '</div></span>'
+      const group = selectedGroup || {};
+      const groupHealth = group.health || task.task_health || {};
+      const runs = group.runs || [];
+      const revisionTabs = runs.length > 1 ? '<div class="revision-tabs">' + runs.map((r) => '<button class="revision-tab' + (r.run_id === rid ? ' on' : '') + '" type="button" onclick="selectDashboardRun(\'' + esc(group.task_id) + '\',\'' + esc(r.run_id) + '\')">第 ' + esc(String(r.revision)) + ' 轮 · ' + esc(r.verdict || r.phase || '—') + '</button>').join('') + '</div>' : '';
+      const lineage = task.previous_run_id ? '<div class="lineage-note">承接上一轮 <span class="run-id-display">' + esc(task.previous_run_id) + '</span></div>' : '';
+      html += '<div class="card current-task-card" data-run-id="' + esc(rid) + '" data-task-id="' + esc(group.task_id || task.task_id || '') + '">'
+        + '<div class="task-detail-head"><div class="task-detail-title">'
+        + '<div class="task-detail-kicker"><p class="sec" style="margin:0">任务详情</p>' + pill
+        + '<span class="tag ondemand">' + esc(group.task_id || task.task_id || rid) + ' · 第 ' + esc(String(group.latest_revision || task.task_revision || 1)) + ' 轮</span></div>'
+        + '<h2>' + esc(task.task_one_liner || '(无任务描述)') + '</h2>'
+        + '<div class="task-detail-meta"><span>负责人：' + esc((OWNERS[owner] || OWNERS.none).name) + '</span>'
+        + '<span>开始：' + esc(task.started_at ? task.started_at.slice(5, 16).replace('T', ' ') : '—') + '</span>'
+        + '<span>' + (st === 'run' ? '已耗时（实时）：' : '总耗时：') + esc(durBetween(task.started_at, st === 'run' ? null : task.updated_at)) + '</span>'
+        + '<span>run：<span class="run-id-display">' + esc(rid) + '</span></span></div>'
+        + revisionTabs + lineage + '</div>'
+        + '<div class="task-signal"><div>' + healthPill(groupHealth) + '</div>'
+        + '<div class="k" style="margin-top:9px">最后活动</div><div class="v">' + esc(relAge(groupHealth.ageSec)) + '</div>'
+        + '<div class="k" style="margin-top:8px">当前动作</div><div class="v" style="font-size:12px;line-height:1.55">' + esc(groupHealth.currentAction || '无新增动作') + '</div>'
         + '</div></div>'
         + (task.note ? '<div style="margin-top:14px;font-size:12px;color:var(--text-2);background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:10px 12px">' + esc(task.note) + '</div>' : '')
         + '</div>';
@@ -859,6 +1006,7 @@
               + '<div class="stage-file-titles"><span class="file-title">' + esc(f.title || '未命名产物') + '</span>'
               + '<span class="file-name">' + esc(f.name || '') + '</span></div></div>'
               + '<p class="file-excerpt">' + esc(f.excerpt || '') + '</p>'
+              + '<button class="file-more" type="button" onclick="toggleArtifact(this)">展开摘要</button>'
               + '</article>';
           });
           html += '</div>';
@@ -883,7 +1031,7 @@
       + '<div class="stack">' + renderResources(res) + renderProviders(data.providers) + renderHealth(health) + '</div>'
       + '</div>';
 
-    html += renderHistory(tasks, currentRunId);
+    html += renderTaskArchive(groups);
     $('panel-tasks').innerHTML = html;
     tickElapsed();
   }
@@ -1134,6 +1282,7 @@
     codex:    { project:'Codex CLI + 本机配置的强模型端点', run:'按需 · 被桥接唤起', files:['~/.codex/config.toml','~/.codex/skills/','~/.codex/sessions/'], env:[], note:'贵、额度有限 → 只做"想"和"查"：澄清需求、出方案、写测试方案、独立验收。' },
     xiaomi:   { project:'OpenClaw agent:main + 本地模型端点', run:'按需 · 被网关唤起', files:['~/.openclaw/workspace/main/','~/.openclaw/workspace/main/skills/'], env:[], note:'便宜、额度足 → 做"写"和"跑"：按方案落地、按测试方案写测试、跑完把证据交回来。' },
     bus:      { project:'自建状态总线（无第三方依赖）', run:'按需读写', files:['~/.openclaw/agent-bus/runs/','~/.openclaw/agent-bus/delegations/','~/.openclaw/agent-bus/watchdog.log'], env:[], note:'一次任务的全部产物落在这里；看板与 watchdog 都从这里读，状态不藏在模型会话里。' },
+    task_ledger: { project:'自建任务档案与谱系模型', run:'按需 · gen_dashboard 每 60 秒聚合', files:['gen_dashboard.py:_build_task_groups','gen_dashboard.py:_health_for_task','dashboard.json:task_groups'], env:[], note:'把执行批次 run 聚合成稳定 task_id；记录多轮 revision、previous_run_id、最后活动、停滞等级、当前动作与任务档案。' },
     snapshot: { project:'自建（Python cryptography + 浏览器 WebCrypto）', run:'常驻 · launchd ai.agent-dashboard.push（每 60 秒，内容没变就跳过）', files:['~/.openclaw/agent-dashboard/gen_dashboard.py','~/.openclaw/agent-dashboard/push_dashboard.py'], env:[], note:'密码只在本机权限 600 的文件里；仓库里只有密文，页面在浏览器端解密。' },
     site:     { project:'Astro 静态站 + Vercel（推送走 GitHub Contents API）', run:'远端 · Vercel 自动构建', files:['~/.openclaw/workspace-jobs/src/pages/agents.astro'], env:[], note:'公开站点；/agents/ 有密码门，并且 noindex 不被搜索引擎收录。' },
   };
@@ -1166,6 +1315,15 @@
       const runs = data.tasks || [];
       f.push(['任务记录', runs.length + ' 条，最新 ' + (runs.length ? runs[runs.length - 1].run_id : '—')]);
       f.push(['委派记录', ((data.resources || {}).recentDelegations || []).length + ' 次（今日）']);
+    }
+    if (id === 'task_ledger') {
+      const groups = data.task_groups || [];
+      const active = groups.filter((g) => g.status === 'active');
+      const stalled = active.filter((g) => (g.health || {}).state === 'stalled');
+      const multi = groups.filter((g) => (g.run_count || 0) > 1);
+      f.push(['稳定任务', groups.length + ' 个']);
+      f.push(['进行中', active.length + ' 个 · 疑似停滞 ' + stalled.length + ' 个']);
+      f.push(['多轮任务', multi.length + ' 个']);
     }
     if (id === 'snapshot') {
       f.push(['最近生成', fmtDT(data.generatedAt)]);
