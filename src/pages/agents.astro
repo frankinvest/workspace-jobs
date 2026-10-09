@@ -662,7 +662,7 @@
     'ai.agent-dashboard.push': '看板推送',
   };
 
-  /* 模型平台侧（官方接口拿到的权威数据）：GLM Coding Plan 额度 + DeepSeek 余额 */
+  /* 模型平台侧（官方接口拿到的权威数据）：GLM 额度 + DeepSeek 余额 */
   function pbar(pct) {
     const p = Math.max(0, Math.min(100, Number(pct) || 0));
     const color = p >= 90 ? 'var(--fail)' : p >= 70 ? 'var(--run)' : 'var(--accent)';
@@ -678,7 +678,7 @@
       const period = lims.filter((L) => L.number === 1)[0] || lims[lims.length - 1] || {};
       const short = lims.filter((L) => L.number !== 1)[0] || {};
       const resetTxt = period.resetAt ? String(period.resetAt).slice(5, 16).replace('T', ' ') + ' 重置' : '';
-      rows.push('<div class="pv-h">GLM Coding Plan · ' + esc(g.level || '') + ' <span class="tag default">平台接口</span></div>');
+      rows.push('<div class="pv-h">' + esc(g.name || '编程套餐') + ' · ' + esc(g.level || '') + ' <span class="tag default">平台接口</span></div>');
       rows.push('<div class="bar" style="grid-template-columns:auto 1fr auto"><span class="bl">周期额度</span>'
         + pbar(period.percentage) + '<span class="bv">' + (period.percentage == null ? '—' : period.percentage + '%') + '</span></div>');
       rows.push('<div class="pv-s">已用 ' + num(period.used) + ' / ' + num(period.usage) + ' · 剩 ' + num(period.remaining)
@@ -690,11 +690,11 @@
       rows.push('<div class="pv-s">今日 token：' + shortNum(g.todayTokens) + (g.todayCalls ? ' · 调用 ' + num(g.todayCalls) + ' 次' : '')
         + ((g.todayByModel && g.todayByModel.length) ? '（' + g.todayByModel.map((m) => esc(m.model) + ' ' + shortNum(m.tokens)).join('、') + '）' : '') + '</div>');
     } else {
-      rows.push('<div class="pv-h">GLM Coding Plan <span class="tag ondemand">接口取不到</span></div>'
+      rows.push('<div class="pv-h">编程套餐 <span class="tag ondemand">接口取不到</span></div>'
         + '<div class="pv-s">' + esc(g.error || '未配置 key') + '</div>');
     }
 
-    rows.push('<div class="pv-h" style="margin-top:12px">DeepSeek · 按量付费 <span class="tag default">官方余额</span></div>');
+    rows.push('<div class="pv-h" style="margin-top:12px">' + esc(d.name || '按量付费平台') + ' · 按量付费 <span class="tag default">官方余额</span></div>');
     if (d.ok) {
       rows.push('<div class="stats" style="margin-top:6px">'
         + '<div class="stat"><div class="k">余额</div><div class="v">¥' + (d.balance == null ? '—' : d.balance) + '</div></div>'
@@ -705,7 +705,7 @@
     }
 
     const mx = p.minimax || {};
-    rows.push('<div class="pv-h" style="margin-top:12px">MiniMax（小秘）<span class="tag default">浏览器会话</span></div>');
+    rows.push('<div class="pv-h" style="margin-top:12px">' + esc(mx.name || '小秘的模型平台') + '<span class="tag default">浏览器会话</span></div>');
     if (mx.ok) {
       const gm = (mx.models || [])[0] || {};
       const num1 = (s) => { const v = parseFloat(String(s || '').replace('%', '')); return isFinite(v) ? v : 0; };
