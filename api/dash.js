@@ -18,7 +18,7 @@ const RAW_BY_REF = (ref) => `https://raw.githubusercontent.com/${REPO}/${ref}/${
 const ATOM = `https://github.com/${REPO}/commits/${BRANCH}.atom`;
 const API_URL = `https://api.github.com/repos/${REPO}/contents/${PATH}?ref=${BRANCH}`;
 
-const SHA_TTL_MS = 15000; // SHA 缓存 15s：省 github.com 抓取，同时保证 ≤15s 的新鲜度
+const SHA_TTL_MS = 5000; // SHA 缓存 5s：实测端到端延迟 22.4s@15s → 收紧到 5s（≈10s 级）
 let shaCache = null;
 
 function isBlob(txt) {
