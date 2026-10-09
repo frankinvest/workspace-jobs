@@ -156,6 +156,8 @@
     .bar .bt { height:6px; border-radius:3px; background:var(--surface-3); overflow:hidden; }
     .bar .bf { height:100%; background:var(--accent); border-radius:3px; }
     .bar .bv { font-family:var(--mono); font-size:11px; color:var(--text-2); font-variant-numeric:tabular-nums; }
+    .pv-h { font-size:12.5px; font-weight:600; color:var(--text); margin:0 0 8px; display:flex; align-items:center; gap:8px; }
+    .pv-s { font-size:11.5px; color:var(--text-3); margin-top:6px; line-height:1.5; }
 
     /* ===== 健康 ===== */
     .svc { display:flex; align-items:center; gap:9px; padding:6px 0; font-size:12.5px; }
@@ -616,7 +618,7 @@
 
     html += '<div class="cols" style="margin-top:14px">'
       + '<div class="card"><p class="sec">活动流（最近 ' + Math.min(9, events.length) + ' 条）</p><div class="feed">' + feed + '</div></div>'
-      + '<div class="stack">' + renderResources(res) + renderHealth(health) + '</div>'
+      + '<div class="stack">' + renderResources(res) + renderProviders(data.providers) + renderHealth(health) + '</div>'
       + '</div>';
 
     html += renderHistory(tasks);
@@ -659,6 +661,51 @@
     'ai.agent-bus.watchdog': '看护 watchdog',
     'ai.agent-dashboard.push': '看板推送',
   };
+
+  /* 模型平台侧（官方接口拿到的权威数据）：GLM Coding Plan 额度 + DeepSeek 余额 */
+  function pbar(pct) {
+    const p = Math.max(0, Math.min(100, Number(pct) || 0));
+    const color = p >= 90 ? 'var(--fail)' : p >= 70 ? 'var(--run)' : 'var(--accent)';
+    return '<span class="bt"><span class="bf" style="width:' + p.toFixed(1) + '%;background:' + color + '"></span></span>';
+  }
+  function renderProviders(p) {
+    p = p || {};
+    const g = p.glm || {}, d = p.deepseek || {};
+    const rows = [];
+
+    if (g.ok) {
+      const lims = g.limits || [];
+      const period = lims.filter((L) => L.number === 1)[0] || lims[lims.length - 1] || {};
+      const short = lims.filter((L) => L.number !== 1)[0] || {};
+      const resetTxt = period.resetAt ? String(period.resetAt).slice(5, 16).replace('T', ' ') + ' 重置' : '';
+      rows.push('<div class="pv-h">GLM Coding Plan · ' + esc(g.level || '') + ' <span class="tag default">平台接口</span></div>');
+      rows.push('<div class="bar" style="grid-template-columns:auto 1fr auto"><span class="bl">周期额度</span>'
+        + pbar(period.percentage) + '<span class="bv">' + (period.percentage == null ? '—' : period.percentage + '%') + '</span></div>');
+      rows.push('<div class="pv-s">已用 ' + num(period.used) + ' / ' + num(period.usage) + ' · 剩 ' + num(period.remaining)
+        + (resetTxt ? ' · ' + esc(resetTxt) : '') + '</div>');
+      if (short.usage) {
+        rows.push('<div class="bar" style="grid-template-columns:auto 1fr auto;margin-top:6px"><span class="bl">5 小时窗口</span>'
+          + pbar(short.percentage) + '<span class="bv">' + num(short.used) + '/' + num(short.usage) + '</span></div>');
+      }
+      rows.push('<div class="pv-s">今日 token：' + shortNum(g.todayTokens) + (g.todayCalls ? ' · 调用 ' + num(g.todayCalls) + ' 次' : '')
+        + ((g.todayByModel && g.todayByModel.length) ? '（' + g.todayByModel.map((m) => esc(m.model) + ' ' + shortNum(m.tokens)).join('、') + '）' : '') + '</div>');
+    } else {
+      rows.push('<div class="pv-h">GLM Coding Plan <span class="tag ondemand">接口取不到</span></div>'
+        + '<div class="pv-s">' + esc(g.error || '未配置 key') + '</div>');
+    }
+
+    rows.push('<div class="pv-h" style="margin-top:12px">DeepSeek · 按量付费 <span class="tag default">官方余额</span></div>');
+    if (d.ok) {
+      rows.push('<div class="stats" style="margin-top:6px">'
+        + '<div class="stat"><div class="k">余额</div><div class="v">¥' + (d.balance == null ? '—' : d.balance) + '</div></div>'
+        + '<div class="stat"><div class="k">今日已消耗</div><div class="v">¥' + (d.spentToday == null ? '—' : d.spentToday.toFixed(2)) + '</div></div>'
+        + '</div>');
+    } else {
+      rows.push('<div class="pv-s">' + esc(d.error || '未配置 key') + '</div>');
+    }
+
+    return '<div class="card"><p class="sec">模型额度 / 余额</p>' + rows.join('') + '</div>';
+  }
   const WD_TEXT = {
     'down': '检测到组件不可用', 'restart-attempt': '尝试重启', 'restart-ok': '重启成功',
     'restart-failed': '重启失败', 'healthy': '健康检查通过',
