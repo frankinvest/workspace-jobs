@@ -32,7 +32,14 @@
       --idle-soft:#f2f4f7;
       --r:12px; --r-sm:8px;
       --shadow:0 1px 2px rgba(16,24,40,.05);
+      
       --mono:ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+      /* plan §1: V1 字号阶梯 (6 组合) + V2 8px 间距 */
+      --fs-hero:22px; --fs-title:17px; --fs-secondary:14px;
+      --fs-body:13.5px; --fs-meta:12px; --fs-label:11px;
+      --fw-regular:400; --fw-medium:500; --fw-semibold:600;
+      --space-1:4px; --space-2:8px; --space-3:12px; --space-4:16px; --space-5:24px;
+
     }
     html { -webkit-text-size-adjust: 100%; }
     body {
@@ -49,42 +56,43 @@
     .login-card { background:var(--surface); border:1px solid var(--border); border-radius:14px; box-shadow:0 1px 3px rgba(16,24,40,.08); padding:26px; }
     .brand { display:flex; align-items:center; gap:10px; margin-bottom:18px; }
     .brand-mark { width:30px; height:30px; border-radius:9px; background:var(--accent); color:#fff; display:grid; place-items:center; flex:none; }
-    .brand-name { font-size:16px; font-weight:600; letter-spacing:-.01em; }
+    .brand-name { font-size:17px; font-weight:600; letter-spacing:-.01em; }
     #login h1 { margin:0 0 4px; font-size:14px; font-weight:500; color:var(--text-2); }
-    #login .hint { color:var(--text-3); font-size:12.5px; margin:0 0 18px; line-height:1.6; }
+    #login .hint { color:var(--text-3); font-size:12px; margin:0 0 18px; line-height:1.6; }
     #login label { display:block; font-size:12px; font-weight:500; color:var(--text-2); margin-bottom:6px; }
     #pw { width:100%; padding:10px 12px; font:inherit; background:#fff; color:var(--text); border:1px solid var(--border-2); border-radius:var(--r-sm); outline:none; transition:border-color .15s, box-shadow .15s; }
     #pw:focus { border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
     #btn { width:100%; margin-top:10px; padding:11px; background:var(--accent); color:#fff; border:0; border-radius:var(--r-sm); font:inherit; font-weight:600; cursor:pointer; transition:background .15s; }
     #btn:hover { background:var(--accent-2); }
     #btn:disabled { background:var(--border-2); cursor:not-allowed; }
-    #error { color:var(--fail); margin-top:10px; min-height:18px; font-size:12.5px; }
+    #error { color:var(--fail); margin-top:10px; min-height:18px; font-size:12px; }
 
     /* ===== 顶栏 ===== */
     #app { display:none; }
     .topbar { display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-bottom:18px; }
-    .topbar .brand-name { font-size:16px; }
+    .topbar .brand-name { font-size:17px; }
     .topbar .spacer { flex:1; }
     .live { display:inline-flex; align-items:center; gap:7px; font-size:12px; color:var(--text-2); background:var(--surface); border:1px solid var(--border); border-radius:999px; padding:5px 12px; }
-    .live i { width:7px; height:7px; border-radius:50%; background:var(--ok); box-shadow:0 0 0 3px var(--ok-soft); }
+    .live i { width:7px; height:7px; border-radius:50%; background:var(--text-3); box-shadow:0 0 0 3px var(--surface); }
+    .live.is-local i { background:var(--ok); box-shadow:0 0 0 3px var(--ok-soft); }
     .stamp { font-size:12px; color:var(--text-3); font-family:var(--mono); }
 
     /* ===== 分段控件 ===== */
     .seg { display:inline-flex; background:#ebedf1; border-radius:10px; padding:3px; gap:2px; margin-bottom:18px; }
-    .seg button { border:0; background:none; font:inherit; font-size:13px; font-weight:500; color:var(--text-2); padding:7px 16px; border-radius:8px; cursor:pointer; transition:background .15s,color .15s; }
+    .seg button { border:0; background:none; font:inherit; font-size:13.5px; font-weight:500; color:var(--text-2); padding:7px 17px; border-radius:8px; cursor:pointer; transition:background .15s,color .15s; }
     .seg button:hover { color:var(--text); }
     .seg button.on { background:#fff; color:var(--text); box-shadow:var(--shadow); }
 
     /* ===== 卡片 ===== */
-    .card { background:var(--surface); border:1px solid var(--border); border-radius:var(--r); box-shadow:var(--shadow); padding:18px; }
-    .card + .card { margin-top:14px; }
+    .card { background:var(--surface); border:1px solid var(--border); border-radius:var(--r); box-shadow:var(--shadow); padding:16px; }
+    .card + .card { margin-top:12px; }
     .sec { font-size:11px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--text-3); margin:0 0 12px; }
     .cols { display:grid; grid-template-columns:minmax(0,1.55fr) minmax(0,1fr); gap:14px; align-items:start; }
     .cols-3 { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; align-items:start; }
     .stack { display:flex; flex-direction:column; gap:14px; }
     .stack > .card { margin-top:0; flex:1; }
     .muted { color:var(--text-3); }
-    .empty { color:var(--text-3); font-size:13px; padding:10px 0; }
+    .empty { color:var(--text-3); font-size:13.5px; padding:10px 0; }
 
     /* ===== 胶囊 / 徽章 ===== */
     .pill { display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600; padding:4px 10px; border-radius:999px; white-space:nowrap; }
@@ -104,19 +112,19 @@
     .hero { display:flex; gap:22px; align-items:center; justify-content:space-between; flex-wrap:wrap; }
     .hero-main { min-width:280px; flex:1; }
     .hero h2 { margin:10px 0 6px; font-size:20px; font-weight:600; letter-spacing:-.015em; line-height:1.4; }
-    .hero .sub { color:var(--text-3); font-size:12.5px; font-family:var(--mono); }
+    .hero .sub { color:var(--text-3); font-size:12px; font-family:var(--mono); }
     .owner { display:flex; align-items:center; gap:14px; padding:14px 18px; border:1px solid var(--border); border-radius:var(--r); background:var(--surface-2); min-width:300px; }
     .owner[data-state="running"] { border-color:var(--run-line); background:var(--run-soft); }
     .owner[data-state="done"] { border-color:var(--ok-line); background:var(--ok-soft); }
-    .avatar { width:42px; height:42px; border-radius:50%; display:grid; place-items:center; font-size:15px; font-weight:700; flex:none; background:#fff; border:1px solid var(--border); }
+    .avatar { width:42px; height:42px; border-radius:50%; display:grid; place-items:center; font-size:14px; font-weight:600; flex:none; background:#fff; border:1px solid var(--border); }
     .avatar[data-who="codex"] { color:var(--accent-2); background:var(--accent-soft); border-color:var(--accent-line); }
     .avatar[data-who="xiaomi"] { color:#b54708; background:#fef0c7; border-color:var(--run-line); }
-    .owner .lbl { font-size:10.5px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--text-3); }
-    .owner .nm { font-size:19px; font-weight:700; letter-spacing:-.01em; margin-top:1px; }
-    .owner .rl { font-size:11.5px; color:var(--text-2); margin-top:1px; }
+    .owner .lbl { font-size:11px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--text-3); }
+    .owner .nm { font-size:17px; font-weight:600; letter-spacing:-.01em; margin-top:1px; }
+    .owner .rl { font-size:12px; color:var(--text-2); margin-top:1px; }
     .owner .eta { margin-left:auto; text-align:right; }
-    .owner .eta .v { font-size:17px; font-weight:600; font-family:var(--mono); font-variant-numeric:tabular-nums; }
-    .owner .eta .k { font-size:10.5px; color:var(--text-3); }
+    .owner .eta .v { font-size:14px; font-weight:600; font-family:var(--mono); font-variant-numeric:tabular-nums; }
+    .owner .eta .k { font-size:11px; color:var(--text-3); }
 
     /* ===== 任务进度：阶段轨 ===== */
     .rail { position:relative; display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); margin:22px 0 4px; }
@@ -126,29 +134,29 @@
     .rail-step { position:relative; display:flex; flex-direction:column; align-items:center; text-align:center; gap:7px; padding:0 4px; }
     .rail-dot { width:24px; height:24px; border-radius:50%; background:#fff; border:1.5px solid var(--border-2); color:var(--text-3); display:grid; place-items:center; }
     .rail-step.done .rail-dot { background:var(--accent); border-color:var(--accent); color:#fff; }
-    .rail-step.current .rail-dot { border-color:var(--accent); border-width:2px; background:var(--accent-soft); color:var(--accent-2); font-weight:700; box-shadow:0 0 0 4px var(--accent-soft); animation:breathe 2.2s ease-in-out infinite; }
+    .rail-step.current .rail-dot { border-color:var(--accent); border-width:2px; background:var(--accent-soft); color:var(--accent-2); font-weight:600; box-shadow:0 0 0 4px var(--accent-soft); animation:breathe 2.2s ease-in-out infinite; }
     @keyframes breathe { 0%,100% { box-shadow:0 0 0 4px var(--accent-soft); } 50% { box-shadow:0 0 0 7px rgba(79,70,229,.10); } }
-    .rail-step .sn { font-size:13px; font-weight:500; color:var(--text-3); }
+    .rail-step .sn { font-size:13.5px; font-weight:500; color:var(--text-3); }
     .rail-step.done .sn, .rail-step.current .sn { color:var(--text); font-weight:600; }
-    .rail-step.current .sn { color:var(--accent-2); font-weight:700; }
+    .rail-step.current .sn { color:var(--accent-2); font-weight:600; }
     .rail-step.current .sm { color:var(--accent-2); font-weight:600; }
     .rail-step .sm { font-size:11px; color:var(--text-3); font-family:var(--mono); }
 
     /* ===== 活动流 ===== */
     .feed { display:flex; flex-direction:column; }
-    .feed-row { display:flex; align-items:baseline; gap:10px; padding:8px 0; border-top:1px solid var(--surface-3); }
+    .feed-row { display:flex; align-items:center; gap:10px; min-height:44px; padding:8px 0; border-top:1px solid var(--surface-3); }
     .feed-row:first-child { border-top:0; }
-    .feed-row.new { background:var(--accent-soft); border-radius:8px; padding:8px 10px; margin:0 -10px; }
-    .feed-t { font-family:var(--mono); font-size:11px; color:var(--text-3); flex:none; width:60px; }
+    .feed-row.new { background:var(--accent-soft); border:1px solid var(--accent); border-radius:8px; padding:8px 10px; }
+    .feed-t { font-family:var(--mono); font-size:11px; color:var(--text-3); flex:none; width:64px; text-align:right; }
     .feed-w { flex:none; }
-    .feed-a { font-size:13px; color:var(--text); }
+    .feed-a { font-size:13.5px; color:var(--text); }
     .feed-f { font-family:var(--mono); font-size:11px; color:var(--text-3); margin-left:auto; flex:none; }
 
     /* ===== 统计块 ===== */
     .stats { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
     .stat { background:var(--surface-2); border:1px solid var(--border); border-radius:10px; padding:11px 12px; }
     .stat .k { font-size:11px; color:var(--text-3); }
-    .stat .v { font-size:21px; font-weight:600; letter-spacing:-.02em; margin-top:3px; font-variant-numeric:tabular-nums; }
+    .stat .v { font-size:20px; font-weight:600; letter-spacing:-.02em; margin-top:3px; font-variant-numeric:tabular-nums; }
     .stat .v small { font-size:12px; font-weight:400; color:var(--text-3); margin-left:3px; letter-spacing:0; }
     .bars { margin-top:14px; display:flex; flex-direction:column; gap:8px; }
     .bar { display:grid; grid-template-columns:minmax(70px,1fr) 2fr auto; gap:9px; align-items:center; font-size:12px; }
@@ -156,44 +164,52 @@
     .bar .bt { height:6px; border-radius:3px; background:var(--surface-3); overflow:hidden; }
     .bar .bf { height:100%; background:var(--accent); border-radius:3px; }
     .bar .bv { font-family:var(--mono); font-size:11px; color:var(--text-2); font-variant-numeric:tabular-nums; }
-    .pv-h { font-size:12.5px; font-weight:600; color:var(--text); margin:0 0 8px; display:flex; align-items:center; gap:8px; }
-    .pv-s { font-size:11.5px; color:var(--text-3); margin-top:6px; line-height:1.5; }
+    .pv-h { font-size:12px; font-weight:600; color:var(--text); margin:0 0 8px; display:flex; align-items:center; gap:8px; }
+    .pv-s { font-size:11px; color:var(--text-3); margin-top:6px; line-height:1.5; }
 
     /* ===== 健康 ===== */
-    .svc { display:flex; align-items:center; gap:9px; padding:6px 0; font-size:12.5px; }
+    .svc { display:flex; align-items:center; gap:9px; padding:6px 0; font-size:12px; }
     .svc .dot { width:8px; height:8px; border-radius:50%; flex:none; }
     .svc .dot.up { background:var(--ok); box-shadow:0 0 0 3px var(--ok-soft); }
     .svc .dot.down { background:var(--fail); box-shadow:0 0 0 3px var(--fail-soft); }
     .svc .lb { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-    .svc .pd { font-family:var(--mono); font-size:10.5px; color:var(--text-3); }
+    .svc .pd { font-family:var(--mono); font-size:11px; color:var(--text-3); }
     .wd { margin-top:10px; border-top:1px solid var(--surface-3); padding-top:8px; }
     .wd-row { font-family:var(--mono); font-size:11px; color:var(--text-2); padding:3px 0; }
     .wd-row .tt { color:var(--text-3); }
 
     /* ===== 表格 ===== */
-    table.tbl { width:100%; border-collapse:collapse; font-size:13px; }
-    table.tbl th { text-align:left; font-size:10.5px; font-weight:600; letter-spacing:.05em; text-transform:uppercase; color:var(--text-3); padding:0 10px 8px 0; border-bottom:1px solid var(--border); }
-    table.tbl td { padding:9px 10px 9px 0; border-bottom:1px solid var(--surface-3); vertical-align:top; }
+    table.tbl { width:100%; border-collapse:collapse; table-layout:fixed; font-size:13.5px; font-weight:400; }
+    table.tbl th { text-align:left; font-size:11px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--text-3); padding:0 12px 8px 0; border-bottom:1px solid var(--border); }
+    table.tbl th.right, table.tbl td.right { text-align:right; }
+    table.tbl td { padding:0 12px 0 0; border-bottom:1px solid var(--surface-3); vertical-align:middle; height:44px; font-size:13.5px; font-weight:400; }
     table.tbl tr:last-child td { border-bottom:0; }
     table.tbl td.n { font-family:var(--mono); font-size:12px; color:var(--text-2); white-space:nowrap; font-variant-numeric:tabular-nums; }
-    table.tbl td.n.right { text-align:right; }
+    table.tbl th.col-elapsed, table.tbl td.col-elapsed { text-align:right; }
     table.tbl td.dim { color:var(--text-3); }
+    table.tbl col.c-task { width:46%; } table.tbl col.c-verdict { width:11%; } table.tbl col.c-owner { width:10%; } table.tbl col.c-attempts { width:8%; } table.tbl col.c-elapsed { width:12%; } table.tbl col.c-stages { width:13%; }
+    table.tbl .col-task .task-title { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    table.tbl .col-task .run-id-line { font-size:11px; }
+    .history-card .history-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
+    .history-card .history-expand-btn { background:var(--surface-2); color:var(--text-2); border:1px solid var(--border); padding:4px 10px; border-radius:4px; cursor:pointer; font-size:11px; }
+    .history-card .history-expand-btn:hover { background:var(--surface-3); }
+    .history-card.is-collapsed .history-row:nth-child(n+9) { display:none; }
 
     /* ===== 架构地图 ===== */
     .arch-head { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:14px; }
-    .arch-legend { display:flex; flex-wrap:wrap; gap:6px 16px; }
-    .lg { display:inline-flex; align-items:center; gap:6px; font-size:11.5px; color:var(--text-2); }
+    .arch-legend { display:flex; flex-wrap:wrap; gap:6px 17px; }
+    .lg { display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--text-2); }
     .lg i { width:8px; height:8px; border-radius:3px; flex:none; }
-    .arch-hint { font-size:11.5px; color:var(--text-3); }
+    .arch-hint { font-size:12px; color:var(--text-3); }
     .flowlegend { display:flex; flex-wrap:wrap; gap:6px 14px; margin:0 0 14px; padding:9px 12px; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; }
-    .flowlegend span { display:inline-flex; align-items:center; gap:6px; font-size:11.5px; color:var(--text-2); }
+    .flowlegend span { display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--text-2); }
     .flowlegend i { width:14px; height:2.5px; border-radius:2px; flex:none; }
     .arch-canvas { position:relative; padding:2px 0; }
     .arch-layers { display:flex; flex-direction:column; gap:12px; }
     .arch-layer { background:var(--surface-2); border:1px solid var(--border); border-radius:var(--r); padding:12px; display:grid; grid-template-columns:112px minmax(0,1fr); gap:14px; }
     .arch-layer-head { display:flex; align-items:flex-start; gap:7px; padding-top:5px; }
     .arch-layer-head i { width:8px; height:8px; border-radius:3px; margin-top:4px; flex:none; }
-    .arch-layer-head .n { font-size:12.5px; font-weight:600; color:var(--text-2); line-height:1.35; }
+    .arch-layer-head .n { font-size:12px; font-weight:600; color:var(--text-2); line-height:1.35; }
     .arch-layer-head .c { font-size:11px; color:var(--text-3); }
     .arch-nodes { display:flex; gap:12px; flex-wrap:wrap; align-items:stretch; }
     .arch-node { position:relative; z-index:3; flex:1 1 210px; max-width:340px; min-height:96px; text-align:left; font:inherit; cursor:pointer; background:#fff; border:1px solid var(--border); border-radius:10px; padding:12px; transition:border-color .15s, box-shadow .15s, opacity .15s; }
@@ -201,9 +217,9 @@
     .arch-node:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
     .arch-node .top { display:flex; align-items:center; gap:8px; }
     .arch-node .ic { width:26px; height:26px; border-radius:8px; background:var(--surface-3); color:var(--text-2); display:grid; place-items:center; flex:none; }
-    .arch-node .nm { font-size:13px; font-weight:600; letter-spacing:-.005em; }
+    .arch-node .nm { font-size:13.5px; font-weight:600; letter-spacing:-.005em; }
     .arch-node .tech { font-family:var(--mono); font-size:11px; color:var(--accent-2); margin-top:7px; line-height:1.45; }
-    .arch-node .role { font-size:11.5px; color:var(--text-2); margin-top:3px; line-height:1.45; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+    .arch-node .role { font-size:12px; color:var(--text-2); margin-top:3px; line-height:1.45; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
     .arch-node.is-hub { border-color:var(--accent-line); background:var(--accent-soft); }
     .arch-node.is-hub .ic { background:var(--accent-soft); color:var(--accent-2); }
     .arch-node.is-selected { border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
@@ -231,28 +247,28 @@
     .elabel[data-kind="deliver"]::before { background:#0ea5e9; }
     .elabel.is-active { border-color:var(--accent); color:var(--accent-2); background:var(--accent-soft); }
     .elabel.is-dim { opacity:.22; }
-    .arch-detail { margin-top:14px; border:1px dashed var(--border-2); border-radius:var(--r); background:var(--surface-2); padding:14px 16px; }
+    .arch-detail { margin-top:14px; border:1px dashed var(--border-2); border-radius:var(--r); background:var(--surface-2); padding:14px 17px; }
     .arch-detail.has { border-style:solid; background:var(--surface); }
     .arch-detail .dh { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
     .arch-detail .dh .nm { font-size:14px; font-weight:600; }
-    .kv { display:grid; grid-template-columns:86px minmax(0,1fr); gap:4px 12px; margin-top:10px; font-size:12.5px; }
+    .kv { display:grid; grid-template-columns:86px minmax(0,1fr); gap:4px 12px; margin-top:10px; font-size:12px; }
     .kv .k { color:var(--text-3); }
     .kv .v { color:var(--text-2); word-break:break-word; }
-    .kv .v code, code.p { font-family:var(--mono); font-size:11.5px; background:var(--surface-3); border-radius:4px; padding:1px 5px; color:var(--text-2); }
-    .list { list-style:none; margin:0; padding:0; font-size:12.5px; }
+    .kv .v code, code.p { font-family:var(--mono); font-size:12px; background:var(--surface-3); border-radius:4px; padding:1px 5px; color:var(--text-2); }
+    .list { list-style:none; margin:0; padding:0; font-size:12px; }
     .list li { display:flex; gap:9px; justify-content:space-between; align-items:baseline; padding:6px 0; border-top:1px solid var(--surface-3); }
     .list li:first-child { border-top:0; }
-    .list li .n { font-family:var(--mono); font-size:11.5px; color:var(--text-2); word-break:break-all; }
-    .list li .d { color:var(--text-3); font-size:11.5px; text-align:right; flex:none; max-width:46%; }
+    .list li .n { font-family:var(--mono); font-size:12px; color:var(--text-2); word-break:break-all; }
+    .list li .d { color:var(--text-3); font-size:12px; text-align:right; flex:none; max-width:46%; }
     .patch { border:1px solid var(--border); border-left:3px solid var(--run); border-radius:8px; padding:10px 12px; margin-bottom:8px; background:var(--surface-2); }
-    .patch .pp { font-size:12.5px; color:var(--text); line-height:1.5; }
+    .patch .pp { font-size:12px; color:var(--text); line-height:1.5; }
     .patch .pf { font-family:var(--mono); font-size:11px; color:var(--accent-2); margin-top:5px; word-break:break-all; }
     .patch .pe { font-family:var(--mono); font-size:11px; color:#9a3412; margin-top:2px; word-break:break-all; }
-    .patch .pn { font-size:11.5px; color:var(--text-3); margin-top:4px; }
+    .patch .pn { font-size:12px; color:var(--text-3); margin-top:4px; }
 
     /* ===== 移动端 ===== */
     @media (max-width: 980px) {
-      .wrap { padding:16px; }
+      .wrap { padding:17px; }
       .cols, .cols-3 { grid-template-columns:minmax(0,1fr); }
       .arch-layer { grid-template-columns:minmax(0,1fr); gap:8px; }
       .arch-layer-head { padding-top:0; }
@@ -269,21 +285,21 @@
     }
 
   /* === task-panel-v2: 阶段可展开 === */
-  .stages-card .stages { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+  .stages-card .stages { display:flex; flex-direction:column; gap:8px; margin-top:8px; }
   .stage-item { background: var(--surface-2, #14171c); border: 1px solid var(--border, #1f2329); border-radius: 8px; overflow: hidden; }
   .stage-item.is-current { border-color: var(--accent, #2a6df4); box-shadow: 0 0 0 1px var(--accent, #2a6df4); }
   .stage-item.todo { opacity: 0.6; }
   .stage-header { display: grid; grid-template-columns: 24px 90px 1fr auto 24px; align-items: center; gap: 10px; padding: 10px 14px; cursor: pointer; user-select: none; }
   .stage-header:hover { background: rgba(255,255,255,0.02); }
   .stage-header:focus { outline: 1px solid var(--accent, #2a6df4); outline-offset: -1px; }
-  .stage-marker { width: 24px; height: 24px; border-radius: 50%; background: #1a1d22; color: #888; font-size: 11px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
-  .stage-item.done .stage-marker { background: #143614; color: #4f4; }
-  .stage-item.current .stage-marker { background: var(--accent, #2a6df4); color: #fff; }
+  .stage-marker { width:28px; height:28px; border-radius:50%; background:var(--surface-2); color:var(--text-3); font-size:11px; font-weight:600; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .stage-item.done .stage-marker { background:var(--ok-soft); color:var(--ok-line); }
+  .stage-item.current .stage-marker { background:var(--accent); color:#fff; box-shadow:0 0 0 4px var(--accent-soft); }
   .stage-item.is-current .stage-marker { animation: stage-pulse 2s ease-in-out infinite; }
   @keyframes stage-pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(42,109,244,0.5); } 50% { box-shadow: 0 0 0 6px rgba(42,109,244,0); } }
-  .stage-name { font-weight: 600; color: #fff; font-size: 13px; }
-  .stage-who { color: #888; font-size: 12px; font-family: ui-monospace, monospace; }
-  .stage-time { color: #888; font-size: 11px; font-family: ui-monospace, monospace; }
+  .stage-name { font-weight:600; color:#fff; font-size:17px; }
+  .stage-who { color:var(--text-2); font-size:12px; font-family:var(--mono); }
+  .stage-time { color:var(--text-3); font-size:11px; font-weight:600; font-family:var(--mono); }
   .stage-toggle { color: #888; font-size: 12px; text-align: center; }
   .stage-body { padding: 0 14px 12px 48px; display: none; }
   .stage-item[aria-expanded="true"] > .stage-body { display: block; }
@@ -329,7 +345,7 @@
       </span>
       <span class="brand-name">Agent 控制台</span>
       <span class="spacer"></span>
-      <span class="live"><i></i>实时 · 10 秒刷新</span>
+      <span class="live"><i></i><span class="ch">实时 · 10 秒刷新</span></span>
       <span class="stamp">上次更新: <span id="meta-update">读取中…</span></span>
     </div>
 
@@ -347,7 +363,10 @@
      0. 常量与静态结构
      ============================================================ */
   const POLL_MS = 10000;                                  /* 打开页面时每 10 秒刷新；无人打开 = 无请求 */
-  const ENC_URL = '/data/agent-dashboard.enc.json';
+  // realtime-data: 本地秒级通道 + CDN 回退
+  const LOCAL_URL = 'http://127.0.0.1:8898/data/agent-dashboard.enc.json';
+  const CDN_URL   = 'https://frankinvest.github.io/agent-dashboard-preview/data/agent-dashboard.enc.json';
+  let activeURL = LOCAL_URL;  // 记住当前生效的通道 (供 UI 显示)
 
   const PHASES = [
     { k:'planning',  n:'规划', who:'codex'  },
@@ -525,11 +544,35 @@
     const pt = await crypto.subtle.decrypt({ name:'AES-GCM', iv:b64(blob.nonce) }, key, b64(blob.ct));
     return JSON.parse(new TextDecoder().decode(pt));
   }
+  // realtime-data: 先试本地 (1.5s 超时), 失败回退 CDN
   async function fetchBlob() {
-    const r = await fetch(ENC_URL + '?t=' + Date.now(), { cache:'no-store' });
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    return r.json();
+    try {
+      const r = await fetch(LOCAL_URL + '?t=' + Date.now(), { cache:'no-store', signal: AbortSignal.timeout(1500) });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      activeURL = LOCAL_URL;
+      try { window.__channel = 'local'; } catch (e) {}
+      return r.json();
+    } catch (e) {
+      console.info('[dashboard] local channel unavailable, falling back to CDN');
+      activeURL = CDN_URL;
+      const r2 = await fetch(CDN_URL + '?t=' + Date.now(), { cache:'no-store' });
+      if (!r2.ok) throw new Error('CDN HTTP ' + r2.status);
+      try { window.__channel = 'cdn'; } catch (e2) {}
+      return r2.json();
+    }
   }
+  // realtime-data: 通道指示更新 (本地=绿/实时, CDN=灰/≤10 分钟)
+  function updateChannelIndicator() {
+    const el = document.querySelector('.live');
+    if (!el) return;
+    const isLocal = (window.__channel === 'local');
+    el.classList.toggle('is-local', isLocal);
+    const i = el.querySelector('i');
+    if (i) i.title = isLocal ? '本地秒级通道 127.0.0.1:8898' : 'CDN 回退 frankinvest.github.io (≤10 分钟滞后)';
+    const span = el.querySelector('span.ch');
+    if (span) span.textContent = isLocal ? '实时 · 10 秒刷新' : '≤10 分钟 · 10 秒重试';
+  }
+
   async function blobHash(b) {
     const s = JSON.stringify({ s:b.salt, n:b.nonce, c:b.ct, i:b.iter });
     const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
@@ -674,15 +717,15 @@
         +     esc(durBetween(task.started_at, st === 'run' ? null : task.updated_at)) + '</div><div class="k">'
         +     (st === 'run' ? '已耗时（实时）' : '总耗时') + '</div></span>'
         + '</div></div>'
-        + (task.note ? '<div style="margin-top:14px;font-size:12.5px;color:var(--text-2);background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:10px 12px">' + esc(task.note) + '</div>' : '')
+        + (task.note ? '<div style="margin-top:14px;font-size:12px;color:var(--text-2);background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:10px 12px">' + esc(task.note) + '</div>' : '')
         + '</div>';
 
       // === 四阶段 v2 (可展开, S12 探针目标) ===
       const STAGE_META = [
-        { k: 'planning',  n: '① 规划' },
-        { k: 'executing', n: '② 执行' },
-        { k: 'verifying', n: '③ 验收' },
-        { k: 'done',      n: '④ 完成' },
+        { k: 'planning',  n: '规划' },
+        { k: 'executing', n: '执行' },
+        { k: 'verifying', n: '验收' },
+        { k: 'done',      n: '完成' },
       ];
       const curPhase = task.phase || 'planning';
       const stages = task.stages || {};
@@ -771,12 +814,15 @@
     const rows = Object.keys(byModel)
       .filter((k) => k && k !== 'unknown' && k !== 'null' && byModel[k] > 0)
       .sort((a, b) => byModel[b] - byModel[a]);
-    const max = rows.length ? byModel[rows[0]] : 0;
+    const total = rows.reduce((s, m) => s + (byModel[m] || 0), 0);
     const bars = rows.length
-      ? '<div class="bars">' + rows.map((m) => '<div class="bar">'
-          + '<span class="bl" title="' + esc(m) + '">' + esc(String(m).replace(/^[a-z-]+\//, '')) + '</span>'
-          + '<span class="bt"><span class="bf" style="width:' + ((byModel[m] / max) * 100).toFixed(1) + '%"></span></span>'
-          + '<span class="bv">' + money(byModel[m]) + '</span></div>').join('') + '</div>'
+      ? '<div class="bars">' + rows.map((m) => {
+          const pct = total > 0 ? (byModel[m] / total * 100) : 0;
+          return '<div class="bar">'
+            + '<span class="bl" title="' + esc(m) + '">' + esc(String(m).replace(/^[a-z-]+\//, '')) + '</span>'
+            + '<span class="bt"><span class="bf" style="width:' + pct.toFixed(1) + '%"></span></span>'
+            + '<span class="bv">占比 ' + pct.toFixed(1) + '% · ' + money(byModel[m]) + '</span></div>';
+        }).join('') + '</div>'
       : '';
 
     return '<div class="card"><p class="sec">资源消耗</p>' + stats + bars + '</div>';
@@ -911,11 +957,11 @@
 
   function renderHistory(tasks, currentRunId) {
     // task-panel-v2: 历史任务表**不含**当前任务 (S14 判定)
-    const rows = (tasks || []).filter((t) => t.run_id !== currentRunId)
+    const allRows = (tasks || []).filter((t) => t.run_id !== currentRunId)
       .sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')));
-    if (!rows.length) return '<div class="card history-card" style="margin-top:14px"><p class="sec">历史任务（0，不含当前任务）</p><div class="empty">还没有历史任务。</div></div>';
+    if (!allRows.length) return '<div class="card history-card"><p class="sec">历史任务（0，不含当前任务）</p><div class="empty">还没有历史任务。</div></div>';
     const PH = ['planning','executing','verifying','done'];
-    const body = rows.map((t) => {
+    const body = allRows.map((t) => {
       const st = stateOf(t);
       const pill = st === 'done' ? '<span class="pill ok"><i></i>' + esc(t.verdict || 'PASS') + '</span>'
         : st === 'fail' ? '<span class="pill fail"><i></i>' + esc(t.verdict || 'FAIL') + '</span>'
@@ -931,13 +977,27 @@
         + '<td><div>' + esc(t.task_one_liner || '') + '</div><div class="n dim">' + esc(t.run_id || '') + '</div></td>'
         + '<td>' + pill + '</td>'
         + '<td class="n hide-s">' + esc((OWNERS[t.owner] || OWNERS.none).name) + '</td>'
-        + '<td class="n hide-s">' + (typeof t.attempts === 'number' ? t.attempts : 0) + '</td>'
+        + '<td class="n right hide-s">' + (typeof t.attempts === 'number' ? t.attempts : 0) + '</td>'
         + '<td class="n right">' + esc(durBetween(t.started_at, t.updated_at)) + '</td>'
         + '<td class="hide-s" style="white-space:nowrap"><span class="hist-progress" title="' + esc(t.phase || '?') + '">' + dots + '</span></td>'
         + '</tr>';
     }).join('');
-    return '<div class="card history-card" style="margin-top:14px"><p class="sec">历史任务（' + rows.length + '，不含当前任务）</p>'
-      + '<table class="tbl"><thead><tr><th>任务</th><th>结论</th><th class="hide-s">负责人</th><th class="hide-s">尝试</th><th>耗时</th><th class="hide-s">阶段</th></tr></thead>'
+    const total = allRows.length;
+    const needExpand = total > 8;
+    const expandBtn = needExpand ? '<button class="history-expand-btn" type="button" data-collapsed="1">显示全部 ' + total + ' 条</button>' : '';
+    return '<div class="card history-card' + (needExpand ? ' is-collapsed' : '') + '"><div class="history-head"><p class="sec">历史任务（'
+      + (needExpand ? '默认 8 / 共 ' + total + ' 条' : '共 ' + total + ' 条')
+      + '，不含当前任务）</p>' + expandBtn + '</div>'
+      + '<table class="tbl"><colgroup>'
+      + '<col class="c-task"><col class="c-verdict"><col class="c-owner hide-s"><col class="c-attempts hide-s"><col class="c-elapsed"><col class="c-stages hide-s">'
+      + '</colgroup><thead><tr>'
+      + '<th class="col-task">任务</th>'
+      + '<th class="col-verdict">结论</th>'
+      + '<th class="hide-s col-owner">负责人</th>'
+      + '<th class="hide-s right col-attempts">尝试</th>'
+      + '<th class="right col-elapsed">耗时</th>'
+      + '<th class="hide-s col-stages">阶段</th>'
+      + '</tr></thead>'
       + '<tbody>' + body + '</tbody></table></div>';
   }
 
@@ -1038,7 +1098,7 @@
       + '<div class="flowlegend">' + flowLegend + '</div>'
       + '<div class="arch-canvas" id="arch-canvas"><div class="arch-layers">' + layersHtml + '</div>' + dot + '</div>'
       + '</div>'
-      + '<div class="arch-detail" id="arch-detail"><span class="muted" style="font-size:12.5px">点上面的任意组件，这里会显示它的项目、启动方式、关键文件和实时状态。</span></div>'
+      + '<div class="arch-detail" id="arch-detail"><span class="muted" style="font-size:12px">点上面的任意组件，这里会显示它的项目、启动方式、关键文件和实时状态。</span></div>'
       + renderCatalog()
       + '<div class="cols" style="margin-top:14px">' + renderMemory() + renderSkills(arch) + '</div>'
       + renderPatches(arch);
@@ -1051,9 +1111,9 @@
       const tag = c.m === '默认加载' ? '<span class="tag default">默认加载</span>'
         : c.m === '常驻' ? '<span class="tag xiaomi">常驻</span>'
         : '<span class="tag ondemand">' + esc(c.m) + '</span>';
-      return '<tr><td><div style="font-weight:600">' + esc(c.n) + '</div><div class="dim" style="font-size:11.5px;font-family:var(--mono)">' + esc(c.t) + '</div></td>'
-        + '<td>' + tag + '<div class="dim" style="font-size:11.5px;margin-top:4px">' + esc(c.h) + '</div></td>'
-        + '<td class="dim" style="font-size:11.5px;font-family:var(--mono);word-break:break-word">' + esc(c.e) + '</td></tr>';
+      return '<tr><td><div style="font-weight:600">' + esc(c.n) + '</div><div class="dim" style="font-size:12px;font-family:var(--mono)">' + esc(c.t) + '</div></td>'
+        + '<td>' + tag + '<div class="dim" style="font-size:12px;margin-top:4px">' + esc(c.h) + '</div></td>'
+        + '<td class="dim" style="font-size:12px;font-family:var(--mono);word-break:break-word">' + esc(c.e) + '</td></tr>';
     }).join('');
     return '<div class="card" style="margin-top:14px"><p class="sec">组件目录 · 用了什么 / 怎么起</p>'
       + '<table class="tbl"><thead><tr><th style="width:30%">组件</th><th style="width:26%">启动方式</th><th>证据（配置文件 / 代码位置）</th></tr></thead><tbody>'
@@ -1085,7 +1145,7 @@
       + '<p class="sec" style="margin:14px 0 4px;color:var(--text-2)">小秘 · 自装 ' + ours.length + ' 个</p><ul class="list">' + (rowsOurs || '<li class="dim">—</li>') + '</ul>'
       + '<p class="sec" style="margin:14px 0 4px;color:var(--text-2)">小秘 · 内置可用 ' + ok.length + ' 个（' + visible.length + ' 个模型直接可见）</p>'
       + '<ul class="list">' + (rowsOk || '<li class="dim">—</li>') + '</ul>'
-      + '<p class="dim" style="font-size:11.5px;margin:10px 0 0">另有 ' + off.length + ' 个因缺依赖或已关闭（未列出）。</p>'
+      + '<p class="dim" style="font-size:12px;margin:10px 0 0">另有 ' + off.length + ' 个因缺依赖或已关闭（未列出）。</p>'
       + '</div>';
   }
 
@@ -1098,7 +1158,7 @@
       + (p.note ? '<div class="pn">' + esc(p.note) + '</div>' : '')
       + '</div>').join('') : '<div class="empty">暂无</div>';
     return '<div class="card" style="margin-top:14px"><p class="sec">本地补丁（' + patches.length + '）· 升级后需重打</p>' + body
-      + '<p class="dim" style="font-size:11.5px;margin:8px 0 0">补丁清单与还原方式见 za/CODEX-CONTEXT.md。</p></div>';
+      + '<p class="dim" style="font-size:12px;margin:8px 0 0">补丁清单与还原方式见 za/CODEX-CONTEXT.md。</p></div>';
   }
 
   /* ── 连线绘制 ── */
@@ -1210,7 +1270,7 @@
 
     if (!sel || !NODE_DETAIL[sel]) {
       detail.classList.remove('has');
-      detail.innerHTML = '<span class="muted" style="font-size:12.5px">点上面的任意组件，这里会显示它的项目、启动方式、关键文件和实时状态。</span>';
+      detail.innerHTML = '<span class="muted" style="font-size:12px">点上面的任意组件，这里会显示它的项目、启动方式、关键文件和实时状态。</span>';
       return;
     }
     const spec = NODE_DETAIL[sel];
@@ -1251,6 +1311,7 @@
       if (h === lastBlobHash) return;
       lastBlobHash = h;
       renderAll(await decryptBlob(blob, currentPassword));
+      try { updateChannelIndicator(); } catch (e) {}
     } catch (e) {
       console.error('refresh failed:', e);
       if (/OperationError|decrypt/i.test(String(e))) { sessionStorage.removeItem('dashboard-pw'); location.reload(); }
@@ -1280,6 +1341,7 @@
       $('login').style.display = 'none';
       $('app').style.display = 'block';
       renderAll(data);
+      try { updateChannelIndicator(); } catch (e) {}
       errEl.textContent = '';
       if (pollTimer) clearInterval(pollTimer);
       pollTimer = setInterval(refresh, POLL_MS);
