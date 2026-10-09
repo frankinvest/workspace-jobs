@@ -366,9 +366,11 @@
      ============================================================ */
   const POLL_MS = 10000;                                  /* 打开页面时每 10 秒刷新；无人打开 = 无请求 */
   // realtime-data: 本地秒级通道 → Vercel 边缘代理 → CDN 兜底
-  // ⚠️ 实测（2026-10-09 17:49）：边缘代理的硬地板是 **~300s**，不是 1 分钟 ——
-  //    GitHub raw 的 Fastly 缓存 `max-age=300` 且**不认查询串**（同一个 t 和不带 t 都吃缓存）。
-  //    实测 push 后 T+302s 才在 /api/dash 上看到新版本。UI 文案按实测写，别写梦想值。
+  // ⚠️ 历史（2026-10-09 17:49）：rewrite 版边缘代理的硬地板是 ~300s ——
+  //    GitHub raw 的 Fastly 缓存 max-age=300 且不认查询串。UI 文案按实测写，别写梦想值。
+  // ✅ 2026-10-09 18:16：/api/dash 已换成 **serverless 端点**（api/dash.js）：
+  //    atom 取最新 commit SHA → raw by SHA（新 URL 不命中 CDN）→ 实测端到端 **22.4s**
+  //    （SHA 缓存已收紧到 5s）。数字类字段仍受"推送心跳 600s"限制，结构性变化是即时推。
   const LOCAL_URL = 'http://127.0.0.1:8898/data/agent-dashboard.enc.json';
   // edge-data (2026-10-09): 同源代理，绕开"手机连不到 127.0.0.1"和"国内直连 raw.github 被 RST"两件事。
   // Vercel 的服务器在墙外，由它去取 GitHub raw；浏览器只跟 frankofswing.com 说话（无 CORS、无混合内容）。
@@ -590,11 +592,11 @@
     el.classList.toggle('is-edge', isEdge);
     const i = el.querySelector('i');
     if (i) i.title = isLocal ? '本地秒级通道 127.0.0.1:8898'
-                  : isEdge  ? '边缘代理 /api/dash（Vercel 取 GitHub raw；实测滞后≈300 秒，受 raw 的 5 分钟 CDN 缓存限制）'
+                  : isEdge  ? '即时端点 /api/dash（Vercel 函数读 GitHub；结构性变化实测 ≈20 秒，数字类字段看推送心跳）'
                             : 'CDN 回退 frankinvest.github.io (≤10 分钟滞后)';
     const span = el.querySelector('span.ch');
     if (span) span.textContent = isLocal ? '实时 · 10 秒刷新'
-                              : isEdge  ? '≈5 分钟 · 10 秒刷新'
+                              : isEdge  ? '≈20 秒 · 10 秒刷新'
                                         : '≤10 分钟 · 10 秒重试';
   }
 
