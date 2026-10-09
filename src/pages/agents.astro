@@ -800,6 +800,24 @@
     const g = p.glm || {}, d = p.deepseek || {};
     const rows = [];
 
+    // Codex 当前模型（model_switch.py 自动切换；放在最上面，Frank 最关心"现在用的是谁"）
+    const cm = p.codex_model || {};
+    rows.push('<div class="pv-h">Codex 当前模型 <span class="tag default">自动切换</span></div>');
+    if (cm.ok) {
+      const nm = cm.current === 'glm' ? 'GLM' : cm.current === 'deepseek' ? 'DeepSeek' : '未识别';
+      const pct = (typeof cm.fiveHourPct === 'number') ? cm.fiveHourPct.toFixed(1) + '%' : '—';
+      rows.push('<div class="pv-s">' + esc(nm) + ' · 5 小时余量 ' + esc(pct)
+        + (typeof cm.periodPct === 'number' ? ' · 周期已用 ' + esc(String(cm.periodPct)) + '%' : '')
+        + ' · 检查于 ' + esc(String(cm.checkedAt || '').slice(11, 19)) + '</div>');
+      const sw = cm.lastSwitch;
+      if (sw && sw.at) {
+        rows.push('<div class="pv-s">上次切换：' + esc(String(sw.at).slice(5, 16).replace('T', ' ')) + ' '
+          + esc(sw.from) + ' → ' + esc(sw.to) + '（' + esc(sw.reason) + '）</div>');
+      }
+    } else {
+      rows.push('<div class="pv-s">' + esc(cm.error || '状态不可读') + '</div>');
+    }
+
     if (g.ok) {
       const lims = g.limits || [];
       const period = lims.filter((L) => L.number === 1)[0] || lims[lims.length - 1] || {};
