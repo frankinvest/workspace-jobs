@@ -511,21 +511,34 @@
     });
     return out;
   }
+  /* 已经出结论的任务 = 已结束（不做"进行中"）。
+     —— 2026-10-09 修：有一次 run 忘了把 status.json 收尾（phase 停在 executing、verdict 已是 PASS），
+     页面就把它当成"当前任务"，于是长期显示"小秘 执行中"（Frank 实际看到的现象）。
+     有 verdict 就算结束，这条自愈规则让同类脏数据不可能再变成幽灵任务。 */
+  function isFinished(t) {
+    return !!t && ((t.phase || '') === 'done' || t.verdict === 'PASS' || t.verdict === 'FAIL');
+  }
   function pickCurrent(tasks) {
-    const active = tasks.filter((t) => (t.phase || 'planning') !== 'done')
+    const active = tasks.filter((t) => !isFinished(t))
       .sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')));
     if (active.length) return active[0];
-    return tasks.slice().sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')))[0] || null;
+    /* 全都结束了 → 显示"最近开始的那一个"（按 started_at），
+       否则补写旧 run 的 status.json 会把旧任务顶到最前面（2026-10-09 补充） */
+    const byStart = tasks.slice().sort((a, b) =>
+      String(b.started_at || '').localeCompare(String(a.started_at || '')) ||
+      String(b.updated_at || '').localeCompare(String(a.updated_at || '')));
+    return byStart[0] || null;
   }
   function stateOf(task) {
     if (!task) return 'idle';
     if (task.verdict === 'FAIL') return 'fail';
-    if ((task.phase || '') === 'done') return task.verdict === 'PASS' ? 'done' : 'idle';
+    if (isFinished(task)) return task.verdict === 'PASS' ? 'done' : (task.phase === 'done' ? 'idle' : 'run');
     return 'run';
   }
   function renderRail(task) {
     const cur = PHASES.findIndex((p) => p.k === (task.phase || 'planning'));
-    const idx = cur < 0 ? 0 : cur;
+    /* 已出结论的任务，阶段轨直接停在"完成"，避免"有 verdict 却停在执行"的脏数据显示成进行中 */
+    const idx = isFinished(task) ? (PHASES.length - 1) : (cur < 0 ? 0 : cur);
     const times = phaseTimes(task);
     const pct = (idx / (PHASES.length - 1)) * 75;   /* 线宽 = 75% × 进度（线本身占 75%） */
     const steps = PHASES.map((p, i) => {
