@@ -704,6 +704,29 @@
       rows.push('<div class="pv-s">' + esc(d.error || '未配置 key') + '</div>');
     }
 
+    const mx = p.minimax || {};
+    rows.push('<div class="pv-h" style="margin-top:12px">MiniMax（小秘）<span class="tag default">浏览器会话</span></div>');
+    if (mx.ok) {
+      const gm = (mx.models || [])[0] || {};
+      const num1 = (s) => { const v = parseFloat(String(s || '').replace('%', '')); return isFinite(v) ? v : 0; };
+      const pctOf = (used, total) => { const t = num1(total), u = num1(used); return t > 0 ? (u / t) * 100 : u; };
+      rows.push('<div class="bar" style="grid-template-columns:auto 1fr auto"><span class="bl">周限额</span>'
+        + pbar(pctOf(gm.weeklyUsed, gm.weeklyTotal))
+        + '<span class="bv">' + esc(gm.weeklyUsed || '—') + ' / ' + esc(gm.weeklyTotal || '—') + '</span></div>');
+      rows.push('<div class="pv-s">重置 ' + esc(String(gm.weeklyReset || '').slice(5, 16).replace('T', ' ') || '—')
+        + ' · 5h 限额 ' + esc(gm.intervalUsed || '—') + ' / ' + esc(gm.intervalTotal || '—')
+        + (gm.intervalReset ? '（' + esc(String(gm.intervalReset).slice(11, 16)) + ' 重置）' : '') + '</div>');
+      rows.push('<div class="pv-s">今日 token：' + shortNum(mx.todayTokens)
+        + ((mx.todayByModel && mx.todayByModel.length) ? '（' + mx.todayByModel.map((m) => esc(m.model) + ' ' + shortNum(m.tokens)).join('、') + '）' : '')
+        + (mx.cacheHitPercent ? ' · 缓存命中 ' + esc(mx.cacheHitPercent) + '%' : '') + '</div>');
+      if (mx.credits) {
+        rows.push('<div class="pv-s">积分余额：' + num(mx.credits.remaining) + ' / ' + num(mx.credits.total)
+          + '（已用 ' + num(mx.credits.used) + '）</div>');
+      }
+    } else {
+      rows.push('<div class="pv-s">' + esc(mx.error || '取不到（专用浏览器会话失效？）') + '</div>');
+    }
+
     return '<div class="card"><p class="sec">模型额度 / 余额</p>' + rows.join('') + '</div>';
   }
   const WD_TEXT = {
