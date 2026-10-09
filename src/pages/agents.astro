@@ -348,7 +348,7 @@
       <span class="brand-name">Agent 控制台</span>
       <span class="spacer"></span>
       <span class="live"><i></i><span class="ch">实时 · 10 秒刷新</span></span>
-      <span class="stamp">上次更新: <span id="meta-update">读取中…</span></span>
+      <span class="stamp">任务结构 ≈20 秒 · 数字 ≤10 分钟 · <span id="meta-update">读取中…</span></span>
     </div>
 
     <div class="seg" id="seg" role="tablist">
@@ -504,6 +504,13 @@
     const m = String(iso).match(/T(\d{2}:\d{2})(?::(\d{2}))?/);
     return m ? (m[2] ? m[1] + ':' + m[2] : m[1]) : '';
   }
+  /* R=2 新增: 看护事件补月-日。避免旧事件被误读为「今天的故障」（一天只看 4 条，
+     去年同期事件会被混入 4 条尾部，必须给出可区分的日期）。 */
+  function tsMDHM(iso) {
+    if (!iso) return '';
+    const m = String(iso).match(/(\d{2})-(\d{2})T(\d{2}:\d{2})/);
+    return m ? (m[1] + '-' + m[2] + ' ' + m[3]) : (ts2hm(iso) || '');
+  }
   function fmtDT(iso) {
     if (!iso) return '读取中…';
     const d = new Date(iso);
@@ -592,11 +599,11 @@
     el.classList.toggle('is-edge', isEdge);
     const i = el.querySelector('i');
     if (i) i.title = isLocal ? '本地秒级通道 127.0.0.1:8898'
-                  : isEdge  ? '即时端点 /api/dash（Vercel 函数读 GitHub；结构性变化实测 ≈20 秒，数字类字段看推送心跳）'
+                  : isEdge  ? '即时端点 /api/dash（Vercel 函数读 GitHub）— 任务结构 ≈20 秒推送，数字字段 ≤10 分钟（推送心跳）'
                             : 'CDN 回退 frankinvest.github.io (≤10 分钟滞后)';
     const span = el.querySelector('span.ch');
     if (span) span.textContent = isLocal ? '实时 · 10 秒刷新'
-                              : isEdge  ? '≈20 秒 · 10 秒刷新'
+                              : isEdge  ? '任务结构 ≈20 秒 · 数字 ≤10 分钟'
                                         : '≤10 分钟 · 10 秒重试';
   }
 
@@ -623,7 +630,9 @@
      页面就把它当成"当前任务"，于是长期显示"小秘 执行中"（Frank 实际看到的现象）。
      有 verdict 就算结束，这条自愈规则让同类脏数据不可能再变成幽灵任务。 */
   function isFinished(t) {
-    return !!t && ((t.phase || '') === 'done' || t.verdict === 'PASS' || t.verdict === 'FAIL');
+    if (!t) return false;
+    const v = t.verdict || '';
+    return (t.phase || '') === 'done' || v === 'PASS' || v === 'FAIL' || v.startsWith('PASS') || v.startsWith('FAIL');
   }
   function pickCurrent(tasks) {
     const active = tasks.filter((t) => !isFinished(t))
@@ -638,8 +647,10 @@
   }
   function stateOf(task) {
     if (!task) return 'idle';
-    if (task.verdict === 'FAIL') return 'fail';
-    if (isFinished(task)) return task.verdict === 'PASS' ? 'done' : (task.phase === 'done' ? 'idle' : 'run');
+    const v = (task && task.verdict) || '';
+    if (v === 'FAIL' || v.startsWith('FAIL')) return 'fail';
+    if (v === 'PASS' || v.startsWith('PASS')) return 'done';
+    if (isFinished(task)) return 'done';  // phase=done 或任何 PASS* 变体
     return 'run';
   }
   function renderRail(task) {
@@ -720,10 +731,10 @@
     } else {
       const st = stateOf(task);
       const owner = OWNERS[task.owner] ? task.owner : 'none';
-      const pill = st === 'run' ? '<span class="pill run"><i></i>进行中</span>'
-        : st === 'done' ? '<span class="pill ok"><i></i>已完成 · ' + esc(task.verdict || 'PASS') + '</span>'
-        : st === 'fail' ? '<span class="pill fail"><i></i>失败 · ' + esc(task.verdict || 'FAIL') + '</span>'
-        : '<span class="pill idle"><i></i>空闲</span>';
+      const pill = (st === 'run') ? '<span class="pill run"><i></i>进行中</span>'
+        : (st === 'fail' ? '<span class="pill fail"><i></i>失败 · ' + esc(task.verdict || 'FAIL') + '</span>'
+        : (st === 'done' ? '<span class="pill ok"><i></i>已完成 · ' + esc(task.verdict || 'PASS') + '</span>'
+        : '<span class="pill idle"><i></i>空闲</span>'));
       const attempts = typeof task.attempts === 'number' ? task.attempts : 0;
 
       // === 当前任务卡 v2: 状态胶囊 + 任务一句话 + run_id (含 .run-id-display 供探针) + 谁在干活 ===
@@ -737,7 +748,7 @@
         + '</div>'
         + '<div class="owner" data-state="' + (st === 'run' ? 'running' : (st === 'done' ? 'done' : 'idle')) + '">'
         +   '<span class="avatar" data-who="' + owner + '">' + esc((OWNERS[owner] || OWNERS.none).short) + '</span>'
-        +   '<span><span class="lbl">现在谁在干活</span>'
+        +   '<span><span class="lbl">' + (st === 'done' ? '负责人' : '现在谁在干活') + '</span>'
         +     '<div class="nm">' + esc((OWNERS[owner] || OWNERS.none).name) + '</div>'
         +     '<div class="rl">' + esc((OWNERS[owner] || OWNERS.none).role) + '</div></span>'
         +   '<span class="eta"><div class="v" data-elapsed="' + esc(task.started_at || '') + '" data-stop="' + (st === 'run' ? '' : '1') + '">'
@@ -784,7 +795,11 @@
         if (m.k === 'done') {
           const verdict = s.verdict;
           const note = s.note;
-          if (verdict) html += '<div class="stage-verdict"><span class="pill ' + (verdict === 'PASS' ? 'ok' : 'fail') + '"><i></i>' + esc(verdict) + '</span></div>';
+          // R=2 修正: verdict 可能是 "PASS(带修正)" / "FAIL(带 1 修正)" 变体；
+          // 按前缀选 ok / fail class，不能再 verdict==='PASS' 硬等。
+          const vCls = (verdict || '').startsWith('FAIL') ? 'fail'
+                      : (verdict || '').startsWith('PASS') ? 'ok' : 'fail';
+          if (verdict) html += '<div class="stage-verdict"><span class="pill ' + vCls + '"><i></i>' + esc(verdict) + '</span></div>';
           if (note) html += '<div class="stage-file-excerpt">' + esc(note) + '</div>';
           if (!verdict && !note) html += '<div class="stage-empty">该阶段尚未开始</div>';
         } else if (files.length === 0) {
@@ -826,14 +841,16 @@
   function renderResources(res) {
     const cost = (typeof res.todayCostUsd === 'number') ? res.todayCostUsd : null;
     const tk = res.codexTodayTokens || {};
-    const delegations = Array.isArray(res.recentDelegations) ? res.recentDelegations : [];
+    // R=2 修正: “今日委派”读 res.delegationsToday（采集器安全解析统计的真实今日委派数），
+    // 不能用 recentDelegations.length （受限于只留 10 条，偷换成 10 / 5 / 3 ... 都会跳）。
+    const delegationsToday = (typeof res.delegationsToday === 'number') ? res.delegationsToday : null;
     const sessions = (typeof res.codexSessionsToday === 'number') ? res.codexSessionsToday : 0;
     const tkTotal = (typeof tk.total === 'number' && tk.total > 0) ? tk.total : null;
 
     const stats = '<div class="stats">'
       + '<div class="stat"><div class="k">今日成本（小秘侧）</div><div class="v">' + (cost == null ? '—' : money(cost)) + '</div></div>'
       + '<div class="stat"><div class="k">Codex 今日 token（含缓存）</div><div class="v">' + shortNum(tkTotal) + '<small>' + (tk.output ? '出 ' + shortNum(tk.output) : '') + '</small></div></div>'
-      + '<div class="stat"><div class="k">今日委派</div><div class="v">' + delegations.length + '<small>次</small></div></div>'
+      + '<div class="stat"><div class="k">今日委派</div><div class="v">' + (delegationsToday == null ? '—' : delegationsToday) + '<small>次</small></div></div>'
       + '<div class="stat"><div class="k">Codex 会话</div><div class="v">' + sessions + '<small>今日</small></div></div>'
       + '</div>';
 
@@ -928,12 +945,18 @@
       const gm = (mx.models || [])[0] || {};
       const num1 = (s) => { const v = parseFloat(String(s || '').replace('%', '')); return isFinite(v) ? v : 0; };
       const pctOf = (used, total) => { const t = num1(total), u = num1(used); return t > 0 ? (u / t) * 100 : u; };
+      // R=2 修正: 额度文案统一“已用 / 上限 / 剩余 / 重置”方向，去掉“周限额 / 5h 限额 / 27%”这种
+      // 语义不明的写法。重置时间取月-日 HH:MM (与 watchdog 行一致)。
+      const fmtMDHM = (s) => { const x = String(s || '').slice(0, 16); return x ? x.replace('T', ' ') : '—'; };
+      const used = num1(gm.weeklyUsed), tot = num1(gm.weeklyTotal);
+      const rem  = Math.max(0, tot - used);
+      const iUsed = num1(gm.intervalUsed), iTot = num1(gm.intervalTotal);
+      const iRem  = Math.max(0, iTot - iUsed);
       rows.push('<div class="bar" style="grid-template-columns:auto 1fr auto"><span class="bl">周限额</span>'
         + pbar(pctOf(gm.weeklyUsed, gm.weeklyTotal))
         + '<span class="bv">' + esc(gm.weeklyUsed || '—') + ' / ' + esc(gm.weeklyTotal || '—') + '</span></div>');
-      rows.push('<div class="pv-s">重置 ' + esc(String(gm.weeklyReset || '').slice(5, 16).replace('T', ' ') || '—')
-        + ' · 5h 限额 ' + esc(gm.intervalUsed || '—') + ' / ' + esc(gm.intervalTotal || '—')
-        + (gm.intervalReset ? '（' + esc(String(gm.intervalReset).slice(11, 16)) + ' 重置）' : '') + '</div>');
+      rows.push('<div class="pv-s">周 已用 ' + used + '% / 上限 ' + tot + '% / 剩余 ' + rem + '% / 重置 ' + esc(fmtMDHM(gm.weeklyReset)) + '</div>');
+      rows.push('<div class="pv-s">5h 已用 ' + iUsed + '% / 上限 ' + iTot + '% / 剩余 ' + iRem + '% / 重置 ' + esc(fmtMDHM(gm.intervalReset)) + '</div>');
       rows.push('<div class="pv-s">今日 token：' + shortNum(mx.todayTokens)
         + ((mx.todayByModel && mx.todayByModel.length) ? '（' + mx.todayByModel.map((m) => esc(m.model) + ' ' + shortNum(m.tokens)).join('、') + '）' : '')
         + (mx.cacheHitPercent ? ' · 缓存命中 ' + esc(mx.cacheHitPercent) + '%' : '') + '</div>');
@@ -973,7 +996,10 @@
     const wd = (health.watchdog_tail || []).slice(-4).reverse().map((e) => {
       const t = (WD_TEXT[e.event] || e.event || JSON.stringify(e).slice(0, 40));
       const c = e.component ? '（' + e.component + '）' : '';
-      return '<div class="wd-row"><span class="tt">' + esc(ts2hm(e.ts)) + '</span> ' + esc(t) + esc(c) + '</div>';
+      // R=2 修正: 日期补月-日 (避免旧事件被误读为今天的故障)；
+      // dryRun=true 在文案最前加「演练·」，避免与真实 down 事件混在一起。
+      const dryTag = e.dryRun ? '<span class="tag default" style="margin-right:4px">演练</span>' : '';
+      return '<div class="wd-row"><span class="tt">' + esc(tsMDHM(e.ts)) + '</span> ' + dryTag + esc(t) + esc(c) + '</div>';
     }).join('');
 
     return '<div class="card"><p class="sec">健康</p>' + svc
