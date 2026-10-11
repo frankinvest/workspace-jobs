@@ -1,7 +1,7 @@
 ---
 // src/pages/agents.astro —— Agent 控制台（密码门 + 浏览器端解密）
 //
-// 两个视图：① 任务进度（谁在干活 / 到哪一步 / 花了多少） ② 架构地图（用了什么项目 / 怎么连 / 怎么起）
+// 三个视图：① 总览（先用日常语言回答当前状态） ② 任务档案（研究问题 / 实验 / 证据） ③ 架构解释（故事线优先，专家模式折叠）
 //
 // 关键实现说明（改之前先读）：
 //  1) <style is:global> 必须是 global —— 页面内容几乎全是运行期用 JS 渲染的，
@@ -269,9 +269,48 @@
     .patch .pn { font-size:12px; color:var(--text-3); margin-top:4px; }
 
     /* ===== 移动端 ===== */
+    /* ===== 三层递进：默认总览 ===== */
+    .overview-hero { display:grid; grid-template-columns:minmax(0,1.25fr) minmax(280px,.75fr); gap:14px; align-items:stretch; }
+    .overview-status { border:1px solid var(--ok-line); background:linear-gradient(135deg,#fff,var(--ok-soft)); border-radius:var(--r); padding:18px; }
+    .overview-status.is-warn { border-color:var(--run-line); background:linear-gradient(135deg,#fff,var(--run-soft)); }
+    .overview-status.is-bad { border-color:var(--fail-line); background:linear-gradient(135deg,#fff,var(--fail-soft)); }
+    .overview-kicker { margin:0 0 8px; color:var(--text-3); font-size:11px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; }
+    .overview-title { margin:0; font-size:24px; line-height:1.25; letter-spacing:-.02em; }
+    .overview-plain { margin:8px 0 0; color:var(--text-2); font-size:13.5px; line-height:1.65; }
+    .overview-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; margin-top:16px; }
+    .overview-tile { min-height:104px; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; padding:12px; }
+    .overview-tile .k { color:var(--text-3); font-size:11px; font-weight:600; }
+    .overview-tile .v { display:block; margin-top:5px; color:var(--text); font-size:16px; font-weight:600; line-height:1.4; }
+    .overview-tile .s { display:block; margin-top:4px; color:var(--text-2); font-size:12px; line-height:1.5; }
+    .overview-side { display:flex; flex-direction:column; gap:10px; }
+    .overview-mini { background:var(--surface-2); border:1px solid var(--border); border-radius:10px; padding:12px; }
+    .overview-mini .k { color:var(--text-3); font-size:11px; font-weight:600; }
+    .overview-mini .v { display:block; margin-top:4px; color:var(--text); font-size:13.5px; font-weight:600; line-height:1.5; }
+    .overview-idle { border-color:var(--ok-line); background:var(--ok-soft); color:#027a48; }
+    .overview-error { border-color:var(--ok-line); background:var(--ok-soft); color:#027a48; }
+    .overview-error.has-error { border-color:var(--fail-line); background:var(--fail-soft); color:#b42318; }
+    .overview-latest { display:grid; gap:8px; }
+    .latest-line { display:flex; align-items:flex-start; gap:8px; color:var(--text-2); font-size:12px; line-height:1.55; }
+    .latest-line b { color:var(--text); font-weight:600; }
+    .expert-mode { margin-top:12px; border:1px dashed var(--border-2); border-radius:10px; background:var(--surface-2); padding:10px 12px; }
+    .expert-mode > summary { cursor:pointer; color:var(--text-2); font-size:12px; font-weight:600; }
+    .expert-mode[open] > summary { margin-bottom:10px; }
+    .experiment-guide { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; margin-bottom:12px; }
+    .experiment-guide div { background:var(--surface-2); border:1px solid var(--border); border-radius:10px; padding:10px 12px; color:var(--text-2); font-size:12px; line-height:1.55; }
+    .experiment-guide b { display:block; margin-bottom:3px; color:var(--text); font-size:13.5px; font-weight:600; }
+    .stage-plain { margin:0 0 10px; color:var(--text-2); font-size:12px; line-height:1.6; }
+    .arch-story { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:10px; }
+    .arch-story-step { position:relative; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; padding:12px; }
+    .arch-story-step .no { display:inline-grid; place-items:center; width:25px; height:25px; border-radius:50%; background:var(--accent-soft); color:var(--accent-2); font-size:12px; font-weight:700; }
+    .arch-story-step h3 { margin:8px 0 5px; font-size:13.5px; line-height:1.4; }
+    .arch-story-step p { margin:0; color:var(--text-2); font-size:12px; line-height:1.55; }
+    .arch-story-step p + p { margin-top:5px; }
+    .arch-story-step .lab { color:var(--text-3); font-weight:600; }
+
     @media (max-width: 980px) {
       .wrap { padding:17px; }
       .cols, .cols-3 { grid-template-columns:minmax(0,1fr); }
+      .overview-hero, .overview-grid, .experiment-guide, .arch-story { grid-template-columns:minmax(0,1fr); }
       .arch-layer { grid-template-columns:minmax(0,1fr); gap:8px; }
       .arch-layer-head { padding-top:0; }
       .arch-nodes { flex-direction:column; }
@@ -445,11 +484,13 @@
     </div>
 
     <div class="seg" id="seg" role="tablist">
-      <button class="on" data-tab="tasks" type="button" role="tab">任务进度</button>
-      <button data-tab="arch" type="button" role="tab">架构地图</button>
+      <button class="on" data-tab="overview" type="button" role="tab">总览</button>
+      <button data-tab="tasks" type="button" role="tab">任务档案</button>
+      <button data-tab="arch" type="button" role="tab">架构解释</button>
     </div>
 
-    <section id="panel-tasks" class="panel-view"></section>
+    <section id="panel-overview" class="panel-view" data-overview></section>
+    <section id="panel-tasks" class="panel-view" style="display:none"></section>
     <section id="panel-arch" class="panel-view" style="display:none"></section>
   </div>
 
@@ -484,6 +525,19 @@
   };
   /* 事件里的 phase → 阶段轨下标（采集器为每个事件标好 phase，避免靠文件名猜） */
   const PHASE_INDEX = { planning:0, executing:1, verifying:2, done:3 };
+  const PHASE_PLAIN = {
+    planning: 'Codex 把需求拆成方案和验收标准。',
+    executing: '小秘改代码、写测试并留下证据。',
+    verifying: 'Codex 独立复跑检查，不采信自述。',
+    done: '结论和产物已经归档，可以追溯。'
+  };
+  const ARCH_STORY = [
+    { title:'Frank 发出需求', who:'Frank', input:'飞书里的自然语言', output:'一个要解决的问题', impact:'没有这一步，agent 不会开始工作', status:'入口正常' },
+    { title:'桥接和网关唤醒 agent', who:'消息通道', input:'群消息', output:'Codex / 小秘的本地任务', impact:'消息送不到时看起来像没人回话', status:'通道可用' },
+    { title:'Codex 写方案和验收', who:'Codex', input:'需求 + 约束', output:'白名单、步骤、测试标准', impact:'方案不清会导致返工', status:'按需运行' },
+    { title:'小秘实现并测试', who:'小秘', input:'方案 + 测试计划', output:'代码、测试证据、执行日志', impact:'执行失败需要 rework', status:'按需运行' },
+    { title:'归档并生成加密看板', who:'任务总线', input:'任务产物', output:'可追溯档案 + 密文快照', impact:'归档失败会丢失证据', status:'定时更新' },
+  ];
 
   /* 架构地图拓扑：5 层。tech 写"用了什么项目"，role 写"干什么"。 */
   const LAYERS = [
@@ -830,6 +884,71 @@
     return '<span class="health-pill ' + esc(h.state || 'attention') + '">' + esc(h.label || '状态未知') + '</span>';
   }
 
+  function serviceIsGood(s) {
+    if (!s) return false;
+    if (s.kind === 'interval') return String(s.status) === '0';
+    return !!(s.pid && s.pid !== '-' && s.pid !== '?');
+  }
+
+  function renderOverview(data) {
+    const groups = data.task_groups || [];
+    const tasks = data.tasks || [];
+    const services = (data.health || {}).services || [];
+    const watched = services.filter((s) => SVC_LABEL[s.label]);
+    const bad = watched.filter((s) => !serviceIsGood(s));
+    const activeGroups = groups.filter((g) => g.status === 'active');
+    const latestTask = tasks.slice().sort((a, b) =>
+      String(b.started_at || '').localeCompare(String(a.started_at || '')))[0] || null;
+    const latestGroup = latestTask
+      ? (groups.find((g) => g.latest_run_id === latestTask.run_id) || {})
+      : {};
+    const latestState = latestTask ? stateOf(latestTask) : 'idle';
+    const latestStateText = latestState === 'done' ? '已完成'
+      : latestState === 'fail' ? '失败'
+      : latestState === 'run' ? '执行中'
+      : '空闲';
+    const cost = (data.resources || {}).todayCostUsd;
+    const healthClass = !watched.length ? '' : bad.length ? 'is-bad' : '';
+    const healthTitle = !watched.length ? '状态未知' : bad.length ? '部分服务异常' : '系统正常';
+    const healthPlain = !watched.length
+      ? '暂时拿不到足够的服务状态，不代表系统一定故障。'
+      : bad.length
+        ? '有组件没有按预期运行，下面会告诉你影响；历史任务和已归档证据仍可查看。'
+        : '消息入口、任务执行和看板更新链路都可检查，当前没有发现组件异常。';
+    const activeText = activeGroups.length
+      ? activeGroups.map((g) => {
+          const t = tasks.find((x) => x.run_id === g.latest_run_id) || {};
+          const phase = (PHASES.find((p) => p.k === t.phase) || {}).n || '规划中';
+          const owner = (OWNERS[t.owner] || OWNERS.none).name;
+          return (g.title || '未命名任务') + '：' + phase + '，' + owner + '负责';
+        }).join('；')
+      : '空闲：没有任务正在执行';
+    const latestTitle = latestTask ? (latestTask.task_one_liner || latestGroup.title || '未命名任务') : '还没有任务记录';
+    const latestPhase = latestTask ? ((PHASES.find((p) => p.k === latestTask.phase) || {}).n || '规划') : '—';
+    const latestWhen = latestTask && latestTask.started_at ? latestTask.started_at.slice(5, 16).replace('T', ' ') : '—';
+    const errorText = bad.length
+      ? bad.map((s) => (SVC_LABEL[s.label] || '组件') + ' 未按预期运行').join('；')
+      : '没有需要处理的错误';
+
+    const html = '<div class="card overview-card">'
+      + '<div class="overview-hero"><div class="overview-status ' + healthClass + '" data-overview-health="' + esc(healthTitle) + '">'
+      + '<p class="overview-kicker">当前状态</p><h1 class="overview-title">' + esc(healthTitle) + '</h1>'
+      + '<p class="overview-plain">' + esc(healthPlain) + '</p>'
+      + '<div class="overview-grid">'
+      + '<div class="overview-tile"><span class="k">现在谁在干活</span><span class="v">' + (activeGroups.length ? activeGroups.length + ' 个任务在推进' : '空闲') + '</span><span class="s">' + esc(activeText) + '</span></div>'
+      + '<div class="overview-tile"><span class="k">上一个已完成任务</span><span class="v">' + esc(latestStateText) + '</span><span class="s">' + esc(latestTitle) + ' · ' + esc(latestPhase) + ' · ' + esc(latestWhen) + '</span></div>'
+      + '<div class="overview-tile"><span class="k">今日成本</span><span class="v">' + (typeof cost === 'number' ? money(cost) : '—') + '</span><span class="s">小秘侧委派消耗；模型额度细节在任务档案里。</span></div>'
+      + '</div></div>'
+      + '<div class="overview-side"><div class="overview-mini overview-idle" data-overview-idle="1"><span class="k">执行状态</span><span class="v">' + esc(activeText) + '</span></div>'
+      + '<div class="overview-mini overview-error' + (bad.length ? ' has-error' : '') + '"><span class="k">异常</span><span class="v">' + esc(errorText) + '</span></div>'
+      + '<div class="overview-mini"><span class="k">怎么读这个页面</span><span class="v">先看结论，再看任务证据</span><span class="s">总览回答“现在怎么样”；任务档案像实验记录；架构解释讲链路。</span></div>'
+      + '</div></div>'
+      + '<details class="expert-mode" aria-expanded="false"><summary>技术详情（默认折叠）</summary>'
+      + '<div class="overview-latest">' + watched.map((s) => '<div class="latest-line"><span>' + esc(SVC_LABEL[s.label] || '组件') + '</span><b>' + (serviceIsGood(s) ? '正常' : '异常') + '</b></div>').join('') + '</div>'
+      + '</details></div>';
+    $('panel-overview').innerHTML = html;
+  }
+
   function renderOps(groups) {
     const active = (groups || []).filter((g) => g.status === 'active');
     const body = active.length ? '<div class="ops-grid">' + active.map((g) => {
@@ -854,7 +973,7 @@
       const selected = g.task_id === selectedTaskId;
       const runChips = (g.runs || []).map((r) => '<button class="task-run-chip' + (r.run_id === selectedRunByTask[g.task_id] ? ' on' : '') + '" type="button" onclick="selectDashboardRun(\'' + esc(g.task_id) + '\',\'' + esc(r.run_id) + '\')">第 ' + esc(String(r.revision)) + ' 轮 · ' + esc(r.verdict || r.phase || '—') + '</button>').join('');
       return '<div class="task-group"><button class="task-group-row" type="button" data-task-id="' + esc(g.task_id) + '" onclick="selectDashboardTask(\'' + esc(g.task_id) + '\')">'
-        + '<span><span class="task-group-title">' + esc(g.title || g.task_id) + '</span><span class="task-group-sub">' + esc(g.task_id) + '</span></span>'
+        + '<span><span class="task-group-title">' + esc(g.title || g.task_id) + '</span><span class="task-group-sub">第 ' + esc(String(g.latest_revision || 1)) + ' 轮 · 共 ' + esc(String(g.run_count || 1)) + ' 次执行</span></span>'
         + healthPill(h)
         + '<span class="task-group-stat hide-s">' + esc(String(g.run_count || 1)) + ' 轮 · ' + esc((OWNERS[g.owner] || OWNERS.none).name) + '</span>'
         + '<span class="task-group-stat">' + esc(relAge(h.ageSec)) + '</span>'
@@ -905,6 +1024,11 @@
     const task = tasks.find((t) => t.run_id === selectedRunId) || pickCurrent(tasks);
 
     let html = renderOps(groups);
+    html += '<div class="card"><p class="sec">怎么读任务档案</p><div class="experiment-guide">'
+      + '<div><b>任务 = 研究问题</b>一个稳定的问题目标，不因为重做而换身份。</div>'
+      + '<div><b>轮次 = 实验</b>每轮都是一次实现和验证，失败轮次保留下来用于比较。</div>'
+      + '<div><b>产物 = 证据</b>方案、日志、补丁和截图用来证明结论，不靠口头描述。</div>'
+      + '</div></div>';
     if (!task) {
       html += '<div class="card"><p class="sec">当前任务</p><div class="empty">还没有任务记录。派一个任务给我，这里会出现它的全流程。</div></div>';
     } else {
@@ -922,22 +1046,26 @@
       const groupHealth = group.health || task.task_health || {};
       const runs = group.runs || [];
       const revisionTabs = runs.length > 1 ? '<div class="revision-tabs">' + runs.map((r) => '<button class="revision-tab' + (r.run_id === rid ? ' on' : '') + '" type="button" onclick="selectDashboardRun(\'' + esc(group.task_id) + '\',\'' + esc(r.run_id) + '\')">第 ' + esc(String(r.revision)) + ' 轮 · ' + esc(r.verdict || r.phase || '—') + '</button>').join('') + '</div>' : '';
-      const lineage = task.previous_run_id ? '<div class="lineage-note">承接上一轮 <span class="run-id-display">' + esc(task.previous_run_id) + '</span></div>' : '';
+      const lineage = task.previous_run_id ? '<div class="lineage-note">承接上一轮实验</div>' : '';
       html += '<div class="card current-task-card" data-run-id="' + esc(rid) + '" data-task-id="' + esc(group.task_id || task.task_id || '') + '">'
         + '<div class="task-detail-head"><div class="task-detail-title">'
         + '<div class="task-detail-kicker"><p class="sec" style="margin:0">任务详情</p>' + pill
-        + '<span class="tag ondemand">' + esc(group.task_id || task.task_id || rid) + ' · 第 ' + esc(String(group.latest_revision || task.task_revision || 1)) + ' 轮</span></div>'
+        + '<span class="tag ondemand">第 ' + esc(String(group.latest_revision || task.task_revision || 1)) + ' 轮</span></div>'
         + '<h2>' + esc(task.task_one_liner || '(无任务描述)') + '</h2>'
         + '<div class="task-detail-meta"><span>负责人：' + esc((OWNERS[owner] || OWNERS.none).name) + '</span>'
         + '<span>开始：' + esc(task.started_at ? task.started_at.slice(5, 16).replace('T', ' ') : '—') + '</span>'
         + '<span>' + (st === 'run' ? '已耗时（实时）：' : '总耗时：') + esc(durBetween(task.started_at, st === 'run' ? null : task.updated_at)) + '</span>'
-        + '<span>run：<span class="run-id-display">' + esc(rid) + '</span></span></div>'
+        + '</div>'
         + revisionTabs + lineage + '</div>'
         + '<div class="task-signal"><div>' + healthPill(groupHealth) + '</div>'
         + '<div class="k" style="margin-top:9px">最后活动</div><div class="v">' + esc(relAge(groupHealth.ageSec)) + '</div>'
         + '<div class="k" style="margin-top:8px">当前动作</div><div class="v" style="font-size:12px;line-height:1.55">' + esc(groupHealth.currentAction || '无新增动作') + '</div>'
         + '</div></div>'
         + (task.note ? '<div style="margin-top:14px;font-size:12px;color:var(--text-2);background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:10px 12px">' + esc(task.note) + '</div>' : '')
+        + '<details class="expert-mode technical-evidence" aria-expanded="false"><summary>技术证据与编号</summary>'
+        + '<div class="latest-line"><span>执行编号</span><b><span class="run-id-display">' + esc(rid) + '</span></b></div>'
+        + (task.previous_run_id ? '<div class="latest-line"><span>上一轮编号</span><b><span class="run-id-display">' + esc(task.previous_run_id) + '</span></b></div>' : '')
+        + '</details>'
         + '</div>';
 
       // === 四阶段 v2 (可展开, S12 探针目标) ===
@@ -1011,6 +1139,7 @@
           });
           html += '</div>';
         }
+        html += '<p class="stage-plain">' + esc(PHASE_PLAIN[m.k] || '') + '</p>';
         html += '</div></div></section>';
       });
       html += '</div></div>';
@@ -1028,7 +1157,7 @@
 
     html += '<div class="cols" style="margin-top:14px">'
       + '<div class="card"><p class="sec">活动流（最近 ' + Math.min(9, events.length) + ' 条）</p><div class="feed">' + feed + '</div></div>'
-      + '<div class="stack">' + renderResources(res) + renderProviders(data.providers) + renderHealth(health) + '</div>'
+      + '<details class="expert-mode technical-evidence" aria-expanded="false" style="margin:0"><summary>资源、额度与健康证据</summary><div class="stack">' + renderResources(res) + renderProviders(data.providers) + renderHealth(health) + '</div></details>'
       + '</div>';
 
     html += renderTaskArchive(groups);
@@ -1338,6 +1467,21 @@
 
   function renderArch(data) {
     const arch = data.architecture || {};
+    const watched = ((data.health || {}).services || []).filter((s) => SVC_LABEL[s.label]);
+    const bridgeGood = watched.some((s) => s.label === 'ai.feishu-codex-bridge.bot' && serviceIsGood(s));
+    const gatewayGood = watched.some((s) => s.label === 'ai.openclaw.gateway' && serviceIsGood(s));
+    const snapshotGood = watched.some((s) => s.label === 'ai.agent-dashboard.push' && serviceIsGood(s));
+    const statuses = ['入口正常', bridgeGood && gatewayGood ? '通道可用' : '通道待检查', '按需运行', '按需运行', snapshotGood ? '定时更新' : '更新待检查'];
+    const storyHtml = '<div class="card"><p class="sec">一次任务怎么走完</p><div class="arch-story">'
+      + ARCH_STORY.map((s, i) => '<article class="arch-story-step" data-step="' + (i + 1) + '"><span class="no">' + (i + 1) + '</span>'
+        + '<h3>' + esc(s.title) + '</h3>'
+        + '<p data-field="who"><span class="lab">谁在做：</span>' + esc(s.who) + '</p>'
+        + '<p data-field="inputOutput"><span class="lab">输入 / 输出：</span>' + esc(s.input) + ' → ' + esc(s.output) + '</p>'
+        + '<p data-field="failureImpact"><span class="lab">坏了会影响：</span>' + esc(s.impact) + '</p>'
+        + '<p data-field="status"><span class="lab">当前状态：</span>' + esc(statuses[i]) + '</p>'
+        + '</article>').join('') + '</div>'
+      + '<details class="expert-mode" id="arch-expert-mode" aria-expanded="false"><summary>专家模式：组件拓扑、目录、路径与补丁</summary>'
+      + '</details></div>';
     const layersHtml = LAYERS.map((L) => {
       const nodes = L.nodes.map((n) => '<button class="arch-node' + (n.hub ? ' is-hub' : '') + '" type="button" data-node-id="' + n.id + '">'
         + '<span class="top"><span class="ic">' + icon(n.icon) + '</span><span class="nm">' + esc(n.name) + '</span>'
@@ -1361,7 +1505,7 @@
 
     const flowLegend = FLOW_KINDS.map((f) => '<span><i style="background:' + f.c + '"></i>' + esc(f.t) + '</span>').join('');
 
-    $('panel-arch').innerHTML = '<div class="card">'
+    const expertHtml = '<div class="card">'
       + '<div class="arch-head"><p class="sec" style="margin:0">架构地图 · ' + LAYERS.length + ' 层 / ' + LAYERS.reduce((a, l) => a + l.nodes.length, 0) + ' 个组件 / ' + EDGES.length + ' 条连接</p>'
       + '<span class="spacer" style="flex:1"></span><span class="arch-hint">点任意组件 → 高亮它的上下游</span></div>'
       + '<div class="arch-legend" style="margin-bottom:14px">' + legend + '</div>'
@@ -1372,6 +1516,10 @@
       + renderCatalog()
       + '<div class="cols" style="margin-top:14px">' + renderMemory() + renderSkills(arch) + '</div>'
       + renderPatches(arch);
+
+    $('panel-arch').innerHTML = storyHtml;
+    const expertBox = document.getElementById('arch-expert-mode');
+    if (expertBox) expertBox.insertAdjacentHTML('beforeend', expertHtml);
 
     requestAnimationFrame(() => { drawEdges(); syncSelection(); });
   }
@@ -1567,6 +1715,7 @@
 
   function renderAll(data) {
     currentData = data;
+    renderOverview(data);
     renderTasks(data);
     renderArch(data);
     const el = $('meta-update');
@@ -1590,6 +1739,7 @@
 
   function switchTab(name) {
     document.querySelectorAll('#seg button').forEach((b) => b.classList.toggle('on', b.dataset.tab === name));
+    $('panel-overview').style.display = name === 'overview' ? '' : 'none';
     $('panel-tasks').style.display = name === 'tasks' ? '' : 'none';
     $('panel-arch').style.display = name === 'arch' ? '' : 'none';
     if (name === 'arch') requestAnimationFrame(() => { drawEdges(); syncSelection(); });
