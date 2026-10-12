@@ -676,6 +676,12 @@
     const m = String(iso).match(/T(\d{2}:\d{2})(?::(\d{2}))?/);
     return m ? (m[2] ? m[1] + ':' + m[2] : m[1]) : '';
   }
+  /* R=20261012-1547-quota-by-provider: 抓于 HH:MM:SS, 强制要秒 (ts2hm 可能只到分) */
+  function fmtTime(iso) {
+    if (!iso) return '';
+    const m = String(iso).match(/T(\d{2}:\d{2}):(\d{2})/);
+    return m ? (m[1] + ':' + m[2]) : (ts2hm(iso) || '');
+  }
   /* R=2 新增: 看护事件补月-日。避免旧事件被误读为「今天的故障」（一天只看 4 条，
      去年同期事件会被混入 4 条尾部，必须给出可区分的日期）。 */
   function tsMDHM(iso) {
@@ -911,24 +917,84 @@
     return !!(s.pid && s.pid !== '-' && s.pid !== '?');
   }
 
+  /* R=20261012-1547-quota-by-provider: module-level 暂存 providers + generatedAt,
+     让 agentTile 在没拿到 byProvider 时能兜底从 data.providers.{glm,deepseek,minimax} 现算
+     (gen_dashboard.py 不在白名单, 默认不暴露 byProvider; renderOverview 进入时 set 一次) */
+  let _currentProviders = null;
+  let _currentGeneratedAt = null;
   /* 总览 agent 状态 tile：渲染 Codex / 小秘 当前模型 + 5h 余量；拉不到数据降级 (R=20261012-0236) */
   /* R=20261012-1445-xiaomi-minimax-tile: 第三个参数改为 { model, pct5h } 函数对象，避免 Codex / 小秘 字段名不一致时 fallback 误判 */
-  function agentTile(name, p, opts) {
+  /* R=20261012-1547-quota-by-provider: agentTile 加 4th 参数 currentModel
+     - Codex 传 currentModel = codex_model.current (glm|deepseek|minimax)
+     - 按 current 选 source 字段 + 文案:
+       glm      → "5h 余量 X% · 抓于 HH:MM:SS"
+       deepseek → "余额 ¥X · 抓于 HH:MM:SS"
+       minimax  → "5h 余量 X% · 抓于 HH:MM:SS"
+     - data-source 属性供 visual_check 探针
+     - p.quota.byProvider (新, model_switch.py 写) 优先; 否则从 data.providers.{glm,deepseek,minimax} 现算
+       (gen_dashboard.py 不在白名单 → byProvider 默认不暴露, 走兜底)
+     - data 缺失时 fallback (Codex 走 "状态不可读", 小秘走 "取不到（专用浏览器会话失效？）")
+  */
+  function agentTile(name, p, opts, currentModel) {
     const slug = name === 'Codex' ? 'codex' : 'xiaomi';
     const fallback = name === 'Codex' ? '状态不可读' : '取不到（专用浏览器会话失效？）';
-    const model = (p && opts && typeof opts.model === 'function') ? (opts.model(p) || '—') : '—';
-    const pct5h = (p && opts && typeof opts.pct5h === 'function') ? opts.pct5h(p) : null;
-    const v = (pct5h == null) ? '—' : model;
-    const s = (pct5h == null)
-      ? fallback
-      : '5h 余量 ' + pct5h.toFixed(1) + '%';
-    return '<div class="overview-tile overview-tile--agent-' + slug + '" data-overview-agent="' + slug + '">'
+    let v = '—', s = fallback;
+    const source = (slug === 'xiaomi') ? 'minimax' : (currentModel || 'unknown');
+    if (slug === 'xiaomi') {
+      // 小秘固定 minimax, 沿用 opts.pct5h (从 data.providers.minimax.models[0] 现算)
+      const model = (p && opts && typeof opts.model === 'function') ? (opts.model(p) || '—') : '—';
+      const pct5h = (p && opts && typeof opts.pct5h === 'function') ? opts.pct5h(p) : null;
+      v = (pct5h == null) ? '—' : model;
+      s = (pct5h == null) ? fallback : '5h 余量 ' + pct5h.toFixed(1) + '% · 抓于 ' + fmtTime((p && p.checkedAt) || '');
+    } else {
+      // Codex: 按 current 选 source
+      const label = ({ glm: 'GLM', deepseek: 'DeepSeek', minimax: 'MiniMax-M3' }[currentModel] || '—');
+      const root = _currentProviders || {};
+      const gen = _currentGeneratedAt || '';
+      // 优先 p.quota.byProvider.{current} (model_switch.py 写, plan §4)
+      const by = (p && p.quota && p.quota.byProvider) || {};
+      const slot = by[currentModel];
+      const checked = slot && slot.checkedAt;
+      if (currentModel === 'glm' && slot && typeof slot.fiveHourPct === 'number') {
+        v = 'GLM'; s = '5h 余量 ' + slot.fiveHourPct.toFixed(1) + '% · 抓于 ' + fmtTime(checked);
+      } else if (currentModel === 'deepseek' && slot && typeof slot.balanceCny === 'number') {
+        v = 'DeepSeek'; s = '余额 ¥' + slot.balanceCny.toFixed(2) + ' · 抓于 ' + fmtTime(checked);
+      } else if (currentModel === 'minimax' && slot && typeof slot.fiveHourPct === 'number') {
+        v = 'MiniMax-M3'; s = '5h 余量 ' + slot.fiveHourPct.toFixed(1) + '% · 抓于 ' + fmtTime(checked);
+      } else if (currentModel === 'glm') {
+        // 兜底: 从 data.providers.glm 现算
+        const lim = ((root.glm || {}).limits || []).filter((L) => L.number === 5)[0];
+        if (lim && lim.usage > 0) {
+          v = 'GLM'; s = '5h 余量 ' + ((lim.remaining / lim.usage) * 100).toFixed(1) + '% · 抓于 ' + fmtTime(gen || (p && p.checkedAt) || '');
+        }
+      } else if (currentModel === 'deepseek') {
+        const bal = (root.deepseek || {}).balance;
+        if (typeof bal === 'number') {
+          v = 'DeepSeek'; s = '余额 ¥' + bal.toFixed(2) + ' · 抓于 ' + fmtTime(gen || (p && p.checkedAt) || '');
+        }
+      } else if (currentModel === 'minimax') {
+        const gm = ((root.minimax || {}).models || [])[0];
+        if (gm && gm.intervalTotal && gm.intervalUsed) {
+          const t = parseFloat(String(gm.intervalTotal).replace('%', ''));
+          const u = parseFloat(String(gm.intervalUsed).replace('%', ''));
+          if (t > 0) {
+            v = 'MiniMax-M3'; s = '5h 余量 ' + (((t - u) / t) * 100).toFixed(1) + '% · 抓于 ' + fmtTime(gen || (p && p.checkedAt) || '');
+          }
+        }
+      } else {
+        v = label;  // 未知 current, 只显示 label
+      }
+    }
+    return '<div class="overview-tile overview-tile--agent-' + slug + '" data-overview-agent="' + slug + '" data-source="' + esc(source) + '">'
       + '<span class="k">' + esc(name) + '</span>'
       + '<span class="v">' + esc(v) + '</span>'
       + '<span class="s">' + esc(s) + '</span></div>';
   }
 
   function renderOverview(data) {
+    /* R=20261012-1547-quota-by-provider: 缓存 providers + generatedAt 供 agentTile 兜底 */
+    _currentProviders = (data && data.providers) || {};
+    _currentGeneratedAt = (data && data.generatedAt) || null;
     const groups = data.task_groups || [];
     const tasks = data.tasks || [];
     const services = (data.health || {}).services || [];
@@ -980,7 +1046,7 @@
             return cm.current === 'glm' ? 'GLM' : cm.current === 'deepseek' ? 'DeepSeek' : cm.current === 'minimax' ? 'MiniMax-M3' : '—';
           },
           pct5h: function(cm) { return typeof cm.fiveHourPct === 'number' ? cm.fiveHourPct : null; }
-        })
+        }, ((data.providers || {}).codex_model || {}).current)
       + agentTile('小秘', (data.providers || {}).minimax, {
           model: function() { return 'MiniMax-M3'; },
           pct5h: function(mx) {
