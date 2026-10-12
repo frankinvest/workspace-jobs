@@ -168,6 +168,18 @@
     .bar .bv { font-family:var(--mono); font-size:11px; color:var(--text-2); font-variant-numeric:tabular-nums; }
     .pv-h { font-size:12px; font-weight:600; color:var(--text); margin:0 0 8px; display:flex; align-items:center; gap:8px; }
     .pv-s { font-size:11px; color:var(--text-3); margin-top:6px; line-height:1.5; }
+    /* 5h 重点 / 周次要 (R=20261012-0236) */
+    .quota-5h { margin-top:6px; }
+    .quota-5h .k { font-size:12px; font-weight:600; color:var(--text-2); margin-bottom:4px; }
+    .quota-5h .v { font-size:24px; font-weight:600; letter-spacing:-.02em; line-height:1.1; font-variant-numeric:tabular-nums; color:var(--text); }
+    .quota-5h .bt { height:10px; border-radius:5px; background:var(--surface-3); overflow:hidden; display:block; margin-top:6px; }
+    .quota-5h .bf { height:100%; display:block; border-radius:5px; transition:width .3s ease; }
+    .quota-week { margin-top:10px; padding-top:8px; border-top:1px dashed var(--border); }
+    .quota-week .k { font-size:12px; font-weight:600; color:var(--text-3); margin-bottom:4px; }
+    .quota-week .v { font-size:13.5px; font-weight:500; color:var(--text-2); font-variant-numeric:tabular-nums; }
+    .quota-week .bt { height:6px; border-radius:3px; background:var(--surface-3); overflow:hidden; display:block; margin-top:4px; }
+    .quota-week .bf { height:100%; display:block; border-radius:3px; transition:width .3s ease; }
+
 
     /* ===== 健康 ===== */
     .svc { display:flex; align-items:center; gap:9px; padding:6px 0; font-size:12px; }
@@ -278,6 +290,7 @@
     .overview-title { margin:0; font-size:24px; line-height:1.25; letter-spacing:-.02em; }
     .overview-plain { margin:8px 0 0; color:var(--text-2); font-size:13.5px; line-height:1.65; }
     .overview-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; margin-top:16px; }
+    .overview-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin-top:16px; }
     .overview-tile { min-height:104px; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; padding:12px; }
     .overview-tile .k { color:var(--text-3); font-size:11px; font-weight:600; }
     .overview-tile .v { display:block; margin-top:5px; color:var(--text); font-size:16px; font-weight:600; line-height:1.4; }
@@ -898,6 +911,22 @@
     return !!(s.pid && s.pid !== '-' && s.pid !== '?');
   }
 
+  /* 总览 agent 状态 tile：渲染 Codex / 小秘 当前模型 + 5h 余量；拉不到数据降级 (R=20261012-0236) */
+  function agentTile(name, p, modelFn) {
+    const slug = name === 'Codex' ? 'codex' : 'xiaomi';
+    const fallback = name === 'Codex' ? '状态不可读' : '取不到（专用浏览器会话失效？）';
+    const pct5h = (p && typeof p.fiveHourPct === 'number') ? p.fiveHourPct : null;
+    const model = (p && typeof modelFn === 'function') ? (modelFn(p) || '—') : '—';
+    const v = (pct5h == null) ? '—' : model;
+    const s = (pct5h == null)
+      ? fallback
+      : '5h 余量 ' + pct5h.toFixed(1) + '%';
+    return '<div class="overview-tile overview-tile--agent-' + slug + '" data-overview-agent="' + slug + '">'
+      + '<span class="k">' + esc(name) + '</span>'
+      + '<span class="v">' + esc(v) + '</span>'
+      + '<span class="s">' + esc(s) + '</span></div>';
+  }
+
   function renderOverview(data) {
     const groups = data.task_groups || [];
     const tasks = data.tasks || [];
@@ -945,7 +974,10 @@
       + '<div class="overview-grid">'
       + '<div class="overview-tile"><span class="k">现在谁在干活</span><span class="v">' + (activeGroups.length ? activeGroups.length + ' 个任务在推进' : '空闲') + '</span><span class="s">' + esc(activeText) + '</span></div>'
       + '<div class="overview-tile"><span class="k">上一个已完成任务</span><span class="v">' + esc(latestStateText) + '</span><span class="s">' + esc(latestTitle) + ' · ' + esc(latestPhase) + ' · ' + esc(latestWhen) + '</span></div>'
-      + '<div class="overview-tile"><span class="k">今日成本</span><span class="v">' + (typeof cost === 'number' ? money(cost) : '—') + '</span><span class="s">小秘侧委派消耗；模型额度细节在任务档案里。</span></div>'
+      + agentTile('Codex', (data.providers || {}).codex_model, function(cm) {
+          return cm.current === 'glm' ? 'GLM' : cm.current === 'deepseek' ? 'DeepSeek' : cm.current === 'minimax' ? 'MiniMax-M3' : '—';
+        })
+      + agentTile('小秘', (data.providers || {}).minimax, function() { return 'MiniMax-M3'; })
       + '</div></div>'
       + '<div class="overview-side"><div class="overview-mini overview-idle" data-overview-idle="1"><span class="k">执行状态</span><span class="v">' + esc(activeText) + '</span></div>'
       + '<div class="overview-mini overview-error' + (bad.length ? ' has-error' : '') + '"><span class="k">异常</span><span class="v">' + esc(errorText) + '</span></div>'
@@ -1165,46 +1197,12 @@
 
     html += '<div class="cols" style="margin-top:14px">'
       + '<div class="card"><p class="sec">活动流（最近 ' + Math.min(9, events.length) + ' 条）</p><div class="feed">' + feed + '</div></div>'
-      + '<details class="expert-mode technical-evidence" aria-expanded="false" style="margin:0"><summary>资源、额度与健康证据</summary><div class="stack">' + renderResources(res) + renderProviders(data.providers) + renderHealth(health) + '</div></details>'
+      + '<details class="expert-mode technical-evidence" aria-expanded="false" style="margin:0"><summary>资源、额度与健康证据</summary><div class="stack">' + renderProviders(data.providers) + renderHealth(health) + '</div></details>'
       + '</div>';
 
     html += renderTaskArchive(groups);
     $('panel-tasks').innerHTML = html;
     tickElapsed();
-  }
-
-  function renderResources(res) {
-    const cost = (typeof res.todayCostUsd === 'number') ? res.todayCostUsd : null;
-    const tk = res.codexTodayTokens || {};
-    // R=2 修正: “今日委派”读 res.delegationsToday（采集器安全解析统计的真实今日委派数），
-    // 不能用 recentDelegations.length （受限于只留 10 条，偷换成 10 / 5 / 3 ... 都会跳）。
-    const delegationsToday = (typeof res.delegationsToday === 'number') ? res.delegationsToday : null;
-    const sessions = (typeof res.codexSessionsToday === 'number') ? res.codexSessionsToday : 0;
-    const tkTotal = (typeof tk.total === 'number' && tk.total > 0) ? tk.total : null;
-
-    const stats = '<div class="stats">'
-      + '<div class="stat"><div class="k">今日成本（小秘侧）</div><div class="v">' + (cost == null ? '—' : money(cost)) + '</div></div>'
-      + '<div class="stat"><div class="k">Codex 今日 token（含缓存）</div><div class="v">' + shortNum(tkTotal) + '<small>' + (tk.output ? '出 ' + shortNum(tk.output) : '') + '</small></div></div>'
-      + '<div class="stat"><div class="k">今日委派</div><div class="v">' + (delegationsToday == null ? '—' : delegationsToday) + '<small>次</small></div></div>'
-      + '<div class="stat"><div class="k">Codex 会话</div><div class="v">' + sessions + '<small>今日</small></div></div>'
-      + '</div>';
-
-    const byModel = res.todayByModel || {};
-    const rows = Object.keys(byModel)
-      .filter((k) => k && k !== 'unknown' && k !== 'null' && byModel[k] > 0)
-      .sort((a, b) => byModel[b] - byModel[a]);
-    const total = rows.reduce((s, m) => s + (byModel[m] || 0), 0);
-    const bars = rows.length
-      ? '<div class="bars">' + rows.map((m) => {
-          const pct = total > 0 ? (byModel[m] / total * 100) : 0;
-          return '<div class="bar">'
-            + '<span class="bl" title="' + esc(m) + '">' + esc(String(m).replace(/^[a-z-]+\//, '')) + '</span>'
-            + '<span class="bt"><span class="bf" style="width:' + pct.toFixed(1) + '%"></span></span>'
-            + '<span class="bv">占比 ' + pct.toFixed(1) + '% · ' + money(byModel[m]) + '</span></div>';
-        }).join('') + '</div>'
-      : '';
-
-    return '<div class="card"><p class="sec">资源消耗</p>' + stats + bars + '</div>';
   }
 
   const SVC_LABEL = {
@@ -1251,11 +1249,20 @@
       rows.push('<div class="pv-h">' + esc(g.name || '编程套餐') + ' · ' + esc(g.level || '') + ' <span class="tag default">平台接口</span></div>');
       rows.push('<div class="bar" style="grid-template-columns:auto 1fr auto"><span class="bl">周期额度</span>'
         + pbar(period.percentage) + '<span class="bv">' + (period.percentage == null ? '—' : period.percentage + '%') + '</span></div>');
-      rows.push('<div class="pv-s">已用 ' + num(period.used) + ' / ' + num(period.usage) + ' · 剩 ' + num(period.remaining)
-        + (resetTxt ? ' · ' + esc(resetTxt) : '') + '</div>');
+      // R=20261012-0236: 周期降为"周次要"渲染
+      rows.push('<div class="quota-week">'
+        + '<div class="k">周期额度（次要）</div>'
+        + '<div class="v">已用 ' + num(period.used) + ' / 上限 ' + num(period.usage) + ' · 剩 ' + num(period.remaining)
+          + (resetTxt ? ' · 重置 ' + esc(resetTxt) : '') + '</div>'
+        + pbar(period.percentage)
+        + '</div>');
       if (short.usage) {
-        rows.push('<div class="bar" style="grid-template-columns:auto 1fr auto;margin-top:6px"><span class="bl">5 小时窗口</span>'
-          + pbar(short.percentage) + '<span class="bv">' + num(short.used) + '/' + num(short.usage) + '</span></div>');
+        // R=20261012-0236: 5h 升为重点：24px 大数字 + 10px 进度条
+        rows.push('<div class="quota-5h">'
+          + '<div class="k">GLM · 5 小时窗口（重点）</div>'
+          + '<div class="v">' + num(short.used) + ' / ' + num(short.usage) + '</div>'
+          + pbar(short.percentage)
+          + '</div>');
       }
       rows.push('<div class="pv-s">今日 token：' + shortNum(g.todayTokens) + (g.todayCalls ? ' · 调用 ' + num(g.todayCalls) + ' 次' : '')
         + ((g.todayByModel && g.todayByModel.length) ? '（' + g.todayByModel.map((m) => esc(m.model) + ' ' + shortNum(m.tokens)).join('、') + '）' : '') + '</div>');
@@ -1287,11 +1294,17 @@
       const rem  = Math.max(0, tot - used);
       const iUsed = num1(gm.intervalUsed), iTot = num1(gm.intervalTotal);
       const iRem  = Math.max(0, iTot - iUsed);
-      rows.push('<div class="bar" style="grid-template-columns:auto 1fr auto"><span class="bl">周限额</span>'
+      // R=20261012-0236: 5h 重点 + 周次要
+      rows.push('<div class="quota-5h">'
+        + '<div class="k">小秘 · 5h 窗口（重点）</div>'
+        + '<div class="v">' + iRem + '%</div>'
+        + pbar(pctOf(gm.intervalUsed, gm.intervalTotal))
+        + '</div>');
+      rows.push('<div class="quota-week">'
+        + '<div class="k">周额度（次要）</div>'
+        + '<div class="v">已用 ' + used + '% · 剩余 ' + rem + '% · 上限 ' + tot + '% · 重置 ' + esc(fmtMDHM(gm.weeklyReset)) + '</div>'
         + pbar(pctOf(gm.weeklyUsed, gm.weeklyTotal))
-        + '<span class="bv">' + esc(gm.weeklyUsed || '—') + ' / ' + esc(gm.weeklyTotal || '—') + '</span></div>');
-      rows.push('<div class="pv-s">周 已用 ' + used + '% / 上限 ' + tot + '% / 剩余 ' + rem + '% / 重置 ' + esc(fmtMDHM(gm.weeklyReset)) + '</div>');
-      rows.push('<div class="pv-s">5h 已用 ' + iUsed + '% / 上限 ' + iTot + '% / 剩余 ' + iRem + '% / 重置 ' + esc(fmtMDHM(gm.intervalReset)) + '</div>');
+        + '</div>');
       rows.push('<div class="pv-s">今日 token：' + shortNum(mx.todayTokens)
         + ((mx.todayByModel && mx.todayByModel.length) ? '（' + mx.todayByModel.map((m) => esc(m.model) + ' ' + shortNum(m.tokens)).join('、') + '）' : '')
         + (mx.cacheHitPercent ? ' · 缓存命中 ' + esc(mx.cacheHitPercent) + '%' : '') + '</div>');
