@@ -912,11 +912,12 @@
   }
 
   /* 总览 agent 状态 tile：渲染 Codex / 小秘 当前模型 + 5h 余量；拉不到数据降级 (R=20261012-0236) */
-  function agentTile(name, p, modelFn) {
+  /* R=20261012-1445-xiaomi-minimax-tile: 第三个参数改为 { model, pct5h } 函数对象，避免 Codex / 小秘 字段名不一致时 fallback 误判 */
+  function agentTile(name, p, opts) {
     const slug = name === 'Codex' ? 'codex' : 'xiaomi';
     const fallback = name === 'Codex' ? '状态不可读' : '取不到（专用浏览器会话失效？）';
-    const pct5h = (p && typeof p.fiveHourPct === 'number') ? p.fiveHourPct : null;
-    const model = (p && typeof modelFn === 'function') ? (modelFn(p) || '—') : '—';
+    const model = (p && opts && typeof opts.model === 'function') ? (opts.model(p) || '—') : '—';
+    const pct5h = (p && opts && typeof opts.pct5h === 'function') ? opts.pct5h(p) : null;
     const v = (pct5h == null) ? '—' : model;
     const s = (pct5h == null)
       ? fallback
@@ -974,10 +975,25 @@
       + '<div class="overview-grid">'
       + '<div class="overview-tile"><span class="k">现在谁在干活</span><span class="v">' + (activeGroups.length ? activeGroups.length + ' 个任务在推进' : '空闲') + '</span><span class="s">' + esc(activeText) + '</span></div>'
       + '<div class="overview-tile"><span class="k">上一个已完成任务</span><span class="v">' + esc(latestStateText) + '</span><span class="s">' + esc(latestTitle) + ' · ' + esc(latestPhase) + ' · ' + esc(latestWhen) + '</span></div>'
-      + agentTile('Codex', (data.providers || {}).codex_model, function(cm) {
-          return cm.current === 'glm' ? 'GLM' : cm.current === 'deepseek' ? 'DeepSeek' : cm.current === 'minimax' ? 'MiniMax-M3' : '—';
+      + agentTile('Codex', (data.providers || {}).codex_model, {
+          model: function(cm) {
+            return cm.current === 'glm' ? 'GLM' : cm.current === 'deepseek' ? 'DeepSeek' : cm.current === 'minimax' ? 'MiniMax-M3' : '—';
+          },
+          pct5h: function(cm) { return typeof cm.fiveHourPct === 'number' ? cm.fiveHourPct : null; }
         })
-      + agentTile('小秘', (data.providers || {}).minimax, function() { return 'MiniMax-M3'; })
+      + agentTile('小秘', (data.providers || {}).minimax, {
+          model: function() { return 'MiniMax-M3'; },
+          pct5h: function(mx) {
+            // collect_minimax() 没有 top-level 5h 字段，从 models[0].intervalUsed/Total 算余量百分比
+            if (!mx || mx.ok !== true) return null;
+            const g = (mx.models || [])[0];
+            if (!g) return null;
+            const used = parseFloat(String(g.intervalUsed || '').replace('%', ''));
+            const total = parseFloat(String(g.intervalTotal || '').replace('%', ''));
+            if (!isFinite(used) || !isFinite(total) || total <= 0) return null;
+            return (total - used) / total * 100;
+          }
+        })
       + '</div></div>'
       + '<div class="overview-side"><div class="overview-mini overview-idle" data-overview-idle="1"><span class="k">执行状态</span><span class="v">' + esc(activeText) + '</span></div>'
       + '<div class="overview-mini overview-error' + (bad.length ? ' has-error' : '') + '"><span class="k">异常</span><span class="v">' + esc(errorText) + '</span></div>'
