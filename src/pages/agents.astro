@@ -473,6 +473,30 @@
     .file-name, .run-id-display { max-width:100%; white-space:normal; word-break:break-all; }
     .revision-tab, .task-run-chip { max-width:100%; white-space:normal; word-break:break-word; }
   }
+
+  /* ===== 热榜 trending：只复用既有 CSS 变量，不自造风格 (WORKFLOW §14/§15) ===== */
+  .tr-stamp{margin:-8px 0 14px;font-size:var(--fs-meta);color:var(--text-3)}
+  .tr-banner{display:flex;align-items:flex-start;gap:8px;background:var(--run-soft);border:1px solid var(--run-line);color:#93370d;border-radius:var(--r-sm);padding:9px 12px;font-size:var(--fs-meta);line-height:1.5;margin-bottom:12px}
+  .tr-head{display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+  .tr-head h2{margin:0;font-size:var(--fs-secondary);font-weight:var(--fw-semibold);letter-spacing:-.01em}
+  .tr-head .sub{margin:2px 0 0;font-size:var(--fs-label);color:var(--text-3);font-family:var(--mono)}
+  .tr-mini{margin-left:auto;display:inline-flex;gap:2px;background:var(--surface-3);padding:2px;border-radius:7px;flex:none}
+  .tr-mbtn{font:inherit;font-size:var(--fs-meta);color:var(--text-2);background:none;border:0;padding:4px 11px;border-radius:5px;cursor:pointer;transition:background .15s,color .15s}
+  .tr-mbtn:hover{color:var(--text)}
+  .tr-mbtn.on{background:var(--surface);color:var(--accent-2);box-shadow:var(--shadow)}
+  table.tr-tbl col.c-rk{width:30px}table.tr-tbl col.c-stars{width:92px}table.tr-tbl col.c-author{width:138px}table.tr-tbl col.c-speed{width:74px}table.tr-tbl col.c-lang{width:62px}
+  table.tr-tbl td.rk{color:var(--text-3);font-family:var(--mono);font-size:var(--fs-meta);font-variant-numeric:tabular-nums}
+  table.tr-tbl td.nm a{color:var(--text);text-decoration:none;font-weight:var(--fw-medium)}
+  table.tr-tbl td.nm a:hover{color:var(--accent-2)}
+  table.tr-tbl .ds{display:block;color:var(--text-3);font-size:var(--fs-meta);margin-top:1px;line-height:1.45;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  table.tr-tbl .au{display:block;color:var(--text-2);font-size:var(--fs-meta);font-weight:var(--fw-regular);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  table.tr-tbl .ad{display:block;color:var(--text-3);font-size:var(--fs-label);font-family:var(--mono);margin-top:1px}
+  table.tr-tbl td.spd{font-family:var(--mono);font-variant-numeric:tabular-nums;color:var(--ok);font-weight:var(--fw-semibold);white-space:nowrap}
+  table.tr-tbl td.spd.is-none{color:var(--text-3);font-weight:var(--fw-regular)}
+  table.tr-tbl td.lang{color:var(--text-2);font-size:var(--fs-meta)}
+  tr.tr-empty>td{padding:10px 0;height:auto}
+  .tr-empty-msg{color:var(--text-3);font-size:var(--fs-body)}
+  @media(max-width:700px){table.tr-tbl col.c-author,table.tr-tbl col.c-speed{display:none}.tr-mini{margin-left:0}}
   </style>
 </head>
 <body>
@@ -508,11 +532,13 @@
       <button class="on" data-tab="overview" type="button" role="tab">总览</button>
       <button data-tab="tasks" type="button" role="tab">任务档案</button>
       <button data-tab="arch" type="button" role="tab">架构解释</button>
+      <button data-tab="trending" type="button" role="tab">热榜</button>
     </div>
 
     <section id="panel-overview" class="panel-view" data-overview></section>
     <section id="panel-tasks" class="panel-view" style="display:none"></section>
     <section id="panel-arch" class="panel-view" style="display:none"></section>
+    <section id="panel-trending" class="panel-view" style="display:none"></section>
   </div>
 
   <script is:inline>
@@ -1816,11 +1842,104 @@
      ============================================================ */
   let currentPassword = '', lastBlobHash = '', pollTimer = null, currentData = null;
 
+  /* ── 热榜 trending ──────────────────────────────────────────
+     数据来自 gen_dashboard.py 写入的 trending 快照 (每天 08:00 抓一次)。
+     本页只读快照, 不发任何网络请求。 */
+  const TR_CARDS = [
+    { id: 'trc1', hot: 'github_agent_hot', rising: 'github_agent_rising' },
+    { id: 'trc2', hot: 'developer_tool_hot', rising: 'developer_tool_rising' },
+  ];
+  const trState = { trc1: 'github_agent_hot', trc2: 'developer_tool_hot' };
+  let trData = null;
+
+  function trEsc(s) {
+    return String(s === null || s === undefined ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+  function trInt(n) {
+    return (n === null || n === undefined || n === '') ? '—' : Number(n).toLocaleString('en-US');
+  }
+
+  function trBoardTable(board) {
+    const items = (board && board.items) || [];
+    if (!items.length) {
+      // plan §5: 某榜为空 → 该榜显示「今日未取到」, 其余榜正常
+      return '<table class="tbl tr-tbl"><thead><tr><th>#</th><th>仓库</th>'
+        + '<th class="right">总星数</th><th class="right">作者更新</th>'
+        + '<th class="right">日均星增</th><th>语言</th></tr></thead>'
+        + '<tbody><tr class="tr-empty"><td colspan="6"><span class="tr-empty-msg">今日未取到</span></td></tr></tbody></table>';
+    }
+    const rows = items.map((it) => {
+      const speed = (it.speed === null || it.speed === undefined)
+        ? '<span class="spd is-none">—</span>'
+        : '<span class="spd">+' + trInt(it.speed) + '</span>';
+      const author = it.author
+        ? '<span class="au" title="' + trEsc(it.author) + '">' + trEsc(it.author) + '</span>'
+        : '<span class="au">—</span>';
+      return '<tr>'
+        + '<td class="rk">' + trInt(it.rank) + '</td>'
+        + '<td class="nm"><a href="' + trEsc(it.url) + '" target="_blank" rel="noopener noreferrer">'
+        + trEsc(it.repo) + '</a><span class="ds">' + trEsc(it.zh) + '</span></td>'
+        + '<td class="n right">★ ' + trInt(it.stars) + '</td>'
+        + '<td class="right">' + author + '<span class="ad">' + trEsc(it.when || '') + '</span></td>'
+        + '<td class="right">' + speed + '</td>'
+        + '<td class="lang">' + trEsc(it.lang) + '</td>'
+        + '</tr>';
+    }).join('');
+    return '<table class="tbl tr-tbl"><colgroup><col class="c-rk"><col><col class="c-stars">'
+      + '<col class="c-author"><col class="c-speed"><col class="c-lang"></colgroup>'
+      + '<thead><tr><th>#</th><th>仓库</th><th class="right">总星数</th>'
+      + '<th class="right">作者更新</th><th class="right">日均星增</th><th>语言</th></tr></thead>'
+      + '<tbody>' + rows + '</tbody></table>';
+  }
+
+  function renderTrendingCards() {
+    const panel = $('panel-trending');
+    if (!panel) return;
+    const t = trData || {};
+    const boards = t.boards || {};
+
+    let banner = '';
+    if (t.stale) {
+      banner = '<div class="tr-banner">⚠️ 榜单数据为最近一次成功抓取的快照'
+        + (t.staleReason ? '（' + trEsc(t.staleReason) + '）' : '')
+        + (t.date ? '，快照日期 ' + trEsc(t.date) : '') + '。</div>';
+    }
+    const stamp = '<p class="tr-stamp">榜单数据 · 每天 08:00 抓取一次'
+      + (t.updatedAt ? ' · 快照 ' + trEsc(String(t.updatedAt).replace('T', ' ').slice(0, 16)) : '')
+      + (t.source ? ' · ' + trEsc(t.source) : '') + '</p>';
+
+    const cards = TR_CARDS.map((c) => {
+      const key = trState[c.id];
+      const board = boards[key] || {};
+      const isHot = key === c.hot;
+      return '<div class="card" data-tr-card="' + c.id + '">'
+        + '<div class="tr-head"><div>'
+        + '<h2>' + trEsc(board.title || '') + '</h2>'
+        + '<p class="sub">' + trEsc(board.sub || board.query || '') + '</p>'
+        + '</div><div class="tr-mini" role="tablist">'
+        + '<button type="button" class="tr-mbtn' + (isHot ? ' on' : '') + '" data-board="' + c.hot + '">热榜</button>'
+        + '<button type="button" class="tr-mbtn' + (isHot ? '' : ' on') + '" data-board="' + c.rising + '">飙升榜</button>'
+        + '</div></div>'
+        + trBoardTable(board)
+        + '</div>';
+    }).join('');
+
+    panel.innerHTML = banner + stamp + cards;
+  }
+
+  function renderTrending(data) {
+    trData = (data && data.boards) ? data : { boards: {}, stale: true, staleReason: '尚无榜单数据' };
+    renderTrendingCards();
+  }
+
   function renderAll(data) {
     currentData = data;
     renderOverview(data);
     renderTasks(data);
     renderArch(data);
+    renderTrending(data.trending);
     const el = $('meta-update');
     if (el) el.textContent = data.generatedAt ? fmtDT(data.generatedAt) : '—';
   }
@@ -1845,6 +1964,7 @@
     $('panel-overview').style.display = name === 'overview' ? '' : 'none';
     $('panel-tasks').style.display = name === 'tasks' ? '' : 'none';
     $('panel-arch').style.display = name === 'arch' ? '' : 'none';
+    $('panel-trending').style.display = name === 'trending' ? '' : 'none';
     if (name === 'arch') requestAnimationFrame(() => { drawEdges(); syncSelection(); });
   }
 
@@ -1876,6 +1996,14 @@
   }
 
   $('btn').addEventListener('click', doLogin);
+  $('panel-trending').addEventListener('click', (e) => {
+    const btn = e.target.closest('.tr-mbtn');
+    if (!btn) return;
+    const card = btn.closest('[data-tr-card]');
+    if (!card) return;
+    trState[card.getAttribute('data-tr-card')] = btn.getAttribute('data-board');
+    renderTrendingCards();
+  });
   $('pw').addEventListener('keydown', (e) => { if (e.key === 'Enter') doLogin(); });
   document.querySelectorAll('#seg button').forEach((b) => b.addEventListener('click', () => switchTab(b.dataset.tab)));
   window.addEventListener('resize', () => { if ($('panel-arch').style.display !== 'none') drawEdges(); });
