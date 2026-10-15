@@ -484,6 +484,9 @@
   .tr-mbtn{font:inherit;font-size:var(--fs-meta);color:var(--text-2);background:none;border:0;padding:4px 11px;border-radius:5px;cursor:pointer;transition:background .15s,color .15s}
   .tr-mbtn:hover{color:var(--text)}
   .tr-mbtn.on{background:var(--surface);color:var(--accent-2);box-shadow:var(--shadow)}
+  /* table-layout:fixed — 不加的话 auto 布局会被 nowrap 的长仓库名撑破,
+     移动端直接横向滚动 (V10 实测 scrollWidth 490 > 392)。 */
+  table.tr-tbl{table-layout:fixed;width:100%}
   table.tr-tbl col.c-rk{width:30px}table.tr-tbl col.c-stars{width:92px}table.tr-tbl col.c-author{width:138px}table.tr-tbl col.c-speed{width:74px}table.tr-tbl col.c-lang{width:62px}
   table.tr-tbl td.rk{color:var(--text-3);font-family:var(--mono);font-size:var(--fs-meta);font-variant-numeric:tabular-nums}
   table.tr-tbl td.nm a{color:var(--text);text-decoration:none;font-weight:var(--fw-medium)}
@@ -496,7 +499,12 @@
   table.tr-tbl td.lang{color:var(--text-2);font-size:var(--fs-meta)}
   tr.tr-empty>td{padding:10px 0;height:auto}
   .tr-empty-msg{color:var(--text-3);font-size:var(--fs-body)}
-  @media(max-width:700px){table.tr-tbl col.c-author,table.tr-tbl col.c-speed{display:none}.tr-mini{margin-left:0}}
+  /* col 上的 display:none 浏览器不生效, 必须隐藏 th/td 本身 */
+  @media(max-width:700px){
+    table.tr-tbl th:nth-child(4),table.tr-tbl td:nth-child(4),
+    table.tr-tbl th:nth-child(5),table.tr-tbl td:nth-child(5){display:none}
+    .tr-mini{margin-left:0}
+  }
   </style>
 </head>
 <body>
@@ -1017,6 +1025,52 @@
       + '<span class="s">' + esc(s) + '</span></div>';
   }
 
+  /* Gemini 4 Argon tile（2026-10-15）：状态型，不是百分比型。
+     GCP 赠金余额没有任何公开 API（Cloud Billing v1 无 credits 资源），
+     所以这里只显示"能不能用 / 多久恢复 / 近期成功率"，绝不编造余额。
+     数据源：gemini_quota.py 探针 → dashboard.json providers.gemini */
+  function geminiTile(g) {
+    if (!g) {
+      return '<div class="overview-tile overview-tile--agent-gemini" data-overview-agent="gemini" data-source="gemini">'
+        + '<span class="k">Gemini 4 Argon</span><span class="v">—</span>'
+        + '<span class="s">探针没跑过（gemini_quota.json 缺失）</span></div>';
+    }
+    if (g.ok !== true) {
+      return '<div class="overview-tile overview-tile--agent-gemini" data-overview-agent="gemini" data-source="gemini">'
+        + '<span class="k">Gemini 4 Argon</span><span class="v">状态不可读</span>'
+        + '<span class="s">' + esc(g.error || '未知原因') + '</span></div>';
+    }
+    const LABEL = {
+      ok: '可用',
+      quota_exhausted: '额度用尽',
+      overloaded: 'Google 拥塞',
+      network_error: '网络不通',
+      error: '报错'
+    };
+    const v = LABEL[g.status] || g.status || '—';
+    const w = g.window || {};
+    let s = '';
+    if (g.status === 'quota_exhausted') {
+      const hrs = (g.retryAfterSec || 0) / 3600;
+      s = isFinite(hrs) && hrs > 0
+        ? ('预计 ' + hrs.toFixed(1) + ' 小时后恢复 · 抓于 ' + fmtTime(g.checkedAt || ''))
+        : ('恢复时间未知 · 抓于 ' + fmtTime(g.checkedAt || ''));
+    } else if (g.status === 'ok') {
+      const pct = (typeof w.successPct === 'number') ? w.successPct.toFixed(0) + '%' : '—';
+      const lat = (typeof g.latencyMs === 'number') ? (g.latencyMs / 1000).toFixed(1) + 's' : '—';
+      s = '近 ' + (w.n || 0) + ' 次成功 ' + pct + ' · 延迟 ' + lat
+        + (g.stale ? ' · 已过期' : '') + ' · 抓于 ' + fmtTime(g.checkedAt || '');
+    } else {
+      s = '抓于 ' + fmtTime(g.checkedAt || '');
+    }
+    return '<div class="overview-tile overview-tile--agent-gemini" data-overview-agent="gemini" data-source="gemini"'
+      + ' data-gemini-status="' + esc(g.status || '') + '"'
+      + ' data-gemini-stale="' + (g.stale ? '1' : '0') + '">'
+      + '<span class="k">Gemini 4 Argon</span>'
+      + '<span class="v">' + esc(v) + '</span>'
+      + '<span class="s">' + esc(s) + '</span></div>';
+  }
+
   function renderOverview(data) {
     /* R=20261012-1547-quota-by-provider: 缓存 providers + generatedAt 供 agentTile 兜底 */
     _currentProviders = (data && data.providers) || {};
@@ -1086,6 +1140,7 @@
             return (total - used) / total * 100;
           }
         })
+      + geminiTile((data.providers || {}).gemini)
       + '</div></div>'
       + '<div class="overview-side"><div class="overview-mini overview-idle" data-overview-idle="1"><span class="k">执行状态</span><span class="v">' + esc(activeText) + '</span></div>'
       + '<div class="overview-mini overview-error' + (bad.length ? ' has-error' : '') + '"><span class="k">异常</span><span class="v">' + esc(errorText) + '</span></div>'
