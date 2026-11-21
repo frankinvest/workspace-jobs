@@ -7,48 +7,14 @@ import SectionHeader from '../components/SectionHeader.astro';
 import SearchBox from '../components/SearchBox.astro';
 import PortfolioSidebar from '../components/PortfolioSidebar.astro';
 import GlobalMarketsBoard from '../components/GlobalMarketsBoard.astro';
-import { normalizeBody, BODY_EXCERPT_LENGTH } from '../utils/search';
-import type { Article } from '../utils/search';
+import { getBreakfastArticles, getSortedArticleDocs, HOME_ARTICLE_LIMIT } from '../utils/articles';
 import stockHoldings from '../../data/stock_holdings.json';
 
-// Get all docs and sort by date
 const allDocs = await getCollection('docs');
-
-// 用 import.meta.glob 扫描 docs/ 目录下的 .html 原生文件（build time，SSR 安全）
-const htmlGlob = import.meta.glob<string>('/docs/*.html', {
-  query: '?raw',
-  import: 'default',
-  eager: true,
-});
-
-// 构建与 allDocs 结构兼容的 HTML 条目
-const htmlEntries = Object.keys(htmlGlob).map(rawPath => {
-  const fname = rawPath.split('/').pop() || '';
-  const dateStr = fname.match(/(\d{8})/)?.[1] || '';
-  const y = dateStr.slice(0, 4), m = dateStr.slice(4, 6), d = dateStr.slice(6, 8);
-  return {
-    id: fname,
-    data: { title: '财经早餐 ' + (y && m && d ? `${y}-${m}-${d}` : dateStr) },
-    body: '',
-    collection: 'docs',
-    isRawHtml: true,
-  };
-});
-
-const sortedDocs = [...allDocs, ...htmlEntries].sort((a, b) => {
-  const dateA = a.id.match(/(\d{8})/)?.[1] || '';
-  const dateB = b.id.match(/(\d{8})/)?.[1] || '';
-  return dateB.localeCompare(dateA);
-});
-
-// Format date helper
-const formatDate = (dateStr: string) => {
-  if (!dateStr) return '';
-  const year = dateStr.slice(0, 4);
-  const month = dateStr.slice(4, 6);
-  const day = dateStr.slice(6, 8);
-  return `${year}年${parseInt(month)}月${parseInt(day)}日`;
-};
+const sortedDocs = getSortedArticleDocs(allDocs);
+const breakfastArticles = getBreakfastArticles(sortedDocs);
+const recentArticles = breakfastArticles.slice(0, HOME_ARTICLE_LIMIT);
+const articleCount = breakfastArticles.length;
 
 // Get greeting based on time
 const hour = new Date().getHours();
@@ -70,80 +36,6 @@ const today = new Date().toLocaleDateString('zh-CN', {
 
 // 构建时间戳（用于验证部署状态）
 const buildTime = new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false });
-
-// Build search index for SearchBox (injected client-side as JSON)
-const searchIndex: Article[] = sortedDocs.map((doc) => {
-  const dateMatch = doc.id.match(/(\d{8})/);
-  const date = dateMatch ? dateMatch[1] : '';
-  const rawBody = ('body' in doc && (doc as any).body) ? (doc as any).body : '';
-  const body = normalizeBody(rawBody).slice(0, BODY_EXCERPT_LENGTH);
-  return {
-    slug: doc.id.replace(/\.md$/, '').replace(/\.html$/, ''),
-    title: doc.data.title || doc.id,
-    date,
-    body,
-  };
-});
-
-// Process articles
-const articles = sortedDocs.map((doc, idx) => {
-  const dateMatch = doc.id.match(/(\d{8})/);
-  const date = dateMatch ? dateMatch[1] : '';
-  
-  let tag = '其他';
-  let tagColor = 'var(--color-bg-elevated)';
-  let tagTextColor = 'var(--color-text-muted)';
-  
-  if (doc.id.includes('财经早餐分析') || doc.id.includes('年报') || doc.id.includes('原文') || doc.id.endsWith('.html')) {
-    tag = '财经早餐';
-    tagColor = 'var(--color-accent-dim)';
-    tagTextColor = 'var(--color-accent)';
-  } else if (doc.id.includes('奏折')) {
-    tag = '尚书省奏折';
-    tagColor = 'var(--color-danger-dim)';
-    tagTextColor = 'var(--color-danger)';
-  } else if (doc.id.includes('问题总结')) {
-    tag = '工作流文档';
-    tagColor = 'var(--color-success-dim)';
-    tagTextColor = 'var(--color-success)';
-  }
-  
-  // Extract title from filename — clean up JJC 前缀和冗余数字
-  let title = doc.data.title || '';
-  if (!title) {
-    // 去掉 .md 后缀
-    let raw = doc.id.replace(/\.md$/, '');
-    // 去掉 JJC-YYYYMMDD-NNN- 前缀（通用模式）
-    raw = raw.replace(/^jjc-\d{8}-\d+[-_]*/i, '');
-    // 再次去掉任何残留的日期+数字前缀（如 20260330-001-）
-    raw = raw.replace(/^\d{8}-\d+[-_]*/, '');
-    // 把剩余的横杠替换成空格
-    title = raw.replace(/-/g, ' ').trim();
-    // 如果标题仍然只是纯数字或太短，使用原文件 ID
-    if (!title || /^\d+$/.test(title)) {
-      title = doc.id.replace('.md', '').replace(/-/g, ' ');
-    }
-  }
-  
-  return {
-    id: doc.id,
-    title,
-    date,
-    formattedDate: formatDate(date),
-    tag,
-    tagColor,
-    tagTextColor,
-    index: idx,
-  };
-});
-
-// Group articles by tag (only show 财经早餐)
-const groupedArticles = {
-  '财经早餐': articles.filter(a => a.tag === '财经早餐'),
-};
-
-// 文章数量统计（仅用于信息展示）
-const articleCount = groupedArticles['财经早餐'].length;
 
 // P0-2 今日速览 TL;DR（Frank 决策#2：内容只能从财经早餐文章 frontmatter 抽取，无外源；
 // 无当天文章时回退到最近一期，并标注日期）
@@ -296,22 +188,19 @@ const tldrItems = (tldrDoc?.data as any)?.tldr
       <!-- 主内容区: 左 2/3 文章 + 右 1/3 Frank 持仓 sidebar (移动端堆叠) -->
       <div class="layout-grid">
         <div class="article-container">
-          <SearchBox articles={searchIndex} />
+          <SearchBox articleCount={sortedDocs.length} />
           <div class="sections">
-            {groupedArticles['财经早餐'].length > 0 && (
+            {recentArticles.length > 0 && (
               <section class="section">
-                <SectionHeader title="财经早餐" icon="chart" count={groupedArticles['财经早餐'].length} />
+                <SectionHeader title="财经早餐" icon="chart" count={articleCount} />
                 <div class="article-list">
-                  {groupedArticles['财经早餐'].map((article, idx) => (
-                    <div class="article-card-slot" data-article-slot style={idx >= 3 ? 'display:none' : undefined}>
-                      <ArticleCard {...article} />
-                    </div>
+                  {recentArticles.map((article, index) => (
+                    <ArticleCard {...article} index={index} />
                   ))}
                 </div>
-                <div class="article-more-wrap">
-                  <button type="button" id="article-more-btn" class="article-more-btn">展开更多</button>
-                  <button type="button" id="article-all-btn" class="article-more-btn">展开所有</button>
-                </div>
+                {articleCount > HOME_ARTICLE_LIMIT && (
+                  <a href="/archive/" class="article-archive-link">查看更多历史文章</a>
+                )}
               </section>
             )}
           </div>
@@ -327,40 +216,6 @@ const tldrItems = (tldrDoc?.data as any)?.tldr
       </footer>
     </main>
 
-    <script>
-      const ARTICLE_VISIBLE_INITIAL = 3;
-      const ARTICLE_VISIBLE_STEP = 6;
-      const articleSlots = Array.from(document.querySelectorAll('[data-article-slot]'));
-      const articleMoreBtn = document.getElementById('article-more-btn');
-      const articleAllBtn = document.getElementById('article-all-btn');
-      let articleVisibleCount = ARTICLE_VISIBLE_INITIAL;
-
-      function updateArticleVisibility() {
-        articleSlots.forEach((slot, idx) => {
-          slot.style.display = idx < articleVisibleCount ? '' : 'none';
-        });
-        const remaining = Math.max(articleSlots.length - articleVisibleCount, 0);
-        if (articleMoreBtn) {
-          articleMoreBtn.hidden = remaining <= 0;
-          articleMoreBtn.textContent = remaining > 0 ? `展开更多（还剩 ${remaining} 篇）` : '已全部展示';
-        }
-        if (articleAllBtn) {
-          articleAllBtn.hidden = remaining <= 0;
-        }
-      }
-
-      articleMoreBtn?.addEventListener('click', () => {
-        articleVisibleCount += ARTICLE_VISIBLE_STEP;
-        updateArticleVisibility();
-      });
-
-      articleAllBtn?.addEventListener('click', () => {
-        articleVisibleCount = articleSlots.length;
-        updateArticleVisibility();
-      });
-
-      updateArticleVisibility();
-    </script>
   </body>
 </html>
 
@@ -507,32 +362,22 @@ const tldrItems = (tldrDoc?.data as any)?.tldr
     flex-direction: column;
   }
 
-  .article-more-wrap {
-    margin-top: var(--space-5);
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: var(--space-3);
-  }
-
-  .article-more-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: var(--space-2);
+  .article-archive-link {
+    display: block;
+    width: fit-content;
+    margin: var(--space-5) auto 0;
     padding: var(--space-3) var(--space-6);
     background: var(--color-bg-card);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-full);
     color: var(--color-text-secondary);
     font-size: var(--font-size-sm);
-    cursor: pointer;
     transition: border-color var(--transition-fast), color var(--transition-fast), background var(--transition-fast);
   }
 
-  .article-more-btn:hover {
+  .article-archive-link:hover {
     border-color: var(--color-accent);
-    color: var(--color-accent);
+    color: var(--color-text-primary);
     background: var(--color-accent-dim);
   }
 

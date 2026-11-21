@@ -1,0 +1,95 @@
+---
+import type { GetStaticPathsOptions, InferGetStaticPropsType } from 'astro';
+import { getCollection } from 'astro:content';
+import '../../styles/global.css';
+import ArticleCard from '../../components/ArticleCard.astro';
+import { getBreakfastArticles, getSortedArticleDocs, HOME_ARTICLE_LIMIT } from '../../utils/articles';
+
+export async function getStaticPaths({ paginate }: GetStaticPathsOptions) {
+  const docs = getSortedArticleDocs(await getCollection('docs'));
+  const history = getBreakfastArticles(docs).slice(HOME_ARTICLE_LIMIT);
+  return history.length ? paginate(history, { pageSize: 20 }) : [];
+}
+
+type Props = InferGetStaticPropsType<typeof getStaticPaths>;
+const { page } = Astro.props;
+---
+
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>财经早餐归档 · 第 {page.currentPage} 页</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;600;700&family=Noto+Serif+SC:wght@400;600;700&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <main class="container">
+      <header class="archive-header">
+        <a href="/">返回首页</a>
+        <h1 class="gradient-text">财经早餐归档</h1>
+      </header>
+
+      <section aria-labelledby="archive-articles">
+        <h2 class="sr-only" id="archive-articles">历史文章</h2>
+        {page.data.map((article, index) => <ArticleCard {...article} index={index} />)}
+      </section>
+
+      <nav class="pagination" aria-label="归档分页">
+        {page.url.prev && <a class="previous" href={page.url.prev.replace(/\/?$/, '/')} rel="prev">上一页</a>}
+        <span class="current" aria-current="page">第 {page.currentPage} 页，共 {page.lastPage} 页</span>
+        {page.url.next && <a class="next" href={page.url.next.replace(/\/?$/, '/')} rel="next">下一页</a>}
+      </nav>
+    </main>
+  </body>
+</html>
+
+<style>
+  .archive-header {
+    margin-bottom: var(--space-8);
+  }
+
+  h1 {
+    margin-top: var(--space-3);
+    font-size: var(--font-size-3xl);
+  }
+
+  .pagination {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: var(--space-3);
+    align-items: center;
+    margin-top: var(--space-8);
+    font-size: var(--font-size-sm);
+  }
+
+  .previous {
+    grid-column: 1;
+    justify-self: end;
+  }
+
+  .current {
+    grid-column: 2;
+    grid-row: 1;
+    color: var(--color-text-secondary);
+  }
+
+  .next {
+    grid-column: 3;
+    grid-row: 1;
+    justify-self: start;
+  }
+
+  .archive-header a,
+  .pagination a {
+    color: var(--color-text-secondary);
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+  }
+
+  .archive-header a:hover,
+  .pagination a:hover {
+    color: var(--color-text-primary);
+  }
+</style>

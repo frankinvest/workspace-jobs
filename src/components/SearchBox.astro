@@ -1,25 +1,9 @@
 ---
-/**
- * SearchBox.astro — frankofswing.com 文章搜索框
- *
- * Props:
- *   articles: Article[]  — 搜索索引 (slug + title + date + body excerpt)
- *
- * 行为:
- *   - button / Enter 触发 (不是 debounce)
- *   - 不区分大小写 substring 匹配 (title + body)
- *   - 边界: query < 2 字提示, query > 50 字截断
- *   - snippet 由 searchArticles() 在 Astro build 时算好塞进 data-search-data (server-side)
- *   - a11y: role=combobox, aria-expanded, Esc 关闭
- */
-import type { Article } from '../utils/search';
-
 interface Props {
-  articles: Article[];
+  articleCount: number;
 }
 
-const { articles } = Astro.props;
-const articlesJson = JSON.stringify(articles);
+const { articleCount } = Astro.props;
 ---
 
 <div class="search-box-wrap" data-search-box>
@@ -42,7 +26,7 @@ const articlesJson = JSON.stringify(articles);
     <input
       type="search"
       class="search-input"
-      placeholder={`输入关键词, 按 Enter 或点击搜索 (${articles.length} 篇财经早餐)`}
+      placeholder={`输入关键词, 按 Enter 或点击搜索 (${articleCount} 篇财经早餐)`}
       aria-label="搜索文章"
       aria-describedby="search-hint"
       role="combobox"
@@ -71,22 +55,16 @@ const articlesJson = JSON.stringify(articles);
     hidden
   >
     <div class="search-count" data-search-count aria-live="polite"></div>
-    <div class="search-empty" data-search-empty hidden>
+    <div class="search-empty" data-search-empty role="status" hidden>
       没找到匹配的文章, 试试别的关键词
     </div>
     <ul class="search-list" data-search-list></ul>
   </div>
 </div>
 
-<script type="application/json" data-search-data set:html={articlesJson}></script>
-
 <script>
   import type { Article, SearchResult } from '../utils/search';
-  import { searchArticles } from '../utils/search';
-
-  // Client-side search filter (button-trigger, not live)
-  const dataEl = document.querySelector('[data-search-data]');
-  const articles: Article[] = dataEl ? JSON.parse(dataEl.textContent || '[]') : [];
+  import { escapeHtml, MAX_QUERY_LENGTH, searchArticles } from '../utils/search';
 
   const box = document.querySelector('[data-search-box]') as HTMLElement | null;
   const input = document.querySelector('[data-search-input]') as HTMLInputElement | null;
@@ -96,16 +74,42 @@ const articlesJson = JSON.stringify(articles);
   const empty = document.querySelector('[data-search-empty]') as HTMLElement | null;
   const count = document.querySelector('[data-search-count]') as HTMLElement | null;
 
-  const MAX_LEN = 50;
   const MAX_RESULTS = 20;
+  let searchIndex: Promise<Article[]> | undefined;
+  // Closing the panel or submitting again invalidates the previous render.
+  let searchRequest = 0;
 
-  function escapeHtml(s: string): string {
-    return s
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
+  function loadSearchIndex(): Promise<Article[]> {
+    searchIndex ??= fetch('/search-index.json')
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`Search index HTTP ${response.status}`);
+        const articles: unknown = await response.json();
+        if (!Array.isArray(articles)) throw new Error('Invalid search index');
+        return articles as Article[];
+      })
+      .catch((error) => {
+        searchIndex = undefined;
+        throw error;
+      });
+    return searchIndex;
+  }
+
+  function showMessage(message: string): void {
+    if (!list || !count || !empty) return;
+    list.replaceChildren();
+    count.textContent = '';
+    empty.hidden = false;
+    empty.textContent = message;
+  }
+
+  function setResultsOpen(open: boolean): void {
+    if (results) results.hidden = !open;
+    input?.setAttribute('aria-expanded', String(open));
+  }
+
+  function closeResults(): void {
+    searchRequest++;
+    setResultsOpen(false);
   }
 
   function highlight(text: string, q: string): string {
@@ -127,36 +131,19 @@ const articlesJson = JSON.stringify(articles);
     return result;
   }
 
-  function render(query: string): void {
-    if (!input || !results || !list || !empty || !count) return;
-    const q = query.trim().slice(0, MAX_LEN);
-
-    if (q.length === 0) {
-      empty.textContent = '请输入关键词, 然后点击搜索';
-      empty.removeAttribute('hidden');
-      count.textContent = '';
-      list.innerHTML = '';
-      results.removeAttribute('hidden');
-      input.setAttribute('aria-expanded', 'true');
-      return;
-    }
-
-    // 用 searchArticles() 一站式: count + matches + snippets (Q4 server 算)
-    const resultsFull = searchArticles(articles, q);
-    const matches = resultsFull;
+  function render(articles: Article[], q: string): void {
+    if (!list || !empty || !count) return;
+    const matches = searchArticles(articles, q);
     count.textContent = `找到 ${matches.length} 篇`;
 
     if (matches.length === 0) {
       list.innerHTML = '';
       empty.textContent = `没找到包含 "${q}" 的文章, 试试别的关键词`;
-      empty.removeAttribute('hidden');
-      results.removeAttribute('hidden');
-      input.setAttribute('aria-expanded', 'true');
+      empty.hidden = false;
       return;
     }
 
-    empty.setAttribute('hidden', '');
-    // searchArticles() 已经在上面调过一次, 直接复用 matches (已经是 SearchResult[])
+    empty.hidden = true;
     const top = matches.slice(0, MAX_RESULTS);
     list.innerHTML = top
       .map((r: SearchResult) => {
@@ -173,13 +160,26 @@ const articlesJson = JSON.stringify(articles);
         return `<li role="option"><a href="/docs/${escapeHtml(a.slug)}/" class="search-result-link"><div class="search-result-title">${highlight(a.title || '', q)}</div>${snippetsBlock}<div class="search-result-date">${escapeHtml(a.date || '')}</div></a></li>`;
       })
       .join('');
-    results.removeAttribute('hidden');
-    input.setAttribute('aria-expanded', 'true');
   }
 
-  function doSearch(): void {
+  async function doSearch(): Promise<void> {
     if (!input) return;
-    render(input.value);
+    const request = ++searchRequest;
+    const query = input.value.trim().slice(0, MAX_QUERY_LENGTH);
+    setResultsOpen(true);
+
+    if (!query) {
+      showMessage('请输入关键词, 然后点击搜索');
+      return;
+    }
+
+    showMessage('正在加载搜索索引…');
+    try {
+      const articles = await loadSearchIndex();
+      if (request === searchRequest) render(articles, query);
+    } catch {
+      if (request === searchRequest) showMessage('搜索索引加载失败，请重新搜索');
+    }
   }
 
   // 搜索按钮触发
@@ -188,22 +188,18 @@ const articlesJson = JSON.stringify(articles);
   // Enter 键触发
   input?.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
+      if (e.isComposing || e.keyCode === 229) return;
       e.preventDefault();
       doSearch();
     } else if (e.key === 'Escape') {
-      results?.setAttribute('hidden', '');
-      input.setAttribute('aria-expanded', 'false');
+      closeResults();
       input.blur();
     }
   });
 
   // Click outside closes
   document.addEventListener('click', (e) => {
-    if (!box || !results) return;
-    if (!box.contains(e.target as Node)) {
-      results.setAttribute('hidden', '');
-      input?.setAttribute('aria-expanded', 'false');
-    }
+    if (box && !box.contains(e.target as Node)) closeResults();
   });
 </script>
 
