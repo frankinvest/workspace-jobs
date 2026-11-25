@@ -398,6 +398,7 @@ def process(date_str, push=False, dry=False, cdp=None, post_index=None, md_path=
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--date")
+    ap.add_argument("--file", type=Path, help="配合 --date 仅准备指定文章")
     ap.add_argument("--since")
     ap.add_argument("--until", default="29991231")
     ap.add_argument("--limit", type=int, default=0)
@@ -407,7 +408,11 @@ def main():
                     help="允许用 CDP（登录态）打开历史帖子拿新签名，处理已过期的图片")
     args = ap.parse_args()
 
-    if args.date:
+    if args.file:
+        if not args.date or args.file.resolve().parent != DOCS.resolve() or not args.file.name.startswith(f"JJC-{args.date}-"):
+            ap.error("--file 必须是 --date 对应的 docs 文章")
+        targets = [(args.date, str(args.file))]
+    elif args.date:
         targets = [(args.date, str(p)) for p in sorted(DOCS.glob(f"JJC-{args.date}-*.md"))] or [(args.date, None)]
     else:
         if not args.since:

@@ -27,6 +27,7 @@ import time
 import base64
 import argparse
 from pathlib import Path
+from urllib.parse import quote
 import requests
 
 # ── 凭据 + 仓库 ──────────────────────────────────────────────────
@@ -156,6 +157,90 @@ def put_file(repo_path, local_path, commit_msg, dry_run=False):
         "elapsed_sec": round(elapsed, 2),
         "commit_msg": commit_msg,
     }
+
+
+def put_files_atomic(files, commit_msg):
+    """把一组已准备的文件作为一次 GitHub 分支更新发布。"""
+    if not files:
+        raise ValueError("没有要发布的文件")
+
+    # 先把每个文件完整读入。任一文件不可读时，远端分支不会被写入。
+    contents = {path: value if isinstance(value, bytes) else value.read_bytes()
+                for path, value in files.items()}
+    api = f"{API_BASE}/repos/{REPO}/git"
+    contents_api = f"{API_BASE}/repos/{REPO}/contents"
+    branch_ref = f"{api}/ref/heads/{BRANCH}"
+    update_ref = f"{api}/refs/heads/{BRANCH}"
+
+    with get_session(load_token()) as session:
+        def head_sha():
+            response = session.get(branch_ref, timeout=20)
+            response.raise_for_status()
+            return response.json()["object"]["sha"]
+
+        def blob_sha(path, ref):
+            response = session.get(f"{contents_api}/{quote(path)}", params={"ref": ref}, timeout=20)
+            if response.status_code == 404:
+                return None
+            response.raise_for_status()
+            return response.json()["sha"]
+
+        def check_concurrent_changes(old, latest):
+            for entry in entries:
+                path = entry["path"]
+                latest_blob = blob_sha(path, latest)
+                if latest_blob != entry["sha"] and latest_blob != blob_sha(path, old):
+                    raise RuntimeError(f"远端同时修改了发布文件，请先核对: {path}")
+
+        head = head_sha()
+        entries = []
+        for path, content in contents.items():
+            response = session.post(f"{api}/blobs", json={
+                "content": base64.b64encode(content).decode("ascii"),
+                "encoding": "base64",
+            }, timeout=60)
+            response.raise_for_status()
+            entries.append({"path": path, "mode": "100644", "type": "blob", "sha": response.json()["sha"]})
+
+        for _ in range(3):
+            response = session.get(f"{api}/commits/{head}", timeout=20)
+            response.raise_for_status()
+            base_tree = response.json()["tree"]["sha"]
+            response = session.post(f"{api}/trees", json={"base_tree": base_tree, "tree": entries}, timeout=30)
+            response.raise_for_status()
+            tree = response.json()["sha"]
+            if tree == base_tree:
+                latest = head_sha()
+                if latest == head:
+                    return {"status": "unchanged", "commit_sha": head}
+                check_concurrent_changes(head, latest)
+                head = latest
+                continue
+
+            response = session.post(f"{api}/commits", json={
+                "message": commit_msg, "tree": tree, "parents": [head],
+            }, timeout=30)
+            response.raise_for_status()
+            commit = response.json()["sha"]
+            try:
+                response = session.patch(update_ref, json={"sha": commit, "force": False}, timeout=30)
+                response.raise_for_status()
+            except requests.RequestException as exc:
+                if exc.response is not None and exc.response.status_code not in (409, 422, 502, 503, 504):
+                    raise
+                latest = head_sha()
+                if latest == commit:
+                    return {"status": "published", "commit_sha": commit}
+                if latest == head:
+                    raise
+                check_concurrent_changes(head, latest)
+                head = latest
+                continue
+            if response.json()["object"]["sha"] != commit:
+                raise RuntimeError("GitHub 未确认新提交为分支头")
+            return {"status": "published", "commit_sha": commit}
+
+    raise RuntimeError("发布时生产分支持续变动，请重试")
 
 
 def list_path(repo_path):

@@ -6,15 +6,15 @@ finance_breakfast.py - 财经早餐发布主流程 (支持单步可重入) — v
 🎯 5 个独立 step:
   1. fetch    - subprocess 调 cdp_get_innerhtml.py 抓 innerHTML (走本机 Chrome 18900 登录态)
   2. format   - 用 bs4 + markdownify + build_comments.py 核心逻辑, 渲染 .md 含评论区
-  3. images   - 跳过 (按 MEMORY.md 约定: 图片直接引用红圈原 URL, 不下载到本地)
+  3. images   - 下载图片并改写站内链接，仅准备本地文件
   4. guard    - 用真实数据审计 (图片数 / 评论数 / 标题 / 数据提取时间)
-  5. push     - 调 system_api_pusher.py (GitHub Contents API) 推送 (commit message 由脚本动态生成)
+  5. push     - 文章和图片在一次 GitHub 提交中发布
 
 用法:
   python3 tools/finance_breakfast.py                            # 跑全流程
   python3 tools/finance_breakfast.py --step fetch_only          # 只跑抓取
   python3 tools/finance_breakfast.py --step format_only         # 只跑排版
-  python3 tools/finance_breakfast.py --step images_only         # 只跑图片 (skip)
+  python3 tools/finance_breakfast.py --step images_only         # 只准备本地图片
   python3 tools/finance_breakfast.py --step guard_only          # 只跑审计
   python3 tools/finance_breakfast.py --step push_only           # 只跑推送
   python3 tools/finance_breakfast.py --date 20260604            # 指定日期
@@ -31,9 +31,7 @@ finance_breakfast.py - 财经早餐发布主流程 (支持单步可重入) — v
     （launchd 任务 ai.redring.chrome 负责自启 + KeepAlive）。
   - 登录态丢失时，需要 Frank 在红圈页用微信扫码重新登录一次。
 
-定时调度（每天 08:00 Asia/Shanghai，双保险）:
-  - OpenClaw cron: ce064e9d-91ea-496d-97c8-151a1cadc4df
-  - launchd: ai.finance-breakfast.daily
+定时调度由 Codex 每天 08:00（Asia/Shanghai）调用 finance_breakfast_retry.py。
 """
 import argparse
 import subprocess
@@ -49,6 +47,7 @@ from pathlib import Path
 # BeautifulSoup + markdownify 用于正文解析 + markdown 渲染
 from bs4 import BeautifulSoup
 import markdownify as mf
+import yaml
 
 WORKSPACE_JOBS = Path.home() / ".openclaw" / "workspace-jobs"
 DOCS_DIR = WORKSPACE_JOBS / "docs"
@@ -58,7 +57,6 @@ STATE_FILE = Path("/tmp/finance_breakfast_state.json")
 LOG_FILE = "/tmp/finance_breakfast.log"
 CDP_SCRIPT = TOOLS_DIR / "cdp_get_innerhtml.py"
 BUILD_COMMENTS_SCRIPT = TOOLS_DIR / "build_comments.py"
-PUSHER = TOOLS_DIR / "system_api_pusher.py"
 
 GROUP_URL = "https://www.red-ring.cn/group/27593"  # 红运Dang投圈子
 
@@ -69,7 +67,7 @@ STEP_DESC = {
     "images": "图片本地化 (下载到 public/images/JJC-<date>/, md 改站内路径)",
     "guard":  "用真实数据审计 (图片数/评论数/标题/时间)",
     "tldr":   "codex exec 生成今日速递 5 分类并写回 frontmatter",
-    "push":   "调 system_git_pusher.py 穿墙推送",
+    "push":   "文章和图片一次提交发布",
 }
 
 
@@ -364,7 +362,7 @@ def step_format(date_str, dry_run=False):
             normalized_title = title.strip()
         # ⚠️ 重要: 顶部必须严格 YAML frontmatter (Astro 首页靠 title 字段识别，不能出现"原文"等文件后缀)
         full_md = "---\n"
-        full_md += f'title: "{normalized_title}"\n'
+        full_md += f'title: {json.dumps(normalized_title, ensure_ascii=False)}\n'
         full_md += f'date: "{display_date}"\n'
         full_md += "---\n\n"
         full_md += f"# {normalized_title}\n\n"
@@ -405,38 +403,56 @@ def step_format(date_str, dry_run=False):
 
 # ── Step 3: images (跳过) ────────────────────────────────────────
 
-def step_images(date_str, dry_run=False):
-    """Step 3: 图片本地化（2026-09-22 改）
+def issue_metadata(text, date_str):
+    header = re.match(r"\A---\n(.*?)\n---(?:\n|$)", text, re.DOTALL)
+    if not header:
+        raise ValueError("文章缺少 frontmatter")
+    try:
+        metadata = yaml.safe_load(header.group(1))
+    except yaml.YAMLError as exc:
+        raise ValueError("文章 frontmatter YAML 无效") from exc
+    expected = datetime.strptime(date_str, "%Y%m%d").date().isoformat()
+    if (not isinstance(metadata, dict) or metadata.get("date") != expected
+            or not isinstance(metadata.get("title"), str) or not metadata["title"].strip()):
+        raise ValueError("文章日期或标题无效")
+    if not text[header.end():].strip():
+        raise ValueError("文章正文为空")
+    return metadata
 
-    背景：红圈图片是 7 天有效的签名 URL，热链的文章过一周图就全黑
-    （Frank 2026-09-22 报的故障）。现在改成发布时就把图下载进仓库：
-      - 存 public/images/JJC-<date>/img-NN.<ext>（原图）
-      - md 里的红圈 URL 全部替换成站内路径
-      - 顺带推送这些图片文件（md 由 step_push 推）
-    非阻断：万一图片下载失败（限流/网络），只告警不中断发布，
-    之后可跑 tools/audit_local_images.py --fix 补。
-    """
+
+def has_tldr(metadata):
+    items = metadata.get("tldr")
+    return isinstance(items, list) and bool(items) and all(
+        isinstance(item, dict)
+        and item.get("category") in ("macro", "military", "industry", "commodity", "stock")
+        and isinstance(item.get("title"), str) and item["title"].strip()
+        for item in items
+    )
+
+
+def step_images(date_str, dry_run=False):
+    """下载图片并改写 Markdown，发布统一交给 push 步骤。"""
+    if dry_run:
+        log("  [dry-run] 跳过下载及改写")
+        return 0
     script = TOOLS_DIR / "localize_images.py"
     if not script.exists():
-        log("  ⚠️ 找不到 localize_images.py，跳过本地化（图片仍为红圈外链）")
-        return 0
-    cmd = [sys.executable, str(script), "--date", date_str]
-    if not dry_run:
-        cmd.append("--push")
-    else:
-        cmd.append("--dry-run")
+        log("  ❌ 缺少 localize_images.py，无法准备图片")
+        return 1
+    article = DOCS_DIR / f"JJC-{date_str}-001-原文.md"
+    cmd = [sys.executable, str(script), "--date", date_str, "--file", str(article)]
     log(f"  → {' '.join(cmd)}")
     try:
         cp = subprocess.run(cmd, cwd=WORKSPACE_JOBS, capture_output=True, text=True, timeout=900)
-        tail = [l for l in (cp.stdout or "").splitlines() if l.strip()][-4:]
-        for line in tail:
-            log(f"  [images] {line[:160]}")
-        if cp.returncode != 0:
-            log("  ⚠️ 图片本地化返回非 0（不阻断发布，可事后 audit 补推）")
-        return 0
-    except Exception as e:                              # noqa: BLE001
-        log(f"  ⚠️ 图片本地化异常（不阻断发布）: {e}")
-        return 0
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        log(f"  ❌ 图片本地化失败: {exc}")
+        return 1
+    for line in (cp.stdout or "").strip().splitlines()[-4:]:
+        log(f"  [images] {line}")
+    if cp.returncode != 0:
+        log(f"  ❌ 图片本地化失败 rc={cp.returncode}")
+        return 1
+    return 0
 
 
 # ── Step 4: guard ────────────────────────────────────────────────
@@ -461,15 +477,22 @@ def step_guard(date_str, dry_run=False):
         return 1
     
     content = md_file.read_text(encoding="utf-8")
+    try:
+        metadata = issue_metadata(content, date_str)
+    except ValueError as exc:
+        log(f"  ❌ 审计失败: {exc}")
+        return 1
     state = load_state().get(date_str, {})
-    
-    title = state.get("title", "")
+    title = metadata["title"]
     n_images = state.get("images", 0)
     n_comments = state.get("comments", 0)
     
-    # 兜底: 从 .md 内容里数图片 (markdown 图片语法 + 红圈原 URL)
+    # 兜底: 从 .md 内容里数图片 (兼容红圈原 URL 与已本地化的站内路径)
     if n_images == 0:
-        n_images = len(re.findall(r'!\[[^\]]*\]\(https://private\.red-ring\.cn/', content))
+        n_images = len(re.findall(
+            r'!\[[^\]]*\]\((?:https://private\.red-ring\.cn/|/images/JJC-)',
+            content,
+        )) + len(re.findall(r'<img\b[^>]*\bsrc\s*=\s*["\'](?:https://private\.red-ring\.cn/|/images/JJC-)', content, re.IGNORECASE))
     # 兜底: 从 .md 内容里数评论
     if n_comments == 0:
         n_comments = content.count("**") // 4  # 粗略: 每个评论至少有 1 个加粗用户名
@@ -480,8 +503,6 @@ def step_guard(date_str, dry_run=False):
     log(f"  图片: {n_images}")
     log(f"  评论: {n_comments}")
     
-    if not title:
-        issues.append("title 为空")
     if n_images < 5:
         issues.append(f"too few images: {n_images} (< 5)")
     if n_comments < 3:
@@ -500,44 +521,28 @@ def step_guard(date_str, dry_run=False):
 # ── Step 4.5: tldr (今日速递 5 分类生成) ─────────────────────────
 
 def step_tldr(date_str, dry_run=False):
-    """Step 4.5: 用 codex exec 生成「今日速递」tldr 并写回 frontmatter。
-
-    非阻断：codex 失败时只告警，不阻断后续 push（文章仍会发布，只是缺 tldr）。
-    """
-    log(f"[tldr] 生成今日速递 5 分类 {date_str}")
-
-    md_file = DOCS_DIR / f"JJC-{date_str}-001-原文.md"
-    if not md_file.exists():
-        log(f"  ❌ 缺少 .md: {md_file}")
-        return 1
-
+    """从当天原文生成今日速递，失败留到下一轮重试。"""
+    article = DOCS_DIR / f"JJC-{date_str}-001-原文.md"
+    script = TOOLS_DIR / "generate_tldr.py"
     if dry_run:
         log("  [dry-run] 跳过 tldr 生成")
         return 0
-
-    gen_script = TOOLS_DIR / "generate_tldr.py"
-    if not gen_script.exists():
-        log(f"  ❌ 缺少生成脚本: {gen_script}")
-        return 1
-
     try:
-        rel_file = str(md_file.relative_to(WORKSPACE_JOBS))
-        cp = subprocess.run(
-            [sys.executable, str(gen_script), "--file", rel_file],
-            cwd=WORKSPACE_JOBS, capture_output=True, text=True, timeout=1200,
-        )
-        if cp.stderr:
-            for line in cp.stderr.split("\n")[-10:]:
-                if line.strip():
-                    log(f"  [tldr] {line}")
+        metadata = issue_metadata(article.read_text(encoding="utf-8"), date_str)
+        if has_tldr(metadata):
+            log("  ✅ 今日速递已准备")
+            return 0
+        cp = subprocess.run([sys.executable, str(script), "--file", str(article)], cwd=WORKSPACE_JOBS,
+                            capture_output=True, text=True, timeout=1200)
         if cp.returncode != 0:
-            log(f"  ⚠️ tldr 生成失败 rc={cp.returncode}，不阻断 push（文章仍发布，缺今日速递）")
-            return 0  # 非阻断
-        log(f"  ✅ tldr 已写入 frontmatter")
-        return 0
-    except Exception as e:
-        log(f"  ⚠️ tldr 异常: {type(e).__name__}: {e}，不阻断 push")
-        return 0  # 非阻断
+            raise RuntimeError(f"generate_tldr.py 退出码 {cp.returncode}")
+        if not has_tldr(issue_metadata(article.read_text(encoding="utf-8"), date_str)):
+            raise ValueError("今日速递结果无效或为空")
+    except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as exc:
+        log(f"  ❌ 今日速递生成失败: {exc}")
+        return 1
+    log("  ✅ 今日速递已写入文章")
+    return 0
 
 
 # ── Step 5: push ─────────────────────────────────────────────────
@@ -553,75 +558,51 @@ def generate_commit_message(date_str, state):
 
 
 def step_push(date_str, dry_run=False):
-    """Step 5: 调 system_git_pusher.py 穿墙推送
-    """
-    log(f"[push] 推送 {date_str} .md 到 GitHub")
-    
+    """验证待发布文件并将这一批文件一起更新到生产分支。"""
+    log(f"[push] 准备 {date_str} 文章和图片")
     state = load_state().get(date_str, {})
-    md_file = state.get("md_file", str(DOCS_DIR / f"JJC-{date_str}-001-原文.md"))
-    
-    if not Path(md_file).exists():
-        log(f"  ❌ 缺少 .md: {md_file}")
-        log(f"  请先跑 --step format")
-        return 1
-    
-    if dry_run:
-        log("  [dry-run] 跳过实际推送")
-        return 0
-    
-    # 先 git add (只 add 这一个文件 + 凭证锁定 .gitignore 改动 + 工具更新)
+    article = DOCS_DIR / f"JJC-{date_str}-001-原文.md"
+    markdown_image = re.compile(r"!\[[^\]\n]*\]\(\s*<?([^)>\s]+)")
+    html_image = re.compile(r"<img\b[^>]*\bsrc\s*=\s*([\"'])(.*?)\1", re.IGNORECASE)
     try:
-        add_cmd = ["git", "add", str(md_file), ".gitignore", "tools/finance_breakfast.py", "tools/cdp_get_innerhtml.py", "tools/build_comments.py"]
-        log(f"  → git add {md_file} + 工具更新")
-        cp = subprocess.run(add_cmd, cwd=WORKSPACE_JOBS, capture_output=True, text=True, timeout=30)
-        if cp.returncode != 0:
-            log(f"  ❌ git add 失败: {cp.stderr}")
-            return 1
-        
-        # 动态生成 commit message
-        commit_msg = generate_commit_message(date_str, state)
-        log(f"  → 动态 commit msg: {commit_msg.split(chr(10))[0]}")
-        
-        commit_cmd = ["git", "commit", "-m", commit_msg]
-        log(f"  → git commit")
-        cp = subprocess.run(commit_cmd, cwd=WORKSPACE_JOBS, capture_output=True, text=True, timeout=30)
-        if cp.returncode != 0:
-            if "nothing to commit" in cp.stdout:
-                log(f"  ⚠️ nothing to commit (可能本轮已 commit)")
-            else:
-                log(f"  ❌ git commit 失败: {cp.stderr}")
-                return 1
+        text = article.read_text(encoding="utf-8")
+        if not has_tldr(issue_metadata(text, date_str)):
+            raise ValueError("文章缺少有效的今日速递")
+        if article.resolve().parent != DOCS_DIR.resolve():
+            raise ValueError("文章路径越出发布范围")
+        files = {article.relative_to(WORKSPACE_JOBS).as_posix(): text.encode("utf-8")}
+        image_urls = dict.fromkeys(markdown_image.findall(text) + [src for _, src in html_image.findall(text)])
+        for image_url in image_urls:
+            if re.match(r"https?://(?:private\.)?red-ring\.cn/", image_url, re.IGNORECASE):
+                raise ValueError("尚有未下载的红圈图片")
+            if not image_url.startswith("/images/"):
+                continue
+            repo_path = Path("public") / image_url.lstrip("/")
+            image = WORKSPACE_JOBS / repo_path
+            if ".." in repo_path.parts or not image.resolve().is_relative_to((WORKSPACE_JOBS / "public/images").resolve()):
+                raise ValueError(f"图片路径越出发布范围: {image_url}")
+            if not image.is_file():
+                raise ValueError(f"缺少图片: {image_url}")
+            data = image.read_bytes()
+            if not data:
+                raise ValueError(f"图片文件为空: {image_url}")
+            files[repo_path.as_posix()] = data
+        log(f"  待发布: 1 篇文章，{len(files) - 1} 张图片")
+        if dry_run:
+            log("  [dry-run] 文件检查完成")
+            return 0
+
+        from system_api_pusher import put_files_atomic
+
+        result = put_files_atomic(files, generate_commit_message(date_str, state))
+        commit = result["commit_sha"]
+        if result["status"] == "unchanged":
+            log(f"  ✅ 内容已在 GitHub，无需重复发布: {commit}")
         else:
-            log(f"  ✅ commit 成功")
-    except Exception as e:
-        log(f"  ❌ git 阶段异常: {type(e).__name__}: {e}")
-        return 1
-    
-    # 调 GitHub Contents API 推送（绕过 github.com:443 撞墙；git push 已不可用）
-    try:
-        rel_file = str(Path(md_file).relative_to(WORKSPACE_JOBS))
-        push_cmd = [
-            sys.executable,
-            str(PUSHER),
-            "--file", rel_file,
-            "--local", str(md_file),
-            "--commit-msg", commit_msg,
-        ]
-        log(f"  → {PUSHER.name} Contents API 推送")
-        cp = subprocess.run(push_cmd, cwd=WORKSPACE_JOBS, capture_output=True, text=True, timeout=120)
-        if cp.stdout:
-            for line in cp.stdout.split("\n")[-10:]:
-                if line.strip():
-                    log(f"  [pusher] {line}")
-        if cp.returncode != 0:
-            log(f"  ❌ pusher 失败 rc={cp.returncode}")
-            if cp.stderr:
-                log(f"  [pusher stderr] {cp.stderr[:500]}")
-            return 1
-        log(f"  ✅ 推送成功")
+            log(f"  ✅ 一次提交发布成功: {commit}")
         return 0
-    except Exception as e:
-        log(f"  ❌ pusher 异常: {type(e).__name__}: {e}")
+    except (OSError, ValueError, RuntimeError) as exc:
+        log(f"  ❌ pusher 失败: {type(exc).__name__}: {exc}")
         return 1
 
 

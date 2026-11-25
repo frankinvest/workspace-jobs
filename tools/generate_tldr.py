@@ -139,10 +139,9 @@ def inject_tldr(md_path, items, slug):
     lines = []
     for it in items:
         lines.append(f"  - category: {it['category']}")
-        lines.append(f'    title: "{it["title"]}"')
+        lines.append(f"    title: {json.dumps(it['title'], ensure_ascii=False)}")
         if it.get("keyNumbers"):
-            quoted = ", ".join(f'"{k}"' for k in it["keyNumbers"])
-            lines.append(f"    keyNumbers: [{quoted}]")
+            lines.append(f"    keyNumbers: {json.dumps(it['keyNumbers'], ensure_ascii=False)}")
         lines.append(f"    articleLink: /docs/{slug}")
     tldr_block = "tldr:\n" + "\n".join(lines) + "\n"
 

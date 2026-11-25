@@ -47,7 +47,7 @@ RAW_DIR = Path("/tmp")
 STATUS_FILE = Path("/tmp/finance_breakfast_retry_status.json")
 LOG_FILE = Path("/tmp/finance_breakfast_retry.log")
 LOCK_FILE = Path("/tmp/finance_breakfast_retry.lock")
-ATTEMPT_TIMEOUT = 900
+ATTEMPT_TIMEOUT = 3000
 
 SHANGHAI = timezone(timedelta(hours=8))
 BUCKET_EXIT = {"source_not_posted": 3, "fetch_failure": 4, "push_failure": 5, "unknown_failure": 4}
@@ -70,10 +70,6 @@ def write_status(payload):
 
 def marker_file(date_str):
     return Path(f"/tmp/finance_breakfast_published_{date_str}.json")
-
-
-def docs_file_exists(date_str):
-    return bool(list(DOCS_DIR.glob(f"JJC-{date_str}-*-原文.md")))
 
 
 def classify(output, rc):
@@ -104,15 +100,27 @@ def classify(output, rc):
 
 def run_attempt(date_str, dry_run=False):
     """跑一次 finance_breakfast.py；返回 (rc, bucket, n_posts, output)"""
-    # 当天已经有 .md 但还没确认推送 → 只补 push；否则跑全流程
-    if docs_file_exists(date_str):
-        step = "push"
-    else:
-        step = "all"
+    # 本地文章可能是在任一步失败后留下的，重试时仍需补齐准备和审计。
+    step = "all"
+    article = DOCS_DIR / f"JJC-{date_str}-001-原文.md"
+    if article.is_file():
+        from finance_breakfast import issue_metadata, step_guard
+
+        try:
+            issue_metadata(article.read_text(encoding="utf-8"), date_str)
+            if step_guard(date_str) != 0:
+                raise ValueError("文章审计未通过")
+        except (OSError, ValueError) as exc:
+            if not dry_run:
+                stale = article.with_suffix(f".incomplete-{time.time_ns()}")
+                article.rename(stale)
+                log(f"  暂存未完成文章 {stale.name}: {exc}")
+        else:
+            step = "images,guard,tldr,push"
 
     # 清掉当天残留的抓取缓存，避免失败重试时被旧缓存短路
     raw = RAW_DIR / f"finance_breakfast_raw_{date_str}.html"
-    if raw.exists():
+    if raw.exists() and not dry_run:
         stale = raw.with_suffix(f".html.stale-{now().strftime('%H%M%S')}")
         try:
             raw.rename(stale)
@@ -205,6 +213,11 @@ def run_window(args):
         for line in [l for l in output.strip().split("\n") if l.strip()][-8:]:
             log(f"    | {line[:200]}")
 
+        confirmation = re.search(r"(?:一次提交发布成功|内容已在 GitHub，无需重复发布): ([0-9a-f]{40})", output)
+        if rc == 0 and not args.dry_run and confirmation is None:
+            log("  ❌ 未取得 GitHub 提交确认，保留重试")
+            rc, bucket = 1, "push_failure"
+
         status["attempts"].append({
             "n": attempt,
             "at": started.strftime("%Y-%m-%d %H:%M:%S GMT+8"),
@@ -215,10 +228,21 @@ def run_window(args):
         write_status(status)
 
         if rc == 0:
-            marker_file(date_str).write_text(json.dumps(
-                {"date": date_str, "published_at": now().strftime("%Y-%m-%d %H:%M:%S GMT+8")},
-                ensure_ascii=False))
+            if args.dry_run:
+                status["final"] = "dry_run_ok"
+                write_status(status)
+                log(f"✅ [dry-run] {date_str} 模拟成功（不写发布标记）")
+                return 0
+            commit = confirmation.group(1)
+            marker = marker_file(date_str)
+            pending_marker = marker.with_suffix(f".json.tmp.{os.getpid()}")
+            pending_marker.write_text(json.dumps({
+                "date": date_str, "commit_sha": commit,
+                "published_at": now().strftime("%Y-%m-%d %H:%M:%S GMT+8"),
+            }, ensure_ascii=False))
+            os.replace(pending_marker, marker)
             status["final"] = "published"
+            status["commit_sha"] = commit
             write_status(status)
             log(f"✅ {date_str} 发布成功（第 {attempt} 次尝试）")
             return 0
@@ -236,7 +260,7 @@ def run_window(args):
             return BUCKET_EXIT.get(bucket, 4)
 
         next_at = started + timedelta(minutes=args.interval_min)
-        if next_at >= deadline:
+        if max(next_at, now()) >= deadline:
             status["final"] = bucket
             write_status(status)
             log(f"⏹ {date_str} 窗口结束（{args.end_hour:02d}:{args.end_minute:02d}）：{label}")
